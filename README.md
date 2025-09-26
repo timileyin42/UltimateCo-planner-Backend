@@ -2,6 +2,213 @@
 
 A comprehensive event planning platform backend built with FastAPI, designed to make event planning collaborative, stress-free, and enjoyable.
 
+## 🏗️ Backend Architecture System Design
+
+<div align="center">
+
+```mermaid
+graph TB
+    %% Client Layer
+    subgraph "Client Layer"
+        WEB[Web App]
+        MOBILE[Mobile App]
+        API_CLIENT[API Clients]
+    end
+
+    %% API Gateway & Load Balancer
+    subgraph "API Gateway Layer"
+        LB[Load Balancer]
+        GATEWAY[API Gateway<br/>Rate Limiting<br/>Authentication<br/>CORS]
+    end
+
+    %% Application Layer
+    subgraph "FastAPI Application Layer"
+        subgraph "API Routes (v1)"
+            AUTH_API[Auth API<br/>JWT, MFA, Biometric]
+            USER_API[User API<br/>Profile Management]
+            EVENT_API[Event API<br/>CRUD Operations]
+            AI_API[AI API<br/>Smart Suggestions]
+            VENDOR_API[Vendor API<br/>Service Providers]
+            CALENDAR_API[Calendar API<br/>Integration]
+            WEBSOCKET[WebSocket<br/>Real-time Updates]
+        end
+        
+        subgraph "Middleware"
+            RATE_LIMIT[Rate Limiter]
+            CIRCUIT_BREAKER[Circuit Breaker]
+            SECURITY[Security Headers]
+            CORS[CORS Handler]
+        end
+    end
+
+    %% Service Layer
+    subgraph "Business Logic Layer"
+        subgraph "Core Services"
+            AUTH_SVC[Auth Service<br/>JWT, Password Hash]
+            USER_SVC[User Service<br/>Profile Management]
+            EVENT_SVC[Event Service<br/>Event Logic]
+            AI_SVC[AI Service<br/>OpenAI Integration]
+            NOTIFICATION_SVC[Notification Service<br/>Email, SMS, Push]
+        end
+        
+        subgraph "Integration Services"
+            CALENDAR_SVC[Calendar Service<br/>Google/Apple Cal]
+            MAPS_SVC[Maps Service<br/>Google Maps API]
+            PAYMENT_SVC[Payment Service<br/>Stripe Integration]
+            STORAGE_SVC[Storage Service<br/>GCP Cloud Storage]
+            EMAIL_SVC[Email Service<br/>SMTP/SendGrid]
+        end
+    end
+
+    %% Repository Layer
+    subgraph "Data Access Layer"
+        USER_REPO[User Repository]
+        EVENT_REPO[Event Repository]
+        VENDOR_REPO[Vendor Repository]
+        CALENDAR_REPO[Calendar Repository]
+        NOTIFICATION_REPO[Notification Repository]
+    end
+
+    %% Database Layer
+    subgraph "Database Layer"
+        POSTGRES[(PostgreSQL<br/>Primary Database)]
+        REDIS[(Redis<br/>Cache & Sessions)]
+        SQLITE[(SQLite<br/>Development)]
+    end
+
+    %% External Services
+    subgraph "External Services"
+        OPENAI[OpenAI API<br/>AI Suggestions]
+        GOOGLE_CAL[Google Calendar API]
+        APPLE_CAL[Apple Calendar API]
+        GOOGLE_MAPS[Google Maps API]
+        STRIPE[Stripe API<br/>Payments]
+        GCP_STORAGE[GCP Cloud Storage]
+        SENDGRID[SendGrid<br/>Email Service]
+        TWILIO[Twilio<br/>SMS Service]
+        FCM[Firebase<br/>Push Notifications]
+    end
+
+    %% Background Tasks
+    subgraph "Background Processing"
+        CELERY[Celery Workers<br/>Async Tasks]
+        SCHEDULER[Celery Beat<br/>Scheduled Tasks]
+        TASK_QUEUE[Redis Queue<br/>Task Management]
+    end
+
+    %% Monitoring & Security
+    subgraph "Monitoring & Security"
+        LOGGING[Structured Logging]
+        METRICS[Performance Metrics]
+        HEALTH[Health Checks]
+        SECURITY_SCAN[Security Scanning]
+    end
+
+    %% Connections
+    WEB --> LB
+    MOBILE --> LB
+    API_CLIENT --> LB
+    
+    LB --> GATEWAY
+    GATEWAY --> AUTH_API
+    GATEWAY --> USER_API
+    GATEWAY --> EVENT_API
+    GATEWAY --> AI_API
+    GATEWAY --> VENDOR_API
+    GATEWAY --> CALENDAR_API
+    GATEWAY --> WEBSOCKET
+    
+    AUTH_API --> AUTH_SVC
+    USER_API --> USER_SVC
+    EVENT_API --> EVENT_SVC
+    AI_API --> AI_SVC
+    VENDOR_API --> USER_SVC
+    CALENDAR_API --> CALENDAR_SVC
+    
+    AUTH_SVC --> USER_REPO
+    USER_SVC --> USER_REPO
+    EVENT_SVC --> EVENT_REPO
+    CALENDAR_SVC --> CALENDAR_REPO
+    NOTIFICATION_SVC --> NOTIFICATION_REPO
+    
+    USER_REPO --> POSTGRES
+    EVENT_REPO --> POSTGRES
+    VENDOR_REPO --> POSTGRES
+    CALENDAR_REPO --> POSTGRES
+    NOTIFICATION_REPO --> POSTGRES
+    
+    AUTH_SVC --> REDIS
+    USER_SVC --> REDIS
+    
+    AI_SVC --> OPENAI
+    CALENDAR_SVC --> GOOGLE_CAL
+    CALENDAR_SVC --> APPLE_CAL
+    MAPS_SVC --> GOOGLE_MAPS
+    PAYMENT_SVC --> STRIPE
+    STORAGE_SVC --> GCP_STORAGE
+    EMAIL_SVC --> SENDGRID
+    NOTIFICATION_SVC --> TWILIO
+    NOTIFICATION_SVC --> FCM
+    
+    CELERY --> TASK_QUEUE
+    SCHEDULER --> TASK_QUEUE
+    TASK_QUEUE --> REDIS
+    
+    %% Styling
+    classDef clientLayer fill:#e1f5fe
+    classDef apiLayer fill:#f3e5f5
+    classDef serviceLayer fill:#e8f5e8
+    classDef dataLayer fill:#fff3e0
+    classDef externalLayer fill:#fce4ec
+    classDef backgroundLayer fill:#f1f8e9
+    
+    class WEB,MOBILE,API_CLIENT clientLayer
+    class LB,GATEWAY,AUTH_API,USER_API,EVENT_API,AI_API,VENDOR_API,CALENDAR_API,WEBSOCKET apiLayer
+    class AUTH_SVC,USER_SVC,EVENT_SVC,AI_SVC,NOTIFICATION_SVC,CALENDAR_SVC,MAPS_SVC,PAYMENT_SVC,STORAGE_SVC,EMAIL_SVC serviceLayer
+    class USER_REPO,EVENT_REPO,VENDOR_REPO,CALENDAR_REPO,NOTIFICATION_REPO,POSTGRES,REDIS,SQLITE dataLayer
+    class OPENAI,GOOGLE_CAL,APPLE_CAL,GOOGLE_MAPS,STRIPE,GCP_STORAGE,SENDGRID,TWILIO,FCM externalLayer
+    class CELERY,SCHEDULER,TASK_QUEUE backgroundLayer
+```
+
+</div>
+
+### Architecture Overview
+
+The **Plan et al** backend follows a **layered microservices architecture** with the following key components:
+
+#### 🔄 **Request Flow**
+1. **Client Layer** → API requests from web/mobile apps
+2. **API Gateway** → Rate limiting, authentication, routing
+3. **FastAPI Application** → Route handling and validation
+4. **Service Layer** → Business logic processing
+5. **Repository Layer** → Data access abstraction
+6. **Database Layer** → Data persistence and caching
+
+#### 🛡️ **Security Features**
+- **JWT Authentication** with refresh token rotation
+- **Multi-Factor Authentication** (MFA) support
+- **Biometric Authentication** for mobile devices
+- **Rate Limiting** per endpoint and user
+- **Circuit Breaker** pattern for external services
+- **Input Validation** with Pydantic schemas
+- **SQL Injection Prevention** with SQLAlchemy ORM
+
+#### ⚡ **Performance Features**
+- **Redis Caching** for sessions and frequently accessed data
+- **Connection Pooling** for database connections
+- **Async/Await** patterns throughout the application
+- **Background Task Processing** with Celery
+- **Query Optimization** with performance monitoring
+- **Load Balancing** ready architecture
+
+#### 🔌 **Integration Capabilities**
+- **Calendar Sync** (Google Calendar, Apple Calendar)
+- **AI-Powered Suggestions** via OpenAI API
+- **Payment Processing** through Stripe
+- **Cloud Storage** with GCP integration
+- **Real-time Communication** via WebSockets
+- **Multi-channel Notifications** (Email, SMS, Push)
+
 ## 🚀 Features
 
 ### Core Features
@@ -285,4 +492,4 @@ For support and questions:
 - Review the API docs at `/docs`
 
 
-**Plan et al** - Making event planning collaborative and stress-free! 
+**Plan et al** - Making event planning collaborative and stress-free!
