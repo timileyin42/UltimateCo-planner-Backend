@@ -1,0 +1,39 @@
+#compiled file
+__pycache__/
+
+.cache
+.pytest_cache/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+#virtual environment & dependecies settings
+.env
+.venv
+env/
+venv/
+
+
+# FastAPI specific
+.pytest_cache/
+
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.cert
+
+# Docker
+.dockerignore
+
+# Temporary folders
+tmp/
+temp/
+
+.swp
+
+# Documentation
+docs/
+
