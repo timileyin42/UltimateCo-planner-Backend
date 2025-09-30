@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
 from app.core.errors import (
-    http_400_bad_request, http_401_unauthorized, http_409_conflict
+    http_400_bad_request, http_401_unauthorized, http_409_conflict, http_404_not_found
 )
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.services.auth_service import AuthService
@@ -14,6 +14,7 @@ from app.schemas.user import (
 )
 from pydantic import BaseModel, Field
 from app.models.user_models import User
+from app.models.user_models import UserSession
 from typing import Optional
 
 # OTP-related models
