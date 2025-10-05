@@ -2,7 +2,7 @@
 
 A comprehensive event planning platform backend built with FastAPI, designed to make event planning collaborative, stress-free, and enjoyable.
 
-## 🏗️ Backend Architecture System Design
+##  Backend Architecture System Design
 
 <div align="center">
 
@@ -176,7 +176,7 @@ graph TB
 
 The **Plan et al** backend follows a **layered microservices architecture** with the following key components:
 
-#### 🔄 **Request Flow**
+####  **Request Flow**
 1. **Client Layer** → API requests from web/mobile apps
 2. **API Gateway** → Rate limiting, authentication, routing
 3. **FastAPI Application** → Route handling and validation
@@ -184,7 +184,7 @@ The **Plan et al** backend follows a **layered microservices architecture** with
 5. **Repository Layer** → Data access abstraction
 6. **Database Layer** → Data persistence and caching
 
-#### 🛡️ **Security Features**
+####  **Security Features**
 - **JWT Authentication** with refresh token rotation
 - **Multi-Factor Authentication** (MFA) support
 - **Biometric Authentication** for mobile devices
@@ -209,7 +209,7 @@ The **Plan et al** backend follows a **layered microservices architecture** with
 - **Real-time Communication** via WebSockets
 - **Multi-channel Notifications** (Email, SMS, Push)
 
-## 🚀 Features
+##  Features
 
 ### Core Features
 - **Event Management**: Create, organize, and manage events of all types
@@ -236,14 +236,14 @@ The **Plan et al** backend follows a **layered microservices architecture** with
 - **File Storage**: Local/GCP Cloud Storage support
 - **Documentation**: Auto-generated OpenAPI/Swagger
 
-## 📋 Prerequisites
+##  Prerequisites
 
 - Python 3.10+
 - pip or poetry
 - Redis (for background tasks)
 - PostgreSQL (optional, SQLite by default)
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Clone the Repository
 ```bash
