@@ -642,7 +642,7 @@ class NotificationService:
             return False
     
     async def _send_sms_notification(self, notification) -> bool:
-        """Send SMS notification using Twilio SMS service."""
+        """Send SMS notification using Termii SMS service."""
         try:
             # Get recipient user
             recipient = self.db.query(User).filter(User.id == notification.recipient_id).first()

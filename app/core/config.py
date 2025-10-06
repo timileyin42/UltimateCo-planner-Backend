@@ -69,11 +69,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_MAPS_API_KEY: Optional[str] = None
     
-    # SMS Configuration - Twilio
-    TWILIO_ACCOUNT_SID: Optional[str] = None
-    TWILIO_AUTH_TOKEN: Optional[str] = None
-    TWILIO_PHONE_NUMBER: Optional[str] = None
-    TWILIO_VERIFY_SERVICE_SID: Optional[str] = None
+    # SMS Configuration - Termii
+    TERMII_API_KEY: Optional[str] = None
+    TERMII_SENDER_ID: Optional[str] = None
+    TERMII_BASE_URL: Optional[str] = "https://api.ng.termii.com/api"
     
     # Push Notifications - Firebase Cloud Messaging
     FIREBASE_CREDENTIALS_PATH: Optional[str] = None

@@ -1,6 +1,5 @@
 from typing import Optional, Dict, Any
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioException
+import requests
 from fastapi import HTTPException, status
 import logging
 from app.core.config import get_settings
@@ -12,15 +11,15 @@ logger = logging.getLogger(__name__)
 class SMSService:
     def __init__(self):
         self.settings = get_settings()
-        self.account_sid = self.settings.TWILIO_ACCOUNT_SID
-        self.auth_token = self.settings.TWILIO_AUTH_TOKEN
-        self.from_phone = self.settings.TWILIO_PHONE_NUMBER
+        self.api_key = self.settings.TERMII_API_KEY
+        self.sender_id = self.settings.TERMII_SENDER_ID
+        self.base_url = self.settings.TERMII_BASE_URL or "https://api.ng.termii.com/api"
         
-        if not all([self.account_sid, self.auth_token, self.from_phone]):
-            logger.warning("Twilio credentials not configured. SMS functionality will be disabled.")
-            self.client = None
+        if not all([self.api_key, self.sender_id]):
+            logger.warning("Termii credentials not configured. SMS functionality will be disabled.")
+            self.is_configured_flag = False
         else:
-            self.client = Client(self.account_sid, self.auth_token)
+            self.is_configured_flag = True
 
     @sms_circuit_breaker(fallback=sms_fallback)
     def send_sms(
@@ -29,8 +28,8 @@ class SMSService:
         message: str, 
         media_url: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Send SMS message to a phone number"""
-        if not self.client:
+        """Send SMS message to a phone number using Termii API"""
+        if not self.is_configured_flag:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="SMS service is not configured"
@@ -40,33 +39,48 @@ class SMSService:
             # Clean phone number (remove spaces, dashes, etc.)
             cleaned_phone = self._clean_phone_number(to_phone)
             
-            # Prepare message data
-            message_data = {
-                'body': message,
-                'from_': self.from_phone,
-                'to': cleaned_phone
+            # Prepare Termii API payload
+            payload = {
+                "to": cleaned_phone,
+                "from": self.sender_id,
+                "sms": message,
+                "type": "plain",
+                "api_key": self.api_key,
+                "channel": "generic"
             }
             
-            if media_url:
-                message_data['media_url'] = [media_url]
+            # Send request to Termii API
+            response = requests.post(
+                f"{self.base_url}/sms/send",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
             
-            # Send message
-            twilio_message = self.client.messages.create(**message_data)
+            if response.status_code == 200:
+                result = response.json()
+                return {
+                    'message_id': result.get('message_id'),
+                    'status': 'sent',
+                    'to': cleaned_phone,
+                    'from': self.sender_id,
+                    'body': message,
+                    'balance': result.get('balance'),
+                    'user': result.get('user')
+                }
+            else:
+                error_msg = response.json().get('message', 'Unknown error')
+                logger.error(f"Termii API error sending SMS to {to_phone}: {error_msg}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to send SMS: {error_msg}"
+                )
             
-            return {
-                'sid': twilio_message.sid,
-                'status': twilio_message.status,
-                'to': cleaned_phone,
-                'from': self.from_phone,
-                'body': message,
-                'date_sent': twilio_message.date_sent
-            }
-            
-        except TwilioException as e:
-            logger.error(f"Twilio error sending SMS to {to_phone}: {str(e)}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error sending SMS to {to_phone}: {str(e)}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to send SMS: {str(e)}"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send SMS due to network error"
             )
         except Exception as e:
             logger.error(f"Unexpected error sending SMS to {to_phone}: {str(e)}")
@@ -182,15 +196,17 @@ class SMSService:
         return self.send_sms(to_phone, message)
 
     def _clean_phone_number(self, phone_number: str) -> str:
-        """Clean and format phone number for Twilio"""
+        """Clean and format phone number for Termii API"""
         # Remove all non-digit characters except +
         cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
         
-        # If no country code, assume US (+1)
+        # If no country code, assume Nigeria (+234) for Termii
         if not cleaned.startswith('+'):
-            if len(cleaned) == 10:  # US number without country code
-                cleaned = '+1' + cleaned
-            elif len(cleaned) == 11 and cleaned.startswith('1'):  # US number with 1 prefix
+            if len(cleaned) == 11 and cleaned.startswith('0'):  # Nigerian number starting with 0
+                cleaned = '+234' + cleaned[1:]  # Replace 0 with +234
+            elif len(cleaned) == 10:  # Nigerian number without leading 0
+                cleaned = '+234' + cleaned
+            elif len(cleaned) == 11 and cleaned.startswith('234'):  # Nigerian with 234 prefix
                 cleaned = '+' + cleaned
             else:
                 # For other countries, add + if missing
@@ -198,28 +214,26 @@ class SMSService:
         
         return cleaned
 
-    def get_message_status(self, message_sid: str) -> Dict[str, Any]:
-        """Get status of a sent message"""
-        if not self.client:
+    def get_message_status(self, message_id: str) -> Dict[str, Any]:
+        """Get status of a sent message from Termii"""
+        if not self.is_configured_flag:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="SMS service is not configured"
             )
         
         try:
-            message = self.client.messages(message_sid).fetch()
-            
+            # Termii doesn't have a direct message status endpoint
+            # You can implement inbox checking or delivery reports if needed
+            # For now, return a basic response
             return {
-                'sid': message.sid,
-                'status': message.status,
-                'error_code': message.error_code,
-                'error_message': message.error_message,
-                'date_sent': message.date_sent,
-                'date_updated': message.date_updated
+                'message_id': message_id,
+                'status': 'unknown',
+                'note': 'Termii does not provide direct message status lookup. Use delivery reports or inbox endpoints if needed.'
             }
             
-        except TwilioException as e:
-            logger.error(f"Error fetching message status for {message_sid}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error fetching message status for {message_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to get message status: {str(e)}"
@@ -227,4 +241,124 @@ class SMSService:
 
     def is_configured(self) -> bool:
         """Check if SMS service is properly configured"""
-        return self.client is not None
+        return self.is_configured_flag
+    
+    def get_balance(self) -> Dict[str, Any]:
+        """Get account balance from Termii"""
+        if not self.is_configured_flag:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="SMS service is not configured"
+            )
+        
+        try:
+            response = requests.get(
+                f"{self.base_url}/get-balance",
+                params={"api_key": self.api_key},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                error_msg = response.json().get('message', 'Unknown error')
+                logger.error(f"Termii API error getting balance: {error_msg}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to get balance: {error_msg}"
+                )
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error getting balance: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to get balance due to network error"
+            )
+    
+    def send_token(self, to_phone: str, pin_type: str = "NUMERIC", pin_length: int = 6) -> Dict[str, Any]:
+        """Send OTP token using Termii Token API"""
+        if not self.is_configured_flag:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="SMS service is not configured"
+            )
+        
+        try:
+            cleaned_phone = self._clean_phone_number(to_phone)
+            
+            payload = {
+                "api_key": self.api_key,
+                "message_type": "NUMERIC",
+                "to": cleaned_phone,
+                "from": self.sender_id,
+                "channel": "generic",
+                "pin_attempts": 3,
+                "pin_time_to_live": 10,  # 10 minutes
+                "pin_length": pin_length,
+                "pin_placeholder": "< 1234 >",
+                "message_text": f"Your PlanEtAl verification code is < 1234 >. This code expires in 10 minutes.",
+                "pin_type": pin_type
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/sms/otp/send",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                error_msg = response.json().get('message', 'Unknown error')
+                logger.error(f"Termii API error sending token to {to_phone}: {error_msg}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to send token: {error_msg}"
+                )
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error sending token to {to_phone}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send token due to network error"
+            )
+    
+    def verify_token(self, pin_id: str, pin_code: str) -> Dict[str, Any]:
+        """Verify OTP token using Termii Token API"""
+        if not self.is_configured_flag:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="SMS service is not configured"
+            )
+        
+        try:
+            payload = {
+                "api_key": self.api_key,
+                "pin_id": pin_id,
+                "pin": pin_code
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/sms/otp/verify",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                error_msg = response.json().get('message', 'Unknown error')
+                logger.error(f"Termii API error verifying token: {error_msg}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to verify token: {error_msg}"
+                )
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error verifying token: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to verify token due to network error"
+            )

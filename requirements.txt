@@ -53,7 +53,8 @@ pytz==2023.3
 cryptography==41.0.7
 
 # SMS Services
-twilio==8.10.3
+# SMS Service - Termii API (using requests for HTTP calls)
+# requests==2.31.0  # Already included above
 
 # Push Notifications
 firebase-admin==6.4.0

@@ -23,6 +23,7 @@ class AuthService:
         self.db = db
         self.user_db = UserDatabase(db)
         self.otp_service = OTPService(db)
+        self.settings = settings
     
     def register_user(self, user_data: UserRegister) -> User:
         """Register a new user with email or phone number"""
@@ -239,6 +240,81 @@ class AuthService:
         
         return True
     
+    def verify_email_otp(self, email: str, otp: str) -> bool:
+        """Verify email using OTP."""
+        user = self.user_db.get_user_by_email(email)
+        if not user:
+            raise NotFoundError("User not found")
+        
+        success, message = self.otp_service.verify_otp(user, otp)
+        if not success:
+            raise ValidationError(message)
+        
+        # Mark email as verified
+        user.is_verified = True
+        self.db.commit()
+        
+        return True
+    
+    def generate_password_reset_token(self, email: str) -> str:
+        """Generate password reset token and send email."""
+        user = self.user_db.get_user_by_email(email)
+        if not user:
+            # Don't reveal if email exists for security
+            return "token_placeholder"
+        
+        if not user.is_active:
+            # Don't reveal account status
+            return "token_placeholder"
+        
+        # Generate secure token
+        token = self._generate_secure_token(64)
+        
+        # Store token with expiry (15 minutes)
+        user.password_reset_token = token
+        user.password_reset_expires = datetime.utcnow() + timedelta(minutes=15)
+        self.db.commit()
+        
+        # Send password reset email
+        try:
+            asyncio.create_task(email_service.send_password_reset(user, token))
+        except Exception as e:
+            print(f"Failed to send password reset email: {str(e)}")
+        
+        return token
+    
+    def reset_password(self, token: str, new_password: str) -> bool:
+        """Reset password using reset token."""
+        # Find user by token
+        user = self.db.query(User).filter(
+            User.password_reset_token == token,
+            User.password_reset_expires > datetime.utcnow(),
+            User.is_active == True
+        ).first()
+        
+        if not user:
+            raise ValidationError("Invalid or expired reset token")
+        
+        # Update password
+        user.hashed_password = get_password_hash(new_password)
+        
+        # Clear reset token
+        user.password_reset_token = None
+        user.password_reset_expires = None
+        
+        self.db.commit()
+        
+        # Send password changed notification
+        try:
+            asyncio.create_task(email_service.send_password_changed_notification(user))
+        except Exception as e:
+            print(f"Failed to send password changed notification: {str(e)}")
+        
+        # Logout from all sessions (force re-login)
+        self.logout_all_sessions(user.id)
+        
+        return True
+    
     def request_password_reset(self, identifier: str) -> bool:
         """Request password reset OTP for user by email or phone."""
         # Try to find user by email or phone
@@ -371,7 +447,3 @@ class AuthService:
         """Generate a secure random token"""
         alphabet = string.ascii_letters + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(length))
-    
-    def _generate_dummy_token(self) -> str:
-        """Generate a dummy token to prevent email enumeration"""
-        return self._generate_secure_token()

@@ -49,6 +49,10 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     otp_expires_at = Column(DateTime, nullable=True)
     otp_attempts = Column(Integer, default=0, nullable=False)
     
+    # Password reset tokens
+    password_reset_token = Column(String(255), nullable=True)
+    password_reset_expires = Column(DateTime, nullable=True)
+    
     # Social features
     is_public_profile = Column(Boolean, default=True, nullable=False)
     
