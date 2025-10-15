@@ -64,7 +64,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
 class SortParams(BaseModel):
     """Schema for sorting parameters"""
     sort_by: Optional[str] = Field(None, description="Field to sort by")
-    sort_order: str = Field(default="asc", regex=r"^(asc|desc)$", description="Sort order (asc or desc)")
+    sort_order: str = Field(default="asc", pattern=r"^(asc|desc)$", description="Sort order (asc or desc)")
     
     def get_order_by(self, default_field: str = "created_at") -> str:
         """Get order by clause for database queries"""

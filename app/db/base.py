@@ -15,8 +15,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create Base class for models
 Base = declarative_base()
 
-# Metadata for migrations
-metadata = MetaData()
+# Metadata for migrations (renamed to avoid conflicts)
+db_metadata = MetaData()
 
 # This is important for Alembic migrations
 def import_models():

@@ -11,6 +11,7 @@ celerybeat.pid
 #virtual environment & dependecies settings
 .env
 .venv
+myenv/
 env/
 venv/
 

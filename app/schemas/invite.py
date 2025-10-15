@@ -6,7 +6,7 @@ from app.models.invite_models import InviteType
 
 class InviteCodeBase(BaseModel):
     """Base schema for invite codes"""
-    invite_type: InviteType = Field(default=InviteType.GENERAL, description="Type of invite")
+    invite_type: InviteType = Field(default=InviteType.APP_GENERAL, description="Type of invite")
     expires_at: Optional[datetime] = Field(None, description="Expiration date")
     
 

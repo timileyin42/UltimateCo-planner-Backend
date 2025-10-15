@@ -2,6 +2,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, time
 import asyncio
+import logging
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.event_repo import EventRepository
 from app.models.notification_models import (
@@ -15,6 +16,9 @@ from app.services.email_service import EmailService
 from app.services.sms_service import SMSService
 from app.services.push_service import push_service
 from app.services.websocket_manager import websocket_manager
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 class NotificationService:
     """Service for managing smart reminders and notifications."""
@@ -684,10 +688,10 @@ class NotificationService:
             
             # Prepare notification data
             data = {}
-            if hasattr(notification, 'metadata') and notification.metadata:
+            if hasattr(notification, 'extra_data') and notification.extra_data:
                 try:
                     import json
-                    data = json.loads(notification.metadata)
+                    data = json.loads(notification.extra_data)
                 except:
                     pass
             

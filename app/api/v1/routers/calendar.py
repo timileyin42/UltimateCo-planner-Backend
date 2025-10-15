@@ -21,9 +21,9 @@ from app.services.calendar_service import CalendarServiceFactory, CalendarProvid
 from app.services.google_calendar_service import GoogleCalendarService
 from app.services.apple_calendar_service import AppleCalendarService
 from app.repositories.calendar_repo import CalendarConnectionRepository, CalendarEventRepository, CalendarSyncLogRepository
-from app.core.auth import get_current_user
+from app.core.deps import get_current_user
 from app.core.deps import get_db
-from app.models.user import User
+from app.models.user_models import User
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/calendar", tags=["Calendar Integration"])
@@ -333,7 +333,7 @@ async def get_calendar_connection(
 @router.put("/connections/{connection_id}", response_model=CalendarConnectionResponse)
 async def update_calendar_connection(
     connection_id: int,
-    update_data: CalendarConnectionUpdate,
+    update_data: CalendarConnectionUpdateRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):

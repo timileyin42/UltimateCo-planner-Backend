@@ -1,11 +1,15 @@
 from typing import List, Optional, Dict, Any, Tuple
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 from app.repositories.vendor_repo import VendorRepository
 from app.repositories.event_repo import EventRepository
 from app.models.vendor_models import (
+    Vendor, VendorService as VendorServiceModel, VendorBooking, VendorPayment, VendorReview,
+    VendorPortfolio, VendorAvailability,
     VendorCategory, VendorStatus, BookingStatus, PaymentStatus, ServiceType
 )
+from app.models.event_models import Event
 from app.core.idempotency import idempotent_operation, IdempotencyManager
 from app.core.errors import NotFoundError, AuthorizationError, ValidationError
 import json
@@ -114,7 +118,7 @@ class VendorService:
         vendor_id: int, 
         user_id: int, 
         service_data: Dict[str, Any]
-    ) -> VendorService:
+    ) -> VendorServiceModel:
         """Create a new service for a vendor."""
         vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
         
@@ -147,11 +151,11 @@ class VendorService:
         
         return service
     
-    def get_vendor_services(self, vendor_id: int) -> List[VendorService]:
+    def get_vendor_services(self, vendor_id: int) -> List[VendorServiceModel]:
         """Get all services for a vendor."""
-        return self.db.query(VendorService).filter(
-            VendorService.vendor_id == vendor_id,
-            VendorService.is_active == True
+        return self.db.query(VendorServiceModel).filter(
+            VendorServiceModel.vendor_id == vendor_id,
+            VendorServiceModel.is_active == True
         ).all()
     
     # Booking operations
@@ -163,9 +167,9 @@ class VendorService:
         booking_data: Dict[str, Any]
     ) -> VendorBooking:
         """Create a new vendor booking."""
-        service = self.db.query(VendorService).options(
-            joinedload(VendorService.vendor)
-        ).filter(VendorService.id == service_id).first()
+        service = self.db.query(VendorServiceModel).options(
+            joinedload(VendorServiceModel.vendor)
+        ).filter(VendorServiceModel.id == service_id).first()
         
         if not service:
             raise NotFoundError("Service not found")
@@ -626,7 +630,7 @@ class VendorService:
     
     def _calculate_service_price(
         self, 
-        service: VendorService, 
+        service: VendorServiceModel, 
         guest_count: Optional[int] = None,
         duration_hours: Optional[int] = None
     ) -> float:

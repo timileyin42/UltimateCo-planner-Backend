@@ -3,7 +3,7 @@ from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
-from app.models.contact_models import InvitationStatus
+from app.models.contact_models import ContactInviteStatus
 
 
 class ContactBase(BaseModel):
@@ -77,7 +77,7 @@ class ContactInvitationResponse(ContactInvitationBase):
     sender_id: int
     recipient_id: Optional[int] = None
     invitation_token: str
-    status: InvitationStatus
+    status: ContactInviteStatus
     created_at: datetime
     responded_at: Optional[datetime] = None
     

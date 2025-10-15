@@ -6,7 +6,7 @@ from app.services.creative_service import CreativeService
 from app.models.creative_models import (
     Moodboard, MoodboardItem, MoodboardLike, MoodboardComment,
     Playlist, PlaylistTrack, PlaylistVote,
-    Game, GameSession, GameParticipation, GameRating,
+    Game, GameSession, GameParticipant, GameRating,
     MoodboardType, PlaylistType, GameType
 )
 from app.models.user_models import User

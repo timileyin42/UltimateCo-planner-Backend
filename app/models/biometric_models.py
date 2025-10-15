@@ -30,7 +30,7 @@ class BiometricStatus(str, enum.Enum):
 
 class UserDevice(BaseModel, TimestampMixin):
     """User devices for biometric authentication"""
-    __tablename__ = "user_devices"
+    __tablename__ = "biometric_devices"
     
     # Device info
     device_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -111,7 +111,7 @@ class BiometricAuth(BaseModel, TimestampMixin):
     
     # Relationships
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    device_id: Mapped[int] = mapped_column(ForeignKey("user_devices.id"), nullable=False)
+    device_id: Mapped[int] = mapped_column(ForeignKey("biometric_devices.id"), nullable=False)
     
     # Relationships
     user = relationship("User", back_populates="biometric_auths")
@@ -222,7 +222,7 @@ class BiometricToken(BaseModel, TimestampMixin):
     
     # Relationships
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    device_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user_devices.id"), nullable=True)
+    device_id: Mapped[Optional[int]] = mapped_column(ForeignKey("biometric_devices.id"), nullable=True)
     
     # Relationships
     user = relationship("User")

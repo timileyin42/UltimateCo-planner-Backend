@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Enum as SQLEnum, JSON, Index
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from app.models.shared_models import BaseModel, TimestampMixin
 import enum
@@ -62,7 +62,7 @@ class DevicePlatform(str, enum.Enum):
 
 class UserDevice(BaseModel, TimestampMixin):
     """User device information for push notifications."""
-    __tablename__ = "user_devices"
+    __tablename__ = "notification_devices"
     
     # Device identification
     device_token: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
@@ -151,12 +151,12 @@ class SmartReminder(BaseModel, TimestampMixin):
         Index('idx_smartreminder_notification_type', 'notification_type'),
         Index('idx_smartreminder_status', 'status'),
         Index('idx_smartreminder_is_active', 'is_active'),
-        Index('idx_smartreminder_scheduled_for', 'scheduled_for'),
+        Index('idx_smartreminder_scheduled_time', 'scheduled_time'),
         Index('idx_smartreminder_frequency', 'frequency'),
         Index('idx_smartreminder_created_at', 'created_at'),
         # Combined indexes for common queries
         Index('idx_smartreminder_event_status', 'event_id', 'status'),
-        Index('idx_smartreminder_active_scheduled', 'is_active', 'scheduled_for'),
+        Index('idx_smartreminder_active_scheduled', 'is_active', 'scheduled_time'),
         Index('idx_smartreminder_type_status', 'notification_type', 'status'),
         Index('idx_smartreminder_creator_active', 'creator_id', 'is_active'),
     )
@@ -203,8 +203,8 @@ class NotificationLog(BaseModel, TimestampMixin):
     status: Mapped[NotificationStatus] = mapped_column(SQLEnum(NotificationStatus), nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    # Metadata
-    metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object for additional data
+    # Additional data  
+    extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object for additional data
     
     # Relationships
     reminder_id: Mapped[Optional[int]] = mapped_column(ForeignKey("smart_reminders.id"), nullable=True)
@@ -387,8 +387,8 @@ class NotificationQueue(BaseModel, TimestampMixin):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    # Metadata
-    metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object
+    # Additional data
+    extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object
     
     # Relationships
     reminder_id: Mapped[Optional[int]] = mapped_column(ForeignKey("smart_reminders.id"), nullable=True)

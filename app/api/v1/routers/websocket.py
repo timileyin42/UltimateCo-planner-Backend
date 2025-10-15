@@ -8,17 +8,17 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, H
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db, get_current_user_websocket
+from app.core.deps import get_db, get_current_user_websocket, get_current_user
 from app.services.websocket_manager import websocket_manager
 from app.models.user_models import User
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
-router = APIRouter()
+websocket_router = APIRouter()
 
 
-@router.websocket("/notifications/{user_id}")
+@websocket_router.websocket("/notifications/{user_id}")
 async def websocket_notifications(
     websocket: WebSocket,
     user_id: int,
@@ -147,14 +147,14 @@ async def handle_client_message(websocket: WebSocket, user_id: int, message: Dic
         }, websocket)
 
 
-@router.get("/websocket/stats")
+@websocket_router.get("/websocket/stats")
 async def get_websocket_stats(current_user: User = Depends(get_current_user)):
     """Get WebSocket connection statistics (admin only)."""
     # You might want to add admin check here
     return websocket_manager.get_connection_stats()
 
 
-@router.post("/websocket/broadcast")
+@websocket_router.post("/websocket/broadcast")
 async def broadcast_notification(
     user_ids: list[int],
     notification: dict,

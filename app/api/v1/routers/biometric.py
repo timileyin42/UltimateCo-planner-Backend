@@ -5,7 +5,7 @@ from sqlalchemy import and_
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
-from app.core.auth import get_current_user
+from app.core.deps import get_current_user
 from app.models.user_models import User
 from app.models.biometric_models import BiometricType, DeviceType, BiometricStatus, UserDevice, BiometricAuth
 from app.services.biometric_service import BiometricService

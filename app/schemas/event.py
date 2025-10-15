@@ -24,7 +24,7 @@ class EventBase(BaseModel):
     allow_guest_invites: bool = True
     total_budget: Optional[float] = Field(None, ge=0)
     currency: str = "USD"
-    theme_color: Optional[str] = Field(None, regex=r'^#[0-9A-Fa-f]{6}$')
+    theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
 
 class EventCreate(EventBase):
     """Schema for creating a new event"""
@@ -57,7 +57,7 @@ class EventDuplicateRequest(BaseModel):
     allow_guest_invites: Optional[bool] = None
     total_budget: Optional[float] = Field(None, ge=0)
     currency: Optional[str] = None
-    theme_color: Optional[str] = Field(None, regex=r'^#[0-9A-Fa-f]{6}$')
+    theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
 
 class EventResponse(EventBase):
     """Schema for event response"""

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from app.models.creative_models import (
     Moodboard, MoodboardItem, MoodboardLike, MoodboardComment,
     Playlist, PlaylistTrack, PlaylistVote,
-    Game, GameSession, GameParticipation, GameRating,
+    Game, GameSession, GameParticipant, GameRating,
     MoodboardType, PlaylistType, GameType
 )
 from app.models.user_models import User
@@ -455,19 +455,19 @@ class CreativeRepository:
         ).all()
     
     # Game Participation operations
-    def create_game_participation(self, participation_data: Dict[str, Any]) -> GameParticipation:
+    def create_game_participation(self, participation_data: Dict[str, Any]) -> GameParticipant:
         """Create a new game participation"""
-        participation = GameParticipation(**participation_data)
+        participation = GameParticipant(**participation_data)
         self.db.add(participation)
         self.db.commit()
         self.db.refresh(participation)
         return participation
     
-    def get_game_participation(self, session_id: int, user_id: int) -> Optional[GameParticipation]:
-        """Get user's participation in a game session"""
-        return self.db.query(GameParticipation).filter(
-            GameParticipation.session_id == session_id,
-            GameParticipation.user_id == user_id
+    def get_game_participation(self, session_id: int, user_id: int) -> Optional[GameParticipant]:
+        """Get game participation by session and user"""
+        return self.db.query(GameParticipant).filter(
+            GameParticipant.session_id == session_id,
+            GameParticipant.user_id == user_id
         ).first()
     
     # Game Rating operations

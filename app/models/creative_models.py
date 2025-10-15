@@ -23,6 +23,12 @@ class PlaylistProvider(str, enum.Enum):
     YOUTUBE_MUSIC = "youtube_music"
     CUSTOM = "custom"
 
+class PlaylistType(str, enum.Enum):
+    """Types of playlists."""
+    COLLABORATIVE = "collaborative"
+    CURATED = "curated"
+    GENERATED = "generated"
+
 class GameType(str, enum.Enum):
     """Types of party games."""
     TRIVIA = "trivia"
@@ -502,16 +508,14 @@ class GameParticipant(BaseModel, TimestampMixin):
         # Single field indexes
         Index('idx_game_participant_session_id', 'session_id'),
         Index('idx_game_participant_user_id', 'user_id'),
-        Index('idx_game_participant_role', 'role'),
-        Index('idx_game_participant_status', 'status'),
         Index('idx_game_participant_score', 'score'),
-        Index('idx_game_participant_joined_at', 'joined_at'),
+        Index('idx_game_participant_position', 'position'),
+        Index('idx_game_participant_is_active', 'is_active'),
         
         # Combined indexes for common queries
         Index('idx_game_participant_session_user', 'session_id', 'user_id'),
-        Index('idx_game_participant_session_status', 'session_id', 'status'),
-        Index('idx_game_participant_user_status', 'user_id', 'status'),
         Index('idx_game_participant_session_score', 'session_id', 'score'),
+        Index('idx_game_participant_session_active', 'session_id', 'is_active'),
     )
     
     def __repr__(self):

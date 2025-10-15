@@ -1,5 +1,5 @@
-from typing import List, Optional
-from pydantic import validator
+from typing import List, Optional, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 import os
 
@@ -9,9 +9,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Plan et al - Ultimate Co-planner"
     
     # CORS Configuration
-    BACKEND_CORS_ORIGINS: List[str] = []
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = []
     
-    @validator("BACKEND_CORS_ORIGINS", pre=True)
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
     def assemble_cors_origins(cls, v):
         if isinstance(v, str) and v:
             if not v.startswith("["):
@@ -24,8 +25,8 @@ class Settings(BaseSettings):
         return []
     
     # Database Configuration
-    DATABASE_URL: Optional[str] = None
-    ASYNC_DATABASE_URL: Optional[str] = None
+    DATABASE_URL: Optional[str] = "postgresql://username:password@localhost:5432/planetal"
+    ASYNC_DATABASE_URL: Optional[str] = "postgresql+asyncpg://username:password@localhost:5432/planetal"
     
     # Security Configuration
     SECRET_KEY: str 
@@ -63,7 +64,20 @@ class Settings(BaseSettings):
     # File Upload Configuration
     UPLOAD_FOLDER: str = "uploads"
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    ALLOWED_EXTENSIONS: List[str] = ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"]
+    ALLOWED_EXTENSIONS: Union[List[str], str] = ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"]
+    
+    @field_validator("ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def assemble_allowed_extensions(cls, v):
+        if isinstance(v, str) and v:
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",")]
+            else:
+                import json
+                return json.loads(v)
+        elif isinstance(v, list):
+            return v
+        return ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"]
     
     # External API Keys
     OPENAI_API_KEY: Optional[str] = None
@@ -90,14 +104,15 @@ class Settings(BaseSettings):
     
     # Calendar Integration Configuration
     # Google Calendar
-    GOOGLE_CALENDAR_SCOPES: List[str] = []
+    GOOGLE_CALENDAR_SCOPES: Union[List[str], str] = []
     GOOGLE_CALENDAR_REDIRECT_URI: Optional[str] = None
     
     # Apple Calendar (CalDAV)
     APPLE_CALENDAR_SERVER_URL: Optional[str] = None
     APPLE_CALENDAR_PRINCIPAL_URL: Optional[str] = None
     
-    @validator("GOOGLE_CALENDAR_SCOPES", pre=True)
+    @field_validator("GOOGLE_CALENDAR_SCOPES", mode="before")
+    @classmethod
     def assemble_google_calendar_scopes(cls, v):
         if isinstance(v, str) and v:
             return [scope.strip() for scope in v.split(",")]
@@ -121,10 +136,13 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        env_file_encoding = 'utf-8'
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "env_file_encoding": "utf-8",
+        "str_strip_whitespace": True,
+        "extra": "ignore",
+    }
 
 settings = Settings()
 

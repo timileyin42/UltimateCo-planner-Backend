@@ -61,7 +61,7 @@ class AIChatMessage(BaseModel, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     
     # Message metadata
-    metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for additional data
+    extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for additional data
     suggestions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array of suggestions
     event_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object for event preview
     

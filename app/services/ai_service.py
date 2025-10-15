@@ -5,7 +5,7 @@ from app.models.event_models import Event
 from app.models.user_models import User
 from app.models.ai_chat_models import AIChatSession, AIChatMessage
 from app.schemas.chat import ChatSessionCreate, ChatMessageCreate, ChatSessionResponse, ChatMessageResponse, ChatMessageRole, ChatSessionStatus
-from app.services.event_service import event_service
+from app.services.event_service import EventService
 from app.schemas.event import EventCreate
 from app.core.circuit_breaker import openai_circuit_breaker, ai_fallback
 from datetime import datetime, timedelta
@@ -226,7 +226,8 @@ class AIService:
             )
             
             # Create the event
-            created_event = await event_service.create_event(db, event_create, user_id)
+            event_service = EventService(db)
+            created_event = event_service.create_event(event_create, user_id)
             
             # Update session
             session.status = ChatSessionStatus.COMPLETED
@@ -253,7 +254,7 @@ class AIService:
             "role": message.role,
             "content": message.content,
             "timestamp": message.created_at,
-            "metadata": json.loads(message.metadata) if message.metadata else None
+            "metadata": json.loads(message.extra_data) if message.extra_data else None
         }
     
     @openai_circuit_breaker(fallback=ai_fallback)
@@ -840,7 +841,7 @@ Response format: Provide a natural conversational response. Do not use JSON form
             session_id=message.session_id,
             role=message.role,
             content=message.content,
-            metadata=message.metadata,
+            metadata=message.extra_data,
             created_at=message.created_at
         )
     

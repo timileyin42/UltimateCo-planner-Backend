@@ -7,9 +7,9 @@ from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.services.subscription_service import SubscriptionService, SubscriptionError
 from app.services.stripe_service import StripeService
 from app.schemas.subscription_schemas import (
-    SubscriptionPlanResponse, UserSubscriptionResponse, PaymentResponse,
-    UsageLimitResponse, SubscriptionCreateRequest, PaymentMethodUpdateRequest,
-    SubscriptionCancelRequest, SubscriptionReactivateRequest
+    SubscriptionPlan, UserSubscription, SubscriptionPayment, UsageLimit,
+    SubscriptionCreate, UpdatePaymentMethodRequest, CancelSubscriptionRequest,
+    UpgradeSubscriptionRequest
 )
 from app.models.user_models import User
 import stripe
@@ -23,7 +23,7 @@ subscription_router = APIRouter()
 rate_limit_subscription = create_rate_limit_decorator(RateLimitConfig.SUBSCRIPTION_MANAGE)
 rate_limit_payment = create_rate_limit_decorator(RateLimitConfig.PAYMENT_CREATE)
 
-@subscription_router.get("/plans", response_model=list[SubscriptionPlanResponse])
+@subscription_router.get("/plans", response_model=list[SubscriptionPlan])
 async def get_subscription_plans(
     db: Session = Depends(get_db)
 ):
@@ -36,7 +36,7 @@ async def get_subscription_plans(
         logger.error(f"Error fetching subscription plans: {e}")
         raise http_400_bad_request("Failed to fetch subscription plans")
 
-@subscription_router.get("/current", response_model=UserSubscriptionResponse)
+@subscription_router.get("/current", response_model=UserSubscription)
 async def get_current_subscription(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -50,7 +50,7 @@ async def get_current_subscription(
         logger.error(f"Error fetching user subscription: {e}")
         raise http_400_bad_request("Failed to fetch subscription details")
 
-@subscription_router.get("/usage", response_model=UsageLimitResponse)
+@subscription_router.get("/usage", response_model=UsageLimit)
 async def get_usage_limits(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -64,10 +64,11 @@ async def get_usage_limits(
         logger.error(f"Error fetching usage limits: {e}")
         raise http_400_bad_request("Failed to fetch usage limits")
 
-@subscription_router.post("/subscribe", response_model=UserSubscriptionResponse)
+@subscription_router.post("/subscribe", response_model=UserSubscription)
 @rate_limit_subscription
 async def create_subscription(
-    subscription_data: SubscriptionCreateRequest,
+    request: Request,
+    subscription_data: SubscriptionCreate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -103,7 +104,8 @@ async def create_subscription(
 @subscription_router.post("/cancel")
 @rate_limit_subscription
 async def cancel_subscription(
-    cancel_data: SubscriptionCancelRequest,
+    request: Request,
+    cancel_data: CancelSubscriptionRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -121,10 +123,10 @@ async def cancel_subscription(
         logger.error(f"Error cancelling subscription: {e}")
         raise http_400_bad_request("Failed to cancel subscription")
 
-@subscription_router.post("/reactivate", response_model=UserSubscriptionResponse)
+@subscription_router.post("/reactivate", response_model=UserSubscription)
 @rate_limit_subscription
 async def reactivate_subscription(
-    reactivate_data: SubscriptionReactivateRequest,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -132,8 +134,7 @@ async def reactivate_subscription(
     try:
         subscription_service = SubscriptionService(db)
         subscription = subscription_service.reactivate_subscription(
-            user_id=current_user.id,
-            plan_id=reactivate_data.plan_id
+            user_id=current_user.id
         )
         return subscription
     except SubscriptionError as e:
@@ -145,7 +146,8 @@ async def reactivate_subscription(
 @subscription_router.put("/payment-method")
 @rate_limit_payment
 async def update_payment_method(
-    payment_data: PaymentMethodUpdateRequest,
+    request: Request,
+    payment_data: UpdatePaymentMethodRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -166,6 +168,7 @@ async def update_payment_method(
 @subscription_router.post("/setup-intent")
 @rate_limit_payment
 async def create_setup_intent(
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):

@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
-from qrcode.image.styles.colorfills import SquareGradiantColorFill
+try:
+    from qrcode.image.styles.colorfills import SquareGradiantColorFill  # type: ignore
+    HAS_GRADIENT = True
+except ImportError:
+    # Fallback for older qrcode versions
+    SquareGradiantColorFill = None  # type: ignore
+    HAS_GRADIENT = False
 from PIL import Image
 
 from app.repositories.invite_repo import InviteRepository
@@ -47,7 +53,7 @@ class InviteService:
             qr.make(fit=True)
             
             # Generate styled QR code
-            if style == "gradient":
+            if style == "gradient" and HAS_GRADIENT:
                 img = qr.make_image(
                     image_factory=StyledPilImage,
                     module_drawer=RoundedModuleDrawer(),
@@ -56,6 +62,11 @@ class InviteService:
                         center_color=(255, 100, 100),
                         edge_color=(255, 200, 0)
                     )
+                )
+            elif style == "rounded":
+                img = qr.make_image(
+                    image_factory=StyledPilImage,
+                    module_drawer=RoundedModuleDrawer()
                 )
             else:
                 img = qr.make_image(fill_color="black", back_color="white")

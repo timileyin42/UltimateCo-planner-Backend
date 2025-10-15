@@ -7,8 +7,7 @@ import re
 from fastapi import HTTPException, status
 
 from app.models.contact_models import (
-    UserContact, ContactInvitation, ContactGroup, ContactGroupMembership,
-    InvitationStatus
+    UserContact, ContactGroup, ContactInvitation, ContactInviteStatus, ContactGroupMembership
 )
 from app.models.user_models import User
 from app.models.event_models import Event
@@ -125,7 +124,7 @@ class ContactService:
             event_id=event_id,
             invitation_token=str(uuid.uuid4()),
             message=message,
-            status=InvitationStatus.PENDING
+            status=ContactInviteStatus.PENDING
         )
         
         self.db.add(invitation)
@@ -166,7 +165,7 @@ class ContactService:
     def get_sent_invitations(
         self, 
         user_id: int,
-        status: Optional[InvitationStatus] = None,
+        status: Optional[ContactInviteStatus] = None,
         limit: int = 50,
         offset: int = 0
     ) -> List[ContactInvitation]:
@@ -183,7 +182,7 @@ class ContactService:
     def get_received_invitations(
         self, 
         user_id: int,
-        status: Optional[InvitationStatus] = None,
+        status: Optional[ContactInviteStatus] = None,
         limit: int = 50,
         offset: int = 0
     ) -> List[ContactInvitation]:
@@ -208,7 +207,7 @@ class ContactService:
             and_(
                 ContactInvitation.id == invitation_id,
                 ContactInvitation.recipient_id == user_id,
-                ContactInvitation.status == InvitationStatus.PENDING
+                ContactInvitation.status == ContactInviteStatus.PENDING
             )
         ).first()
         
@@ -218,7 +217,7 @@ class ContactService:
                 detail="Invitation not found or already responded"
             )
         
-        invitation.status = InvitationStatus.ACCEPTED if accept else InvitationStatus.DECLINED
+        invitation.status = ContactInviteStatus.ACCEPTED if accept else ContactInviteStatus.DECLINED
         invitation.responded_at = datetime.utcnow()
         
         self.db.commit()

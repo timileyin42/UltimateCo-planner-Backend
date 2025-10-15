@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.auth import get_current_user
+from app.core.deps import get_current_user
 from app.models.user_models import User
-from app.models.contact_models import InvitationStatus
+from app.models.contact_models import ContactInviteStatus
 from app.services.contact_service import ContactService
 from app.schemas.contact_schemas import (
     ContactCreate, ContactUpdate, ContactResponse, ContactListResponse,
@@ -233,7 +233,7 @@ async def send_bulk_invitations(
 
 @router.get("/invitations/sent", response_model=InvitationListResponse)
 async def get_sent_invitations(
-    status_filter: Optional[InvitationStatus] = Query(None, description="Filter by invitation status"),
+    status_filter: Optional[ContactInviteStatus] = Query(None, description="Filter by invitation status"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: User = Depends(get_current_user),
@@ -269,7 +269,7 @@ async def get_sent_invitations(
 
 @router.get("/invitations/received", response_model=InvitationListResponse)
 async def get_received_invitations(
-    status_filter: Optional[InvitationStatus] = Query(None, description="Filter by invitation status"),
+    status_filter: Optional[ContactInviteStatus] = Query(None, description="Filter by invitation status"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: User = Depends(get_current_user),
@@ -396,22 +396,22 @@ async def get_contact_stats(
     
     pending_sent = db.query(ContactInvitation).filter(
         ContactInvitation.sender_id == current_user.id,
-        ContactInvitation.status == InvitationStatus.PENDING
+        ContactInvitation.status == ContactInviteStatus.PENDING
     ).count()
     
     pending_received = db.query(ContactInvitation).filter(
         ContactInvitation.recipient_id == current_user.id,
-        ContactInvitation.status == InvitationStatus.PENDING
+        ContactInvitation.status == ContactInviteStatus.PENDING
     ).count()
     
     accepted = db.query(ContactInvitation).filter(
         ContactInvitation.sender_id == current_user.id,
-        ContactInvitation.status == InvitationStatus.ACCEPTED
+        ContactInvitation.status == ContactInviteStatus.ACCEPTED
     ).count()
     
     declined = db.query(ContactInvitation).filter(
         ContactInvitation.sender_id == current_user.id,
-        ContactInvitation.status == InvitationStatus.DECLINED
+        ContactInvitation.status == ContactInviteStatus.DECLINED
     ).count()
     
     return ContactStatsResponse(

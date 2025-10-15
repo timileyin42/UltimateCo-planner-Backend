@@ -7,6 +7,7 @@ python-multipart==0.0.6
 sqlalchemy==2.0.23
 alembic==1.12.1
 psycopg2-binary==2.9.9
+asyncpg==0.30.0
 
 # Authentication and Security
 python-jose[cryptography]==3.3.0
@@ -26,6 +27,7 @@ openai==1.3.7
 
 # Email
 fastapi-mail==1.4.1
+resend==2.17.0
 
 # File Storage and Media
 # Google Cloud Storage
@@ -36,6 +38,7 @@ google-auth==2.23.4
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
 google-api-python-client==2.108.0
+googlemaps==4.10.0
 
 # Calendar Integration
 caldav==1.3.9
@@ -48,6 +51,7 @@ Pillow==10.1.0
 # Utilities
 python-dateutil==2.8.2
 pytz==2023.3
+dateparser==1.2.0
 
 # Cryptography for Biometric Authentication
 cryptography==41.0.7
@@ -68,3 +72,9 @@ redis==5.0.1
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
+
+# System monitoring
+psutil==5.9.6
+
+# Payment Processing
+stripe==13.0.1

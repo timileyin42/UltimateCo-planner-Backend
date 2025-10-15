@@ -287,7 +287,7 @@ uvicorn app.main:app --reload
 
 The API will be available at `http://localhost:8000`
 
-## 🐳 Docker Setup
+##  Docker Setup
 
 ### Development with Docker Compose
 ```bash
@@ -314,7 +314,7 @@ Once the server is running, visit:
 - **ReDoc**: `http://localhost:8000/redoc`
 - **OpenAPI JSON**: `http://localhost:8000/openapi.json`
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -328,17 +328,13 @@ DATABASE_URL=sqlite:///./planetal.db
 SECRET_KEY=your-secret-key
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# Email
-SMTP_HOST=smtp.gmail.com
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
 
 # External APIs
 OPENAI_API_KEY=your-openai-key
 GOOGLE_MAPS_API_KEY=your-maps-key
 ```
 
-## 🏗 Project Structure
+##  Project Structure
 
 ```
 app/

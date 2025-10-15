@@ -89,16 +89,8 @@ def get_circuit_breaker(name: str, config: Optional[Dict] = None) -> CircuitBrea
             **config
         )
         
-        # Add listeners for logging
-        _circuit_breakers[name].add_listener(
-            'open', lambda cb: logger.warning(f"Circuit breaker '{name}' opened")
-        )
-        _circuit_breakers[name].add_listener(
-            'close', lambda cb: logger.info(f"Circuit breaker '{name}' closed")
-        )
-        _circuit_breakers[name].add_listener(
-            'half_open', lambda cb: logger.info(f"Circuit breaker '{name}' half-opened")
-        )
+        # Note: Listeners removed due to API changes in pybreaker 1.0.2
+        # Can be re-added when pybreaker supports them or using custom logging
         
         logger.info(f"Created circuit breaker '{name}' with config: {config}")
     
@@ -260,4 +252,14 @@ async def ai_fallback(*args, **kwargs):
         'status': 'unavailable',
         'message': 'AI service temporarily unavailable, please try again later',
         'response': 'I apologize, but the AI service is currently unavailable. Please try again in a few minutes.'
+    }
+
+async def firebase_fallback(*args, **kwargs):
+    """Fallback for Firebase operations when circuit is open."""
+    logger.warning("Firebase push notification service unavailable")
+    return {
+        'status': 'unavailable',
+        'message': 'Push notification service temporarily unavailable',
+        'success': False,
+        'sent': False
     }

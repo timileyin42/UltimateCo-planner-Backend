@@ -4,6 +4,24 @@ from sqlalchemy import Column, Integer, DateTime, Boolean
 from sqlalchemy.ext.declarative import declared_attr
 from app.db.base import Base
 
+
+class BaseModel(Base):
+    """Base model class with common functionality"""
+    __abstract__ = True
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    
+    def soft_delete(self):
+        """Mark record as deleted"""
+        self.is_deleted = True
+        self.deleted_at = datetime.utcnow()
+
+
 class EventType(str, Enum):
     """Event type enumeration"""
     BIRTHDAY = "birthday"

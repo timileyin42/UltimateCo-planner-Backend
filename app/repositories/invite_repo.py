@@ -13,7 +13,7 @@ class InviteRepository:
         self.db = db
     
     # Invite Code operations
-    def create_invite_code(self, user_id: int, invite_type: InviteType = InviteType.GENERAL, 
+    def create_invite_code(self, user_id: int, invite_type: InviteType = InviteType.APP_GENERAL, 
                           expires_at: Optional[datetime] = None) -> InviteCode:
         """Create a new invite code"""
         invite_code = InviteCode(

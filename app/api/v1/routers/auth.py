@@ -186,6 +186,7 @@ async def change_password(
 @auth_router.post("/forgot-password")
 @rate_limit_password_reset
 async def forgot_password(
+    request: Request,
     password_reset: PasswordReset,
     db: Session = Depends(get_db)
 ):
@@ -210,6 +211,7 @@ async def forgot_password(
 @auth_router.post("/reset-password")
 @rate_limit_password_reset
 async def reset_password(
+    request: Request,
     reset_data: PasswordResetConfirm,
     db: Session = Depends(get_db)
 ):
@@ -423,6 +425,7 @@ async def link_google_account(
 @auth_router.post("/verify-email-otp")
 @rate_limit_email_verification
 async def verify_email_with_otp(
+    request: Request,
     verification: OTPVerification,
     db: Session = Depends(get_db)
 ):
@@ -527,6 +530,7 @@ async def request_password_reset_otp(
 @auth_router.post("/reset-password-otp")
 @rate_limit_password_reset
 async def reset_password_with_otp(
+    request: Request,
     reset_data: PasswordResetOTP,
     db: Session = Depends(get_db)
 ):

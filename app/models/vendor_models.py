@@ -300,7 +300,7 @@ class VendorPayment(BaseModel, TimestampMixin):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Metadata
-    metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object
+    extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object
     
     # Relationships
     booking_id: Mapped[int] = mapped_column(ForeignKey("vendor_bookings.id"), nullable=False)

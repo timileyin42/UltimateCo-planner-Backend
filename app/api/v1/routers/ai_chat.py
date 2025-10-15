@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -23,6 +23,7 @@ rate_limit_ai_analysis = create_rate_limit_decorator(RateLimitConfig.AI_ANALYSIS
 @ai_chat_router.post("/sessions", response_model=ChatSessionResponse)
 @rate_limit_ai_chat
 async def create_chat_session(
+    request: Request,
     session_data: ChatSessionCreate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -59,6 +60,7 @@ async def get_chat_session(
 @ai_chat_router.post("/sessions/{session_id}/messages", response_model=ChatMessageResponse)
 @rate_limit_ai_chat
 async def send_chat_message(
+    request: Request,
     session_id: str,
     message_data: ChatMessageCreate,
     current_user: User = Depends(get_current_active_user),
@@ -81,6 +83,7 @@ async def send_chat_message(
 @ai_chat_router.post("/sessions/{session_id}/complete", response_model=EventCreationResult)
 @rate_limit_ai_analysis
 async def complete_chat_session(
+    request: Request,
     session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
