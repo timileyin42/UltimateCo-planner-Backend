@@ -1,8 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import logging
+
 from app.api.v1.api_router import api_router
 from app.api.health import health_router
 from app.core.config import settings
+from app.services.redis_subscriber import start_redis_listener, stop_redis_listener
+
+logger = logging.getLogger(__name__)
 
 # Create FastAPI instance
 app = FastAPI(
@@ -28,12 +34,26 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.on_event("startup")
 async def startup_event():
     """Application startup event"""
-    print("Starting Plan et al API...")
+    logger.info("Starting Plan et al API...")
+    
+    # Start Redis pub/sub listener in background
+    try:
+        asyncio.create_task(start_redis_listener())
+        logger.info("Started Redis pub/sub listener for real-time updates")
+    except Exception as e:
+        logger.error(f"Failed to start Redis listener: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown event"""
-    print("Shutting down Plan et al API...")
+    logger.info("Shutting down Plan et al API...")
+    
+    # Stop Redis pub/sub listener
+    try:
+        await stop_redis_listener()
+        logger.info("Stopped Redis pub/sub listener")
+    except Exception as e:
+        logger.error(f"Error stopping Redis listener: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
