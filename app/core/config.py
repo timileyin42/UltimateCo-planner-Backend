@@ -28,6 +28,29 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ASYNC_DATABASE_URL: str
     
+    # Read Replica Configuration
+    READ_REPLICA_URLS: List[str] = []
+    
+    @field_validator("READ_REPLICA_URLS", mode="before")
+    @classmethod
+    def assemble_read_replicas(cls, v):
+        if isinstance(v, str) and v:
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",")]
+            else:
+                import json
+                return json.loads(v)
+        elif isinstance(v, list):
+            return v
+        return []
+    
+    # Database Performance Settings
+    DB_CONNECTION_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 40
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 3600  # 1 hour
+    DB_SLOW_QUERY_THRESHOLD_MS: int = 500  # Log queries taking longer than this
+    
     # Security Configuration
     SECRET_KEY: str 
     ALGORITHM: str
