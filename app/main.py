@@ -7,6 +7,7 @@ from app.api.v1.api_router import api_router
 from app.api.health import health_router
 from app.core.config import settings
 from app.services.redis_subscriber import start_redis_listener, stop_redis_listener
+from app.core.db_optimizations import create_composite_indexes, read_replica_manager
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,23 @@ async def startup_event():
         logger.info("Started Redis pub/sub listener for real-time updates")
     except Exception as e:
         logger.error(f"Failed to start Redis listener: {str(e)}")
+    
+    # Create composite indexes
+    try:
+        create_composite_indexes()
+        logger.info("Successfully created composite indexes")
+    except Exception as e:
+        logger.error(f"Failed to create composite indexes: {e}")
+    
+    # Initialize read replicas if configured
+    if hasattr(settings, "READ_REPLICA_URLS") and settings.READ_REPLICA_URLS:
+        try:
+            read_replica_manager.initialize(settings.READ_REPLICA_URLS)
+            logger.info(f"Initialized {len(settings.READ_REPLICA_URLS)} read replicas")
+        except Exception as e:
+            logger.error(f"Failed to initialize read replicas: {e}")
+    else:
+        logger.info("No read replicas configured")
 
 @app.on_event("shutdown")
 async def shutdown_event():

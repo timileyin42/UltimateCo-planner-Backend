@@ -6,7 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+import logging
 from app.core.config import settings
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Create Base class for models
 Base = declarative_base()
@@ -23,7 +27,7 @@ engine = create_engine(
     } if "sqlite" not in settings.DATABASE_URL else {"check_same_thread": False},
     echo=settings.DEBUG,
     pool_size=20,
-    max_overflow=30,
+    max_overflow=40,
     pool_timeout=30,
     pool_recycle=3600,
     pool_pre_ping=True
@@ -52,7 +56,7 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False
 )
 
-# Database dependency
+# Database dependency for write operations (uses primary database)
 def get_db():
     """Get database session"""
     db = SessionLocal()
@@ -66,3 +70,6 @@ async def get_async_db():
     """Get async database session"""
     async with AsyncSessionLocal() as session:
         yield session
+        
+# Read replica configuration will be imported from db_optimizations.py
+# This avoids circular imports while making the read replica functionality available

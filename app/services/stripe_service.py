@@ -292,7 +292,7 @@ class StripeService:
         Handle Stripe webhook events (DEPRECATED - use webhook endpoint with Celery instead).
         
         This method is kept for backward compatibility but should not be used for new implementations.
-        Use the /webhooks/stripe endpoint which queues events to Celery for processing.
+         now Using the /webhooks/stripe endpoint which queues events to Celery for processing.
         """
         logger.warning("Using deprecated handle_webhook method. Consider migrating to Celery-based webhook processing.")
         

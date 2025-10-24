@@ -33,8 +33,25 @@ class EventService:
     
     # Event CRUD operations
     def get_event_by_id(self, event_id: int, user_id: Optional[int] = None) -> Optional[Event]:
-        """Get event by ID with access control"""
-        event = self.db.query(Event).filter(Event.id == event_id).first()
+        """Get event by ID with access control using read replicas for better performance"""
+        # Try to get from cache first
+        cache_key = f"event:{event_id}:user:{user_id}"
+        try:
+            from app.core.cache import cache_service
+            cached_event = cache_service.get(cache_key)
+            if cached_event:
+                return cached_event
+        except Exception as e:
+            logger.warning(f"Cache retrieval error: {e}")
+        
+        # Use read replica if available
+        try:
+            from app.core.db_optimizations import get_read_db
+            read_db = get_read_db() or self.db
+            event = read_db.query(Event).filter(Event.id == event_id).first()
+        except Exception as e:
+            logger.warning(f"Read replica error, falling back to primary: {e}")
+            event = self.db.query(Event).filter(Event.id == event_id).first()
         
         if not event:
             return None
@@ -42,6 +59,13 @@ class EventService:
         # Check access permissions
         if user_id and not self._can_access_event(event, user_id):
             raise AuthorizationError("Access denied to this event")
+        
+        # Cache the result for future requests
+        try:
+            from app.core.cache import cache_service
+            cache_service.set(cache_key, event, ttl=300)  # Cache for 5 minutes
+        except Exception as e:
+            logger.warning(f"Cache storage error: {e}")
         
         return event
     
