@@ -215,6 +215,38 @@ class SubscriptionPayment(Base, IDMixin, TimestampMixin):
     def __repr__(self):
         return f"<SubscriptionPayment(id={self.id}, amount={self.amount}, status='{self.status}')>"
 
+class StripeEventLog(Base, IDMixin, TimestampMixin):
+    """Log of processed Stripe webhook events for idempotency."""
+    __tablename__ = "stripe_event_logs"
+    
+    # Stripe event ID (unique per event)
+    event_id = Column(String(100), unique=True, nullable=False, index=True)
+    
+    # Event type (e.g., invoice.payment_succeeded)
+    event_type = Column(String(100), nullable=True)
+    
+    # Processing status
+    processing_status = Column(String(50), default="pending", nullable=False)  # pending, processing, completed, failed
+    
+    # Event metadata (stored as JSON string)
+    metadata = Column(Text, nullable=True)
+    
+    # Processing details
+    processed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    
+    # Database indexes
+    __table_args__ = (
+        Index('idx_stripe_event_id', 'event_id'),
+        Index('idx_stripe_event_type', 'event_type'),
+        Index('idx_stripe_processing_status', 'processing_status'),
+        Index('idx_stripe_processed_at', 'processed_at'),
+    )
+    
+    def __repr__(self):
+        return f"<StripeEventLog(event_id='{self.event_id}', type='{self.event_type}', status='{self.processing_status}')>"
+
 class UsageLimit(Base, IDMixin, TimestampMixin):
     """Track usage limits and overages."""
     __tablename__ = "usage_limits"

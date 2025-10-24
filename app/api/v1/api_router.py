@@ -16,6 +16,7 @@ from app.api.v1.routers.contacts import router as contacts_router
 from app.api.v1.routers.biometric import router as biometric_router
 from app.api.v1.devices import router as devices_router
 from app.api.v1.routers.websocket import websocket_router
+from app.api.v1.webhooks import router as webhooks_router
 
 api_router = APIRouter()
 
@@ -118,6 +119,12 @@ api_router.include_router(
     websocket_router,
     prefix="/ws",
     tags=["websocket"]
+)
+
+api_router.include_router(
+    webhooks_router,
+    prefix="/webhooks",
+    tags=["webhooks"]
 )
 
 # Root endpoint for API version info

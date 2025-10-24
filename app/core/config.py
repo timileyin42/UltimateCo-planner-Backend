@@ -5,8 +5,8 @@ import os
 
 class Settings(BaseSettings):
     # API Configuration
-    API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "Plan et al - Ultimate Co-planner"
+    API_V1_STR: str
+    PROJECT_NAME: str
     
     # CORS Configuration
     BACKEND_CORS_ORIGINS: Union[List[str], str] = []
@@ -25,46 +25,50 @@ class Settings(BaseSettings):
         return []
     
     # Database Configuration
-    DATABASE_URL: Optional[str] = "postgresql://username:password@localhost:5432/planetal"
-    ASYNC_DATABASE_URL: Optional[str] = "postgresql+asyncpg://username:password@localhost:5432/planetal"
+    DATABASE_URL: str
+    ASYNC_DATABASE_URL: str
     
     # Security Configuration
     SECRET_KEY: str 
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_DAYS: int
     
     # Rate Limiting Configuration
-    REDIS_URL: Optional[str] = "redis://localhost:6379"
-    RATE_LIMIT_ENABLED: bool = True
+    REDIS_URL: str
+    RATE_LIMIT_ENABLED: bool
+    
+    # Celery Configuration
+    CELERY_BROKER_URL: str
+    CELERY_RESULT_BACKEND: str
     
     # Default rate limits (requests per minute)
-    RATE_LIMIT_AUTH: str = "5/minute"  # Login, register, password reset
-    RATE_LIMIT_API: str = "100/minute"  # General API endpoints
-    RATE_LIMIT_AI: str = "10/minute"  # AI chat endpoints
-    RATE_LIMIT_PAYMENTS: str = "20/minute"  # Payment endpoints
-    RATE_LIMIT_UPLOADS: str = "30/minute"  # File upload endpoints
+    RATE_LIMIT_AUTH: str
+    RATE_LIMIT_API: str
+    RATE_LIMIT_AI: str
+    RATE_LIMIT_PAYMENTS: str
+    RATE_LIMIT_UPLOADS: str
     
     # Circuit Breaker Configuration
-    CIRCUIT_BREAKER_ENABLED: bool = True
-    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
-    CIRCUIT_BREAKER_RECOVERY_TIMEOUT: int = 60  # seconds
+    CIRCUIT_BREAKER_ENABLED: bool
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int
+    CIRCUIT_BREAKER_RECOVERY_TIMEOUT: int
     CIRCUIT_BREAKER_EXPECTED_EXCEPTION: tuple = (Exception,)
     
     # Email Configuration (Resend)
     RESEND_API_KEY: Optional[str] = None
-    EMAILS_FROM_EMAIL: Optional[str] = "noreply@planetal.com"
-    EMAILS_FROM_NAME: Optional[str] = "Plan et al"
-    SUPPORT_EMAIL: Optional[str] = "support@planetal.com"
+    EMAILS_FROM_EMAIL: str
+    EMAILS_FROM_NAME: str
+    SUPPORT_EMAIL: str
     
     # Frontend URL for email links
-    FRONTEND_URL: Optional[str] = None
+    FRONTEND_URL: str
     
     
     # File Upload Configuration
-    UPLOAD_FOLDER: str = "uploads"
-    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    ALLOWED_EXTENSIONS: Union[List[str], str] = ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"]
+    UPLOAD_FOLDER: str
+    MAX_FILE_SIZE: int
+    ALLOWED_EXTENSIONS: Union[List[str], str] = []
     
     @field_validator("ALLOWED_EXTENSIONS", mode="before")
     @classmethod
@@ -77,7 +81,7 @@ class Settings(BaseSettings):
                 return json.loads(v)
         elif isinstance(v, list):
             return v
-        return ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"]
+        return []
     
     # External API Keys
     OPENAI_API_KEY: Optional[str] = None
@@ -86,7 +90,7 @@ class Settings(BaseSettings):
     # SMS Configuration - Termii
     TERMII_API_KEY: Optional[str] = None
     TERMII_SENDER_ID: Optional[str] = None
-    TERMII_BASE_URL: Optional[str] = "https://api.ng.termii.com/api"
+    TERMII_BASE_URL: str
     
     # Push Notifications - Firebase Cloud Messaging
     FIREBASE_CREDENTIALS_PATH: Optional[str] = None
@@ -95,7 +99,7 @@ class Settings(BaseSettings):
     # File Storage - GCP Storage
     GCP_PROJECT_ID: Optional[str] = None
     GCP_STORAGE_BUCKET: Optional[str] = None
-    GCP_STORAGE_REGION: str = "us-central1"
+    GCP_STORAGE_REGION: str
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
     
     # Google OAuth Configuration
@@ -121,8 +125,8 @@ class Settings(BaseSettings):
         return []
     
     # Calendar Sync Configuration
-    CALENDAR_SYNC_FREQUENCY_MINUTES: int = 15
-    CALENDAR_SYNC_MAX_RETRIES: int = 3
+    CALENDAR_SYNC_FREQUENCY_MINUTES: int
+    CALENDAR_SYNC_MAX_RETRIES: int
     CALENDAR_WEBHOOK_BASE_URL: Optional[str] = None
     
     # Stripe Configuration
@@ -133,8 +137,8 @@ class Settings(BaseSettings):
     STRIPE_PRICE_ID_PRO_YEARLY: Optional[str] = None
     
     # Environment
-    ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    ENVIRONMENT: str
+    DEBUG: bool
     
     model_config = {
         "env_file": ".env",

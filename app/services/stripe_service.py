@@ -264,8 +264,38 @@ class StripeService:
             logger.error(f"Failed to get payment methods for customer {customer_id}: {e}")
             raise StripeError(f"Failed to get payment methods: {str(e)}")
     
+    def verify_webhook_signature(self, payload: str, sig_header: str) -> tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+        """
+        Verify Stripe webhook signature and parse event.
+        
+        Returns:
+            Tuple of (is_valid, event_dict, error_message)
+        """
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, self.webhook_secret
+            )
+            return True, event, None
+            
+        except ValueError as e:
+            logger.error(f"Invalid webhook payload: {e}")
+            return False, None, "Invalid payload"
+        except stripe.error.SignatureVerificationError as e:
+            logger.error(f"Invalid webhook signature: {e}")
+            return False, None, "Invalid signature"
+        except Exception as e:
+            logger.error(f"Error verifying webhook: {e}")
+            return False, None, str(e)
+    
     async def handle_webhook(self, payload: str, sig_header: str, db: Session) -> bool:
-        """Handle Stripe webhook events."""
+        """
+        Handle Stripe webhook events (DEPRECATED - use webhook endpoint with Celery instead).
+        
+        This method is kept for backward compatibility but should not be used for new implementations.
+        Use the /webhooks/stripe endpoint which queues events to Celery for processing.
+        """
+        logger.warning("Using deprecated handle_webhook method. Consider migrating to Celery-based webhook processing.")
+        
         try:
             event = stripe.Webhook.construct_event(
                 payload, sig_header, self.webhook_secret

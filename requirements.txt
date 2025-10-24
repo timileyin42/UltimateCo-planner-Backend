@@ -1,12 +1,12 @@
 # Core FastAPI and web framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
 
 # Database
 sqlalchemy==2.0.23
 alembic==1.12.1
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.10
 asyncpg==0.30.0
 
 # Authentication and Security
@@ -14,9 +14,9 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 # Environment and Configuration
-python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+python-dotenv==1.0.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
 
 # HTTP Client
 httpx==0.25.2
@@ -46,7 +46,7 @@ icalendar==5.0.11
 
 # QR Code Generation
 qrcode[pil]==7.4.2
-Pillow==10.1.0
+Pillow==11.0.0
 
 # Utilities
 python-dateutil==2.8.2
@@ -54,7 +54,7 @@ pytz==2023.3
 dateparser==1.2.0
 
 # Cryptography for Biometric Authentication
-cryptography==41.0.7
+cryptography==43.0.3
 
 # SMS Services
 # SMS Service - Termii API (using requests for HTTP calls)
@@ -68,13 +68,19 @@ slowapi==0.1.9
 pybreaker==1.0.2
 redis==5.0.1
 
+# Celery for background tasks
+celery==5.3.4
+
+# Async Redis for pub/sub (remove hiredis to avoid Rust compilation)
+redis==5.0.1
+
 # Development and Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
 
 # System monitoring
 psutil==5.9.6
 
 # Payment Processing
-stripe==13.0.1
+stripe==11.1.0
