@@ -2,9 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
+from app.models.user_models import User
+from app.core.config import settings
+from datetime import datetime
 from app.core.deps import get_db, get_current_active_user
 from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden
 from app.services.timeline_service import TimelineService
+from app.services.email_service import email_service
 from app.schemas.timeline import (
     # Timeline schemas
     EventTimelineCreate, EventTimelineUpdate, EventTimelineResponse, TimelineListResponse,
@@ -24,6 +28,13 @@ from app.schemas.timeline import (
 )
 from app.models.user_models import User
 from pydantic import BaseModel
+import asyncio
+
+# Sharing schema
+class TimelineShareRequest(BaseModel):
+    user_ids: List[int]
+    message: Optional[str] = None
+    can_edit: bool = False
 
 timeline_router = APIRouter()
 
@@ -156,10 +167,50 @@ async def add_timeline_item(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Add an item to a timeline"""
+    """Add an item to a timeline and notify assignee if specified"""
     try:
         timeline_service = TimelineService(db)
         item = timeline_service.add_timeline_item(timeline_id, current_user.id, item_data)
+        
+        # Send email notification to assignee if specified
+        if item.assignee_id and item.assignee_id != current_user.id:
+            try:
+                assignee = db.query(User).filter(User.id == item.assignee_id).first()
+                if assignee and assignee.email:
+                    timeline = item.timeline
+                    event = timeline.event
+                    
+                    from app.core.config import settings
+                    timeline_url = f"{settings.FRONTEND_URL}/events/{event.id}/timelines/{timeline_id}"
+                    
+                    # Prepare template context
+                    context = {
+                        "assignee_name": assignee.full_name,
+                        "assigner_name": current_user.full_name,
+                        "item_title": item.title,
+                        "timeline_title": timeline.title,
+                        "event_title": event.title,
+                        "start_time": item.start_time.strftime("%A, %B %d, %Y at %I:%M %p"),
+                        "duration_minutes": item.duration_minutes,
+                        "location": item.location,
+                        "description": item.description,
+                        "timeline_url": timeline_url,
+                        "app_name": "Plan et al"
+                    }
+                    
+                    # Render template
+                    html_content = email_service.render_template("timeline_task_assigned.html", context)
+                    subject = f"New timeline task assigned: {item.title}"
+                    
+                    asyncio.create_task(email_service.send_email(
+                        to_email=assignee.email,
+                        subject=subject,
+                        html_content=html_content,
+                        reply_to=current_user.email
+                    ))
+                    
+            except Exception as e:
+                print(f"Failed to send timeline item assignment notification: {str(e)}")
         
         return TimelineItemResponse.model_validate(item)
         
@@ -178,10 +229,58 @@ async def update_timeline_item(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Update a timeline item"""
+    """Update a timeline item and notify assignee if changed"""
     try:
         timeline_service = TimelineService(db)
+        
+        # Get the original item to check if assignee changed
+        original_item = timeline_service.timeline_repo.get_timeline_item_by_id(item_id)
+        original_assignee_id = original_item.assignee_id if original_item else None
+        
+        # Update the item
         item = timeline_service.update_timeline_item(item_id, current_user.id, update_data)
+        
+        # Check if assignee was changed and send notification
+        new_assignee_id = getattr(update_data, 'assignee_id', None)
+        if new_assignee_id and new_assignee_id != original_assignee_id and new_assignee_id != current_user.id:
+            try:
+                assignee = db.query(User).filter(User.id == new_assignee_id).first()
+                if assignee and assignee.email:
+                    timeline = item.timeline
+                    event = timeline.event
+                    
+                    from app.core.config import settings
+                    timeline_url = f"{settings.FRONTEND_URL}/events/{event.id}/timelines/{timeline.id}"
+                    
+                    # Prepare template context
+                    context = {
+                        "assignee_name": assignee.full_name,
+                        "assigner_name": current_user.full_name,
+                        "item_title": item.title,
+                        "timeline_title": timeline.title,
+                        "event_title": event.title,
+                        "start_time": item.start_time.strftime("%A, %B %d, %Y at %I:%M %p"),
+                        "duration_minutes": item.duration_minutes,
+                        "location": item.location,
+                        "description": item.description,
+                        "status": item.status.value,
+                        "timeline_url": timeline_url,
+                        "app_name": "Plan et al"
+                    }
+                    
+                    # Render template
+                    html_content = email_service.render_template("timeline_task_reassigned.html", context)
+                    subject = f"Timeline task reassigned: {item.title}"
+                    
+                    asyncio.create_task(email_service.send_email(
+                        to_email=assignee.email,
+                        subject=subject,
+                        html_content=html_content,
+                        reply_to=current_user.email
+                    ))
+                    
+            except Exception as e:
+                print(f"Failed to send timeline item reassignment notification: {str(e)}")
         
         return TimelineItemResponse.model_validate(item)
         
@@ -589,11 +688,11 @@ async def validate_timeline(
 @timeline_router.post("/timelines/{timeline_id}/share")
 async def share_timeline(
     timeline_id: int,
-    share_with_user_ids: List[int],
+    share_request: TimelineShareRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Share timeline with other users"""
+    """Share timeline with other users and send email notifications"""
     try:
         timeline_service = TimelineService(db)
         timeline = timeline_service.get_timeline(timeline_id, current_user.id)
@@ -601,18 +700,72 @@ async def share_timeline(
         if not timeline:
             raise http_404_not_found("Timeline not found")
         
-        # This would typically involve creating sharing records
-        # For now, return a success message
+        # Get the event details
+        event = timeline.event
+        
+        # Validate that all user IDs exist
+        users_to_share_with = db.query(User).filter(User.id.in_(share_request.user_ids)).all()
+        
+        if len(users_to_share_with) != len(share_request.user_ids):
+            raise http_400_bad_request("One or more user IDs are invalid")
+        
+        # Send email notifications to each user
+        email_tasks = []
+        for user in users_to_share_with:
+            # Skip if sharing with self
+            if user.id == current_user.id:
+                continue
+            
+            # Create email notification
+            try:
+                # Prepare email context
+                timeline_url = f"{settings.FRONTEND_URL}/events/{event.id}/timelines/{timeline_id}"
+                
+                context = {
+                    "user_name": user.full_name,
+                    "sharer_name": current_user.full_name,
+                    "timeline_title": timeline.title,
+                    "event_title": event.title,
+                    "event_date": event.start_datetime.strftime("%A, %B %d, %Y at %I:%M %p"),
+                    "timeline_description": timeline.description,
+                    "permission": "Can edit" if share_request.can_edit else "View only",
+                    "message": share_request.message,
+                    "timeline_url": timeline_url,
+                    "app_name": "Plan et al"
+                }
+                
+                # Render template
+                html_content = email_service.render_template("timeline_shared.html", context)
+                subject = f"{current_user.full_name} shared a timeline with you: {timeline.title}"
+                
+                # Send email asynchronously
+                email_task = email_service.send_email(
+                    to_email=user.email,
+                    subject=subject,
+                    html_content=html_content,
+                    reply_to=current_user.email
+                )
+                email_tasks.append(email_task)
+                
+            except Exception as e:
+                print(f"Failed to send timeline share email to {user.email}: {str(e)}")
+        
+        # Send all emails asynchronously
+        if email_tasks:
+            asyncio.gather(*email_tasks, return_exceptions=True)
+        
         return {
-            "message": f"Timeline shared with {len(share_with_user_ids)} users",
+            "message": f"Timeline shared with {len(users_to_share_with)} user(s)",
             "timeline_id": timeline_id,
-            "shared_with": share_with_user_ids
+            "shared_with": [{"id": u.id, "name": u.full_name, "email": u.email} for u in users_to_share_with],
+            "can_edit": share_request.can_edit,
+            "emails_sent": len(email_tasks)
         }
         
     except Exception as e:
         if "not found" in str(e).lower():
             raise http_404_not_found(str(e))
-        elif "access denied" in str(e).lower():
+        elif "access denied" in str(e).lower() or "invalid" in str(e).lower():
             raise http_403_forbidden(str(e))
         else:
-            raise http_400_bad_request("Failed to share timeline")
+            raise http_400_bad_request(f"Failed to share timeline: {str(e)}")

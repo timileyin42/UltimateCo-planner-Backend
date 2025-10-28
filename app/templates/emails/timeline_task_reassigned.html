@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4F46E5; color: white; padding: 20px; text-align: center; }
+        .content { background-color: #f9f9f9; padding: 20px; }
+        .item-info { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #4F46E5; }
+        .button { display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 15px 0; }
+        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Timeline Task Assigned</h1>
+        </div>
+        <div class="content">
+            <p>Hi {{ assignee_name }},</p>
+            <p><strong>{{ assigner_name }}</strong> has assigned you to a timeline task for <strong>{{ event_title }}</strong>.</p>
+            
+            <div class="item-info">
+                <h3>{{ item_title }}</h3>
+                <p><strong>Timeline:</strong> {{ timeline_title }}</p>
+                <p><strong>Event:</strong> {{ event_title }}</p>
+                <p><strong>Start Time:</strong> {{ start_time }}</p>
+                <p><strong>Duration:</strong> {{ duration_minutes }} minutes</p>
+                {% if location %}
+                <p><strong>Location:</strong> {{ location }}</p>
+                {% endif %}
+                {% if description %}
+                <p><strong>Description:</strong> {{ description }}</p>
+                {% endif %}
+                <p><strong>Status:</strong> {{ status }}</p>
+            </div>
+            
+            <a href="{{ timeline_url }}" class="button">View Timeline</a>
+            
+            <p>Please review the task details and update the status as you progress.</p>
+        </div>
+        <div class="footer">
+            <p>© 2025 {{ app_name }}. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
