@@ -8,6 +8,7 @@ from app.core.errors import (
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.services.auth_service import AuthService
 from app.services.google_oauth_service import GoogleOAuthService
+from app.services.email_service import email_service
 from app.schemas.user import (
     UserLogin, UserRegister, UserResponse, TokenResponse, 
     TokenRefresh, PasswordReset, PasswordResetConfirm
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.models.user_models import User
 from app.models.user_models import UserSession
 from typing import Optional
+import asyncio
 
 # OTP-related models
 class OTPVerification(BaseModel):
@@ -246,27 +248,72 @@ async def get_current_user_info(
     return current_user
 
 @auth_router.post("/verify-email")
+@rate_limit_email_verification
 async def verify_email(
+    request: Request,
     verification_token: str,
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Verify user email address using token (legacy method)"""
+    """Verify user email address using token (legacy method - use /verify-email-otp instead)"""
     try:
-        # This is a legacy method - recommend using OTP verification instead
         auth_service = AuthService(db)
         
-        # For now, just mark email as verified if user is authenticated
-        current_user.is_verified = True
+        # Find user by verification token
+        user = db.query(User).filter(
+            User.email_verification_token == verification_token,
+            User.is_verified == False
+        ).first()
+        
+        if not user:
+            raise http_400_bad_request("Invalid or expired verification token")
+        
+        # Mark email as verified
+        user.is_verified = True
+        user.email_verification_token = None
         db.commit()
+        
+        # Send welcome email
+        try:
+            import asyncio
+            asyncio.create_task(email_service.send_welcome_email(user))
+        except Exception as e:
+            print(f"Failed to send welcome email: {str(e)}")
         
         return {
             "message": "Email verified successfully",
             "success": True,
-            "recommendation": "Use /verify-email-otp for better security"
+            "recommendation": "Use /verify-email-otp for better security with OTP codes"
+        }
+    except Exception as e:
+        if "Invalid or expired" in str(e):
+            raise
+        raise http_400_bad_request("Email verification failed")
+
+@auth_router.post("/resend-verification-link")
+@rate_limit_email_verification
+async def resend_verification_link(
+    request: Request,
+    email_request: OTPRequest,
+    db: Session = Depends(get_db)
+):
+    """Resend email verification link (legacy token-based method - use /resend-verification-otp instead)"""
+    try:
+        auth_service = AuthService(db)
+        success = auth_service.send_email_verification_link(email_request.email)
+        
+        # Always return success to prevent email enumeration
+        return {
+            "message": "If the email exists and is not verified, a verification link has been sent",
+            "sent": True,
+            "recommendation": "Use /resend-verification-otp for better security with OTP codes"
         }
     except Exception:
-        raise http_400_bad_request("Email verification failed")
+        # Always return success to prevent email enumeration
+        return {
+            "message": "If the email exists and is not verified, a verification link has been sent",
+            "sent": True,
+            "recommendation": "Use /resend-verification-otp for better security with OTP codes"
+        }
 
 @auth_router.get("/sessions")
 async def get_active_sessions(

@@ -443,7 +443,32 @@ class AuthService:
         
         return sessions
     
+    def send_email_verification_link(self, email: str) -> bool:
+        """Send email verification link to user (legacy token-based method)."""
+        user = self.user_db.get_user_by_email(email)
+        
+        if not user:
+            # Don't reveal if email exists for security
+            return True
+        
+        if user.is_verified:
+            return True  # Already verified
+        
+        # Generate verification token
+        token = self._generate_secure_token(64)
+        user.email_verification_token = token
+        self.db.commit()
+        
+        # Send verification email
+        try:
+            asyncio.create_task(email_service.send_email_verification(user, token))
+            return True
+        except Exception as e:
+            print(f"Failed to send email verification: {str(e)}")
+            return False
+    
     def _generate_secure_token(self, length: int = 32) -> str:
         """Generate a secure random token"""
         alphabet = string.ascii_letters + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(length))
+
