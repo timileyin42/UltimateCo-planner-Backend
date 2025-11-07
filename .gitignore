@@ -1,6 +1,6 @@
 #compiled file
 __pycache__/
-
+.env
 .cache
 .pytest_cache/
 
