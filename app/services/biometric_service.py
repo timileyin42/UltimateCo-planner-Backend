@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, desc, or_
 from datetime import datetime, timedelta
 import uuid
 import hashlib

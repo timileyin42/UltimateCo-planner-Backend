@@ -88,7 +88,13 @@ class BiometricAuth(BaseModel, TimestampMixin):
     
     # Biometric info
     biometric_type: Mapped[BiometricType] = mapped_column(SQLEnum(BiometricType), nullable=False)
-    biometric_id: Mapped[str] = mapped_column(String(255), nullable=False)  # Hashed biometric identifier
+    
+    # Cryptographic keys for device authentication
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)  # Device's public key (PEM format)
+    biometric_template_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Hashed biometric data
+    
+    # Device reference (string UUID from client device, not FK)
+    device_id: Mapped[str] = mapped_column(String(255), nullable=False)
     
     # Authentication settings
     status: Mapped[BiometricStatus] = mapped_column(SQLEnum(BiometricStatus), default=BiometricStatus.ACTIVE)
@@ -111,11 +117,9 @@ class BiometricAuth(BaseModel, TimestampMixin):
     
     # Relationships
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    device_id: Mapped[int] = mapped_column(ForeignKey("biometric_devices.id"), nullable=False)
     
     # Relationships
     user = relationship("User", back_populates="biometric_auths")
-    device = relationship("UserDevice", back_populates="biometric_auths")
     auth_attempts = relationship("BiometricAuthAttempt", back_populates="biometric_auth", cascade="all, delete-orphan")
     
     # Database indexes
@@ -124,7 +128,6 @@ class BiometricAuth(BaseModel, TimestampMixin):
         Index('idx_biometric_auth_user_id', 'user_id'),
         Index('idx_biometric_auth_device_id', 'device_id'),
         Index('idx_biometric_auth_type', 'biometric_type'),
-        Index('idx_biometric_auth_biometric_id', 'biometric_id'),
         Index('idx_biometric_auth_status', 'status'),
         Index('idx_biometric_auth_primary', 'is_primary'),
         Index('idx_biometric_auth_expires_at', 'expires_at'),
@@ -135,6 +138,7 @@ class BiometricAuth(BaseModel, TimestampMixin):
         Index('idx_biometric_auth_user_type', 'user_id', 'biometric_type'),
         Index('idx_biometric_auth_user_status', 'user_id', 'status'),
         Index('idx_biometric_auth_device_type', 'device_id', 'biometric_type'),
+        Index('idx_biometric_auth_user_device', 'user_id', 'device_id'),
         Index('idx_biometric_auth_user_primary', 'user_id', 'is_primary'),
         Index('idx_biometric_auth_type_status', 'biometric_type', 'status'),
     )
