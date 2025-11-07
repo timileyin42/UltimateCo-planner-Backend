@@ -1,6 +1,6 @@
 """
-Base calendar service with abstract interface for different calendar providers.
-Provides a unified interface for Google Calendar, Apple Calendar, and other providers.
+Base calendar service with abstract interface for Google Calendar.
+Provides a unified interface for Google Calendar integration.
 """
 
 from abc import ABC, abstractmethod
@@ -16,8 +16,6 @@ logger = logging.getLogger(__name__)
 class CalendarProvider(str, Enum):
     """Supported calendar providers."""
     GOOGLE = "google"
-    APPLE = "apple"
-    OUTLOOK = "outlook"
 
 
 class SyncStatus(str, Enum):

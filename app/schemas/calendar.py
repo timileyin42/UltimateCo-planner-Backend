@@ -14,8 +14,6 @@ from app.services.calendar_service import CalendarProvider, SyncStatus
 class CalendarProviderEnum(str, Enum):
     """Calendar provider enumeration for API."""
     GOOGLE = "google"
-    APPLE = "apple"
-    OUTLOOK = "outlook"
 
 
 class SyncStatusEnum(str, Enum):
@@ -57,21 +55,6 @@ class GoogleCalendarAuthRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "auth_code": "4/0AX4XfWjYZ1234567890abcdef..."
-            }
-        }
-    )
-
-
-class AppleCalendarAuthRequest(BaseModel):
-    """Apple Calendar authentication request."""
-    apple_id: str = Field(..., description="Apple ID (email address)")
-    app_password: str = Field(..., description="App-specific password")
-    
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "apple_id": "user@icloud.com",
-                "app_password": "abcd-efgh-ijkl-mnop"
             }
         }
     )

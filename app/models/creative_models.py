@@ -17,10 +17,8 @@ class MoodboardType(str, enum.Enum):
     GENERAL = "general"
 
 class PlaylistProvider(str, enum.Enum):
-    """Music streaming providers."""
+    """Music streaming provider."""
     SPOTIFY = "spotify"
-    APPLE_MUSIC = "apple_music"
-    YOUTUBE_MUSIC = "youtube_music"
     CUSTOM = "custom"
 
 class PlaylistType(str, enum.Enum):
@@ -223,7 +221,7 @@ class Playlist(BaseModel, TimestampMixin):
     
     # Provider info
     provider: Mapped[PlaylistProvider] = mapped_column(SQLEnum(PlaylistProvider), default=PlaylistProvider.CUSTOM)
-    external_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # Spotify/Apple Music ID
+    external_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # Spotify ID
     external_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
     # Settings
@@ -284,8 +282,6 @@ class PlaylistTrack(BaseModel, TimestampMixin):
     
     # External references
     spotify_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    apple_music_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    youtube_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # Metadata
     genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
