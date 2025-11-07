@@ -144,8 +144,6 @@ class PlaylistTrackBase(BaseModel):
     album: Optional[str] = Field(None, max_length=200, description="Album name")
     duration_seconds: Optional[int] = Field(None, ge=0, description="Track duration in seconds")
     spotify_id: Optional[str] = Field(None, description="Spotify track ID")
-    apple_music_id: Optional[str] = Field(None, description="Apple Music track ID")
-    youtube_id: Optional[str] = Field(None, description="YouTube track ID")
     genre: Optional[str] = Field(None, description="Track genre")
     year: Optional[int] = Field(None, ge=1900, le=2100, description="Release year")
     explicit: bool = Field(default=False, description="Explicit content")
@@ -369,12 +367,6 @@ class SpotifyIntegration(BaseModel):
     access_token: str = Field(..., description="Spotify access token")
     refresh_token: Optional[str] = Field(None, description="Spotify refresh token")
     playlist_id: Optional[str] = Field(None, description="Spotify playlist ID")
-
-class AppleMusicIntegration(BaseModel):
-    """Schema for Apple Music integration."""
-    developer_token: str = Field(..., description="Apple Music developer token")
-    user_token: str = Field(..., description="Apple Music user token")
-    playlist_id: Optional[str] = Field(None, description="Apple Music playlist ID")
 
 # Bulk operations
 class BulkMoodboardItemCreate(BaseModel):

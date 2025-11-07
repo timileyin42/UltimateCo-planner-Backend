@@ -23,7 +23,7 @@ class AIService:
         openai.api_key = settings.OPENAI_API_KEY
         self.model = "gpt-4"
     
-    # ===== CONVERSATIONAL AI CHAT METHODS =====
+    #CONVERSATIONAL AI CHAT METHODS
     
     async def create_chat_session(
         self, 
@@ -46,7 +46,7 @@ class AIService:
             system_message = AIChatMessage(
                 session_id=session.id,
                 role=ChatMessageRole.SYSTEM,
-                content="I'm your AI event planning assistant! I'll help you create the perfect event by asking questions and gathering details. Let's start planning your event together!"
+                content="I'm your AI event planning assistant! I can help you with everything from creating events, managing budgets, finding vendors, planning timelines, and answering any questions about event planning. What can I help you with today?"
             )
             db.add(system_message)
             
@@ -315,36 +315,53 @@ class AIService:
             }
     
     def _build_event_creation_prompt(self, session: AIChatSession) -> str:
-        """Build system prompt for event creation chat."""
+        """Build system prompt for general event planning assistant."""
         current_data = json.loads(session.event_data) if session.event_data else {}
+        context = json.loads(session.context) if session.context else {}
         
-        return f"""You are an expert event planning assistant helping users create events through conversation.
+        user_events = context.get('user_events', [])
+        events_context = ""
+        if user_events:
+            events_context = f"\n\nUser's current events:\n{json.dumps(user_events, indent=2)}"
+        
+        return f"""You are an expert event planning assistant for "Plan et al" - a comprehensive event management platform.
 
-Current event data: {json.dumps(current_data, indent=2)}
+Your role:
+- Help users with ALL aspects of event planning, not just event creation
+- Answer questions about event management, tips, best practices
+- Provide advice on budgeting, vendor selection, timelines, invitations, etc.
+- Help brainstorm ideas and solve event planning challenges
+- Offer to create, update, or manage events when appropriate
+- Be conversational, friendly, professional, and knowledgeable
 
-User role:
-1. Ask clarifying questions to gather event details
-2. Provide helpful suggestions and recommendations
-3. Build event data progressively through conversation
-4. Be friendly, professional, and encouraging
+Capabilities you can help with:
+- Event creation and planning
+- Budget management and optimization
+- Vendor recommendations and selection
+- Timeline creation and scheduling
+- Guest list management and invitations
+- Menu planning and catering
+- Decoration and theme ideas
+- Task checklist generation
+- Weather contingency planning
+- Gift suggestions
+- General event planning advice and tips
 
-Key information to gather:
-- Event title and description
-- Event type (BIRTHDAY, WEDDING, CORPORATE, PARTY, MEETING, CONFERENCE, WORKSHOP, OTHER)
-- Date and time (start_date, end_date)
-- Location (venue name, address)
-- Number of attendees (max_attendees)
-- Budget considerations
-- Special requirements or preferences
+Current conversation context:
+{f"Building event data: {json.dumps(current_data, indent=2)}" if current_data else "No active event creation in progress"}{events_context}
 
 Guidelines:
-- Ask one or two questions at a time, don't overwhelm
-- Provide 2-3 relevant suggestions after each response
-- When you have enough information, offer to create the event
-- Be conversational and natural
-- If user seems ready to finalize, summarize the event details
+- Engage in natural, open-ended conversations
+- Don't force event creation unless the user clearly wants to create an event
+- Provide actionable advice and specific recommendations
+- Reference user's existing events when relevant
+- Offer 2-3 helpful suggestions or follow-up questions
+- When user wants to create an event, help gather necessary details progressively
+- Be creative and helpful with brainstorming
 
-Response format: Provide a natural conversational response. Do not use JSON formatting in your response."""
+Important: You can discuss ANY aspect of event planning. Users can ask you anything - from "How do I plan a surprise party?" to "What's a good budget for a wedding?" to "Help me create a birthday event next week."
+
+Response format: Provide natural conversational responses. Be helpful, specific, and actionable."""
     
     def _parse_ai_response(self, ai_content: str, session: AIChatSession) -> Dict[str, Any]:
         """
@@ -575,43 +592,57 @@ Response format: Provide a natural conversational response. Do not use JSON form
         return None
     
     def _generate_contextual_suggestions(self, event_data: Dict[str, Any]) -> List[str]:
-        """Generate contextual suggestions based on current event data."""
+        """Generate contextual suggestions based on current conversation state."""
         suggestions = []
         
-        if not event_data.get("title"):
-            suggestions = [
-                "What should we call your event?", 
-                "Tell me more about the occasion", 
-                "What type of event is this?"
-            ]
-        elif not event_data.get("start_date"):
-            suggestions = [
-                "When would you like to have this event?", 
-                "What date works best?", 
-                "Any specific time in mind?"
-            ]
-        elif not event_data.get("location"):
-            suggestions = [
-                "Where will this event take place?", 
-                "Do you have a venue in mind?", 
-                "Indoor or outdoor event?"
-            ]
-        elif not event_data.get("guest_count"):
-            suggestions = [
-                "How many people will attend?", 
-                "What's the expected guest count?", 
-                "Small gathering or large event?"
-            ]
+        # If actively creating an event
+        if event_data:
+            if not event_data.get("title"):
+                suggestions = [
+                    "What should we call your event?", 
+                    "Tell me about the occasion", 
+                    "What type of event is this?"
+                ]
+            elif not event_data.get("start_date"):
+                suggestions = [
+                    "When would you like to have this event?", 
+                    "What date works best?", 
+                    "Any specific time in mind?"
+                ]
+            elif not event_data.get("location"):
+                suggestions = [
+                    "Where will this event take place?", 
+                    "Do you have a venue in mind?", 
+                    "Indoor or outdoor event?"
+                ]
+            elif not event_data.get("guest_count"):
+                suggestions = [
+                    "How many people will attend?", 
+                    "What's the expected guest count?", 
+                    "Small gathering or large event?"
+                ]
+            else:
+                suggestions = [
+                    "Shall we create this event?", 
+                    "Any other details to add?", 
+                    "Need help with budget planning?"
+                ]
         else:
+            # General suggestions when not creating an event
             suggestions = [
-                "Shall we create this event?", 
-                "Any other details to add?", 
-                "Ready to finalize?"
+                "Help me create a new event",
+                "What are some event planning tips?",
+                "How do I manage my event budget?",
+                "Suggest vendors for my event",
+                "Help me create a timeline",
+                "What's a good checklist for my event type?",
+                "How do I handle RSVPs?",
+                "Give me decoration ideas"
             ]
         
         return suggestions
     
-    # ===== EXISTING AI METHODS =====
+    # EXISTING AI METHODS
     
     @openai_circuit_breaker(fallback=ai_fallback)
     async def generate_event_checklist(

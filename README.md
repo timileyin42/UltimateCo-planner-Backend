@@ -52,7 +52,7 @@ graph TB
         end
         
         subgraph "Integration Services"
-            CALENDAR_SVC[Calendar Service<br/>Google/Apple Cal]
+            CALENDAR_SVC[Calendar Service<br/>Google Calendar]
             MAPS_SVC[Maps Service<br/>Google Maps API]
             PAYMENT_SVC[Payment Service<br/>Stripe Integration]
             STORAGE_SVC[Storage Service<br/>GCP Cloud Storage]
@@ -80,7 +80,6 @@ graph TB
     subgraph "External Services"
         OPENAI[OpenAI API<br/>AI Suggestions]
         GOOGLE_CAL[Google Calendar API]
-        APPLE_CAL[Apple Calendar API]
         GOOGLE_MAPS[Google Maps API]
         STRIPE[Stripe API<br/>Payments]
         GCP_STORAGE[GCP Cloud Storage]
@@ -142,7 +141,6 @@ graph TB
     
     AI_SVC --> OPENAI
     CALENDAR_SVC --> GOOGLE_CAL
-    CALENDAR_SVC --> APPLE_CAL
     MAPS_SVC --> GOOGLE_MAPS
     PAYMENT_SVC --> STRIPE
     STORAGE_SVC --> GCP_STORAGE
@@ -202,7 +200,7 @@ The **Plan et al** backend follows a **layered microservices architecture** with
 - **Load Balancing** ready architecture
 
 #### 🔌 **Integration Capabilities**
-- **Calendar Sync** (Google Calendar, Apple Calendar)
+- **Calendar Sync** (Google Calendar - works on all devices including iPhone)
 - **AI-Powered Suggestions** via OpenAI API
 - **Payment Processing** through Stripe
 - **Cloud Storage** with GCP integration
@@ -223,7 +221,7 @@ The **Plan et al** backend follows a **layered microservices architecture** with
 - **AI-Powered Suggestions**: Smart recommendations for venues, vendors, and planning
 - **Social Features**: Friend connections and event discovery
 - **Notification System**: Email and push notifications for important updates
-- **Calendar Integration**: Sync with Google/Apple Calendar
+- **Calendar Integration**: Sync with Google Calendar (works on iPhone, Android, and Web)
 - **Mobile-Friendly API**: RESTful API designed for mobile and web clients
 
 ## 🛠 Tech Stack

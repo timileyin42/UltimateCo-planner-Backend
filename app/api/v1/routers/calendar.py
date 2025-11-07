@@ -13,13 +13,12 @@ from app.schemas.calendar import (
     CalendarEventResponse, CalendarEventListResponse,
     CalendarInfoResponse, CalendarInfoListResponse,
     CalendarAuthUrlResponse, CalendarSyncResponse, CalendarStatsResponse,
-    GoogleCalendarAuthRequest, AppleCalendarAuthRequest,
+    GoogleCalendarAuthRequest,
     CalendarConnectionUpdateRequest, CalendarEventCreateRequest,
     CalendarEventUpdateRequest, CalendarSyncRequest
 )
 from app.services.calendar_service import CalendarServiceFactory, CalendarProvider
 from app.services.google_calendar_service import GoogleCalendarService
-from app.services.apple_calendar_service import AppleCalendarService
 from app.repositories.calendar_repo import CalendarConnectionRepository, CalendarEventRepository, CalendarSyncLogRepository
 from app.core.deps import get_current_user
 from app.core.deps import get_db
@@ -50,30 +49,23 @@ async def get_auth_url(
         Authorization URL and instructions
     """
     try:
-        # Validate provider
-        if provider not in ["google", "apple", "outlook"]:
+        # Only Google Calendar is supported
+        if provider != "google":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid calendar provider. Supported: google, apple, outlook"
+                detail="Invalid calendar provider. Only Google Calendar is supported"
             )
         
         # Get service instance
-        service = calendar_factory.get_service(CalendarProvider(provider.upper()))
+        service = GoogleCalendarService()
         
         # Get authorization URL
         auth_url = service.get_authorization_url(current_user.id)
         
-        # Prepare instructions based on provider
-        instructions = {
-            "google": "Click the link to authorize access to your Google Calendar",
-            "apple": "Generate an app-specific password in your Apple ID settings and use it with your Apple ID",
-            "outlook": "Click the link to authorize access to your Outlook Calendar"
-        }
-        
         return CalendarAuthUrlResponse(
             auth_url=auth_url,
             provider=provider,
-            instructions=instructions.get(provider)
+            instructions="Click the link to authorize access to your Google Calendar. Works on all devices including iPhone."
         )
         
     except Exception as e:
@@ -160,86 +152,6 @@ async def authenticate_google_calendar(
         )
 
 
-@router.post("/auth/apple", response_model=CalendarConnectionResponse)
-async def authenticate_apple_calendar(
-    request: AppleCalendarAuthRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Authenticate with Apple Calendar using Apple ID and app password.
-    
-    Args:
-        request: Apple Calendar authentication request
-        current_user: Current authenticated user
-        db: Database session
-        
-    Returns:
-        Calendar connection details
-    """
-    try:
-        service = AppleCalendarService()
-        connection = await service.authenticate(
-            current_user.id, 
-            request.apple_id, 
-            request.app_password
-        )
-        
-        # Save connection to database
-        connection_repo = CalendarConnectionRepository(db)
-        
-        # Check if connection already exists
-        existing_connection = connection_repo.get_by_provider_and_calendar_id(
-            current_user.id, 
-            connection.provider, 
-            connection.calendar_id
-        )
-        
-        if existing_connection:
-            # Update existing connection
-            existing_connection.access_token = connection.access_token
-            existing_connection.refresh_token = connection.refresh_token
-            existing_connection.sync_status = connection.sync_status
-            existing_connection.last_sync_at = connection.last_sync_at
-            saved_connection = connection_repo.update(existing_connection)
-        else:
-            # Create new connection
-            connection_data = {
-                'user_id': connection.user_id,
-                'provider': connection.provider,
-                'calendar_id': connection.calendar_id,
-                'calendar_name': connection.calendar_name,
-                'access_token': connection.access_token,
-                'refresh_token': connection.refresh_token,
-                'expires_at': connection.expires_at,
-                'sync_status': connection.sync_status,
-                'sync_enabled': connection.sync_enabled,
-                'last_sync_at': connection.last_sync_at,
-                'created_at': connection.created_at,
-                'updated_at': connection.updated_at
-            }
-            saved_connection = connection_repo.create(connection_data)
-        
-        return CalendarConnectionResponse(
-            id=saved_connection.id,
-            user_id=saved_connection.user_id,
-            provider=saved_connection.provider.value.lower(),
-            calendar_id=saved_connection.calendar_id,
-            calendar_name=saved_connection.calendar_name,
-            sync_status=saved_connection.sync_status.value.lower(),
-            sync_enabled=saved_connection.sync_enabled,
-            last_sync_at=saved_connection.last_sync_at,
-            created_at=saved_connection.created_at,
-            updated_at=saved_connection.updated_at
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Apple Calendar authentication failed: {str(e)}"
-        )
-
-
 @router.get("/connections", response_model=CalendarConnectionListResponse)
 async def get_calendar_connections(
     current_user: User = Depends(get_current_user),
@@ -298,7 +210,8 @@ async def get_calendar_connections(
 @router.get("/connections/{connection_id}", response_model=CalendarConnectionResponse)
 async def get_calendar_connection(
     connection_id: int,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Get specific calendar connection.
@@ -306,19 +219,39 @@ async def get_calendar_connection(
     Args:
         connection_id: Calendar connection ID
         current_user: Current authenticated user
+        db: Database session
         
     Returns:
         Calendar connection details
     """
     try:
-        # TODO: Implement database query
-        # connection = connection_repo.get_by_id_and_user(connection_id, current_user.id)
-        # if not connection:
-        #     raise HTTPException(status_code=404, detail="Calendar connection not found")
+        connection_repo = CalendarConnectionRepository(db)
         
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Calendar connection not found"
+        # Get connection and verify ownership
+        connection = connection_repo.get_by_id(connection_id)
+        if not connection:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Calendar connection not found"
+            )
+        
+        if connection.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this connection"
+            )
+        
+        return CalendarConnectionResponse(
+            id=connection.id,
+            user_id=connection.user_id,
+            provider=connection.provider.value.lower(),
+            calendar_id=connection.calendar_id,
+            calendar_name=connection.calendar_name,
+            sync_status=connection.sync_status.value.lower(),
+            sync_enabled=connection.sync_enabled,
+            last_sync_at=connection.last_sync_at,
+            created_at=connection.created_at,
+            updated_at=connection.updated_at
         )
         
     except HTTPException:
@@ -473,20 +406,15 @@ async def get_external_calendars(
                 detail="Not authorized to access this connection"
             )
         
-        # Get calendar service based on provider
-        if connection.provider.value.lower() == "google":
-            from app.services.google_calendar_service import GoogleCalendarService
-            service = GoogleCalendarService()
-            calendars = await service.get_calendars(connection)
-        elif connection.provider.value.lower() == "apple":
-            from app.services.apple_calendar_service import AppleCalendarService
-            service = AppleCalendarService()
-            calendars = await service.get_calendars(connection)
-        else:
+        # Only Google Calendar is supported
+        if connection.provider.value.lower() != "google":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported provider: {connection.provider.value}"
+                detail=f"Unsupported provider: {connection.provider.value}. Only Google Calendar is supported."
             )
+        
+        service = GoogleCalendarService()
+        calendars = await service.get_calendars(connection)
         
         return CalendarInfoListResponse(
             calendars=calendars,
@@ -549,18 +477,14 @@ async def sync_calendar(
             # Update connection status to syncing
             connection_repo.update(connection_id, {"sync_status": "syncing"})
             
-            # Get calendar service based on provider
-            if connection.provider.value.lower() == "google":
-                from app.services.google_calendar_service import GoogleCalendarService
-                service = GoogleCalendarService()
-            elif connection.provider.value.lower() == "apple":
-                from app.services.apple_calendar_service import AppleCalendarService
-                service = AppleCalendarService()
-            else:
+            # Only Google Calendar is supported
+            if connection.provider.value.lower() != "google":
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unsupported provider: {connection.provider.value}"
+                    detail=f"Unsupported provider: {connection.provider.value}. Only Google Calendar is supported."
                 )
+            
+            service = GoogleCalendarService()
             
             # Perform sync
             sync_result = await service.sync_events(connection, start_date, end_date, request.force_sync)
@@ -744,15 +668,11 @@ async def create_calendar_event(
             
             for connection in connections:
                 try:
-                    # Get calendar service based on provider
-                    if connection.provider.value.lower() == "google":
-                        from app.services.google_calendar_service import GoogleCalendarService
-                        service = GoogleCalendarService()
-                    elif connection.provider.value.lower() == "apple":
-                        from app.services.apple_calendar_service import AppleCalendarService
-                        service = AppleCalendarService()
-                    else:
+                    # Only Google Calendar is supported
+                    if connection.provider.value.lower() != "google":
                         continue  # Skip unsupported providers
+                    
+                    service = GoogleCalendarService()
                     
                     # Create event in external calendar
                     external_id = await service.create_event(connection, created_event)
@@ -845,18 +765,14 @@ async def update_calendar_event(
             connection = connection_repo.get_by_id(updated_event.connection_id)
             if connection:
                 try:
-                    # Get calendar service based on provider
-                    if connection.provider.value.lower() == "google":
-                        from app.services.google_calendar_service import GoogleCalendarService
-                        service = GoogleCalendarService()
-                    elif connection.provider.value.lower() == "apple":
-                        from app.services.apple_calendar_service import AppleCalendarService
-                        service = AppleCalendarService()
-                    else:
+                    # Only Google Calendar is supported
+                    if connection.provider.value.lower() != "google":
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Unsupported provider: {connection.provider.value}"
+                            detail=f"Unsupported provider: {connection.provider.value}. Only Google Calendar is supported."
                         )
+                    
+                    service = GoogleCalendarService()
                     
                     # Update event in external calendar
                     await service.update_event(connection, updated_event)
@@ -934,18 +850,14 @@ async def delete_calendar_event(
             connection = connection_repo.get_by_id(event.connection_id)
             if connection:
                 try:
-                    # Get calendar service based on provider
-                    if connection.provider.value.lower() == "google":
-                        from app.services.google_calendar_service import GoogleCalendarService
-                        service = GoogleCalendarService()
-                    elif connection.provider.value.lower() == "apple":
-                        from app.services.apple_calendar_service import AppleCalendarService
-                        service = AppleCalendarService()
-                    else:
+                    # Only Google Calendar is supported
+                    if connection.provider.value.lower() != "google":
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Unsupported provider: {connection.provider.value}"
+                            detail=f"Unsupported provider: {connection.provider.value}. Only Google Calendar is supported."
                         )
+                    
+                    service = GoogleCalendarService()
                     
                     # Delete event from external calendar
                     await service.delete_event(connection, event.external_event_id)
