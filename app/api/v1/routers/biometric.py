@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from datetime import datetime, timedelta
-
+from app.models.biometric_models import UserDevice, BiometricAuth, BiometricAuthAttempt
+from sqlalchemy import and_, func
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user_models import User
@@ -307,8 +308,6 @@ async def get_biometric_stats(
     db: Session = Depends(get_db)
 ):
     """Get biometric authentication statistics for the current user"""
-    from app.models.biometric_models import UserDevice, BiometricAuth, BiometricAuthAttempt
-    from sqlalchemy import and_, func
     
     # Get device stats
     total_devices = db.query(UserDevice).filter(UserDevice.user_id == current_user.id).count()

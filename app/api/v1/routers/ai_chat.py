@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
+from app.models.event_models import Event
 
 from app.core.deps import get_db, get_current_active_user
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.models.user_models import User
 from app.services.ai_service import ai_service
+from app.models.event_models import Event
+from app.models.ai_chat_models import AIChatSession, AIChatMessage
+
 from app.schemas.chat import (
     ChatSessionCreate, 
     ChatSessionResponse, 
@@ -41,7 +45,6 @@ async def create_chat_session(
     """
     try:
         # Get user's events to provide context to AI
-        from app.models.event_models import Event
         user_events = db.query(Event).filter(
             Event.creator_id == current_user.id,
             Event.is_active == True
@@ -146,9 +149,7 @@ async def get_user_chat_sessions(
     db: Session = Depends(get_db)
 ):
     """Get all chat sessions for the current user."""
-    try:
-        from app.models.ai_chat_models import AIChatSession, AIChatMessage
-        
+    try:        
         sessions = db.query(AIChatSession).filter(
             AIChatSession.user_id == current_user.id
         ).order_by(AIChatSession.updated_at.desc()).all()
@@ -188,7 +189,6 @@ async def get_suggested_prompts(
     These help users discover what the AI can do.
     """
     try:
-        from app.models.event_models import Event
         
         # Check if user has events
         has_events = db.query(Event).filter(
@@ -210,7 +210,7 @@ async def get_suggested_prompts(
             },
             "budget_planning": {
                 "title": "Budget & Finance",
-                "icon": "💰",
+                "icon": "",
                 "prompts": [
                     "How much should I budget for a wedding?",
                     "Help me optimize my event budget",
