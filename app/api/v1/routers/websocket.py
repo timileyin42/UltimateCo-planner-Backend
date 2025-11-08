@@ -150,7 +150,11 @@ async def handle_client_message(websocket: WebSocket, user_id: int, message: Dic
 @websocket_router.get("/websocket/stats")
 async def get_websocket_stats(current_user: User = Depends(get_current_user)):
     """Get WebSocket connection statistics (admin only)."""
-    # You might want to add admin check here
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can access WebSocket statistics"
+        )
     return websocket_manager.get_connection_stats()
 
 
@@ -161,7 +165,11 @@ async def broadcast_notification(
     current_user: User = Depends(get_current_user)
 ):
     """Broadcast notification to multiple users via WebSocket (admin only)."""
-    # You might want to add admin check here
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can broadcast notifications"
+        )
     results = await websocket_manager.broadcast_to_users(user_ids, notification)
     return {
         'message': 'Broadcast sent',
