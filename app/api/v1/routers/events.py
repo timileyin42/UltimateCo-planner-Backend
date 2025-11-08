@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime,timedelta
 from app.core.deps import get_db, get_current_user, get_current_active_user
 from app.core.errors import (
     http_400_bad_request, http_404_not_found, http_403_forbidden
@@ -16,6 +16,7 @@ from app.schemas.event import (
     EventSearchQuery, EventStatsResponse, EventLocationOptimizationRequest, EventLocationOptimizationResponse,
     EventDuplicateRequest
 )
+from app.repositories.event_repo import EventRepository
 from app.schemas.location import (
     LocationAutocompleteRequest, LocationSuggestion, NearbyPlacesRequest, LocationUpdateRequest
 )
@@ -23,6 +24,9 @@ from app.services.google_maps_service import google_maps_service
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.models.user_models import User
 from app.models.shared_models import EventStatus, EventType
+from app.models.event_models import Event, EventInvitation
+from app.models.shared_models import RSVPStatus
+from sqlalchemy import and_, or_
 
 events_router = APIRouter()
 
@@ -207,8 +211,6 @@ async def get_my_past_events(
 ):
     """Get current user's past events"""
     try:
-        from app.repositories.event_repo import EventRepository
-        from datetime import datetime, timedelta
         
         event_repo = EventRepository(db)
         
@@ -217,10 +219,6 @@ async def get_my_past_events(
         start_date = end_date - timedelta(days=days_back)
         
         # Query past events (events that have ended)
-        from app.models.event_models import Event
-        from app.models.event_invitation_models import EventInvitation
-        from app.models.shared_models import RSVPStatus
-        from sqlalchemy import and_, or_
         
         query = db.query(Event).filter(
             Event.end_datetime < end_date,

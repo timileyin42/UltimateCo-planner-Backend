@@ -6,6 +6,14 @@ from typing import List, Optional
 from app.core.deps import get_db, get_current_active_user
 from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden
 from app.services.notification_service import NotificationService
+from app.services.email_service import email_service
+from app.services.sms_service import sms_service
+from app.services.push_service import push_service
+from app.models.user_models import User
+from app.models.notification_models import NotificationType, NotificationChannel, AutomationRule, NotificationLog, NotificationQueue
+from app.services.websocket_manager import websocket_manager
+from datetime import datetime, timedelta
+from sqlalchemy.orm import joinedload
 from app.schemas.notification import (
     # Smart Reminder schemas
     SmartReminderCreate, SmartReminderUpdate, SmartReminderResponse, ReminderListResponse,
@@ -30,10 +38,6 @@ from app.schemas.notification import (
     InAppNotificationResponse, InAppNotificationListResponse, MarkNotificationReadRequest,
     DeviceRegistrationRequest, DeviceResponse, WebSocketStatsResponse
 )
-from app.models.user_models import User
-from app.models.notification_models import NotificationType, NotificationChannel
-from app.services.websocket_manager import websocket_manager
-from datetime import datetime, timedelta
 
 notifications_router = APIRouter()
 
@@ -246,7 +250,6 @@ async def get_queue_status(
 ):
     """Get notification queue status"""
     try:
-        from app.models.notification_models import NotificationQueue
         
         # Get queue statistics
         queued_count = db.query(NotificationQueue).filter(
@@ -321,8 +324,6 @@ async def get_notification_logs(
 ):
     """Get notification logs"""
     try:
-        from app.models.notification_models import NotificationLog
-        from sqlalchemy.orm import joinedload
         
         # Build query
         query = db.query(NotificationLog).options(
@@ -374,7 +375,6 @@ async def send_test_notification(
         notification_service = NotificationService(db)
         
         # Create a test notification queue item
-        from app.models.notification_models import NotificationQueue
         
         test_notification = NotificationQueue(
             notification_type=test_request.notification_type,
@@ -438,7 +438,6 @@ async def create_automation_rule(
 ):
     """Create an automation rule for automatic reminder creation"""
     try:
-        from app.models.notification_models import AutomationRule
         
         rule = AutomationRule(
             name=rule_data.name,
@@ -470,8 +469,6 @@ async def get_automation_rules(
 ):
     """Get automation rules for the current user"""
     try:
-        from app.models.notification_models import AutomationRule
-        from sqlalchemy.orm import joinedload
         
         rules = db.query(AutomationRule).options(
             joinedload(AutomationRule.creator),
@@ -495,9 +492,6 @@ async def get_notification_channels(
     """Get available notification channels and their status"""
     try:
         # Check actual service availability
-        from app.services.email_service import email_service
-        from app.services.sms_service import sms_service
-        from app.services.push_service import push_service
         
         # Check email service status
         email_available = email_service.is_configured()
@@ -600,7 +594,6 @@ async def get_in_app_notifications(
 ):
     """Get in-app notifications for the current user"""
     try:
-        from app.models.notification_models import NotificationLog
         
         # Build query for user's notifications
         query = db.query(NotificationLog).filter(
@@ -662,7 +655,6 @@ async def mark_notifications_read(
 ):
     """Mark in-app notifications as read"""
     try:
-        from app.models.notification_models import NotificationLog
         
         # Update notifications to mark as read
         updated_count = db.query(NotificationLog).filter(
@@ -694,7 +686,6 @@ async def register_device(
 ):
     """Register a device for push notifications"""
     try:
-        from app.services.push_service import push_service
         
         device = push_service.register_device(
             user_id=current_user.id,
@@ -715,9 +706,7 @@ async def get_user_devices(
     db: Session = Depends(get_db)
 ):
     """Get all registered devices for the current user"""
-    try:
-        from app.services.push_service import push_service
-        
+    try:        
         devices = push_service.get_user_devices(current_user.id)
         
         return [DeviceResponse.model_validate(device) for device in devices]
@@ -732,9 +721,7 @@ async def unregister_device(
     db: Session = Depends(get_db)
 ):
     """Unregister a device"""
-    try:
-        from app.services.push_service import push_service
-        
+    try:        
         success = push_service.unregister_device(device_id, current_user.id)
         
         if not success:
