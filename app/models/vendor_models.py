@@ -457,3 +457,81 @@ class VendorContract(BaseModel, TimestampMixin):
     def is_fully_signed(self) -> bool:
         """Check if contract is signed by both parties."""
         return self.client_signed and self.vendor_signed
+
+class QuoteStatus(str, enum.Enum):
+    """Status of quote requests."""
+    PENDING = "pending"
+    QUOTED = "quoted"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+class VendorQuote(BaseModel, TimestampMixin):
+    """Quote requests from clients to vendors."""
+    __tablename__ = "vendor_quotes"
+    
+    # Quote info
+    quote_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    status: Mapped[QuoteStatus] = mapped_column(SQLEnum(QuoteStatus), default=QuoteStatus.PENDING)
+    
+    # Client request details
+    event_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    event_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    guest_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    venue_location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    special_requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    budget_range: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    # Vendor response
+    quoted_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    quote_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    quote_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Validity and response time
+    valid_until: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    response_time_hours: Mapped[int] = mapped_column(Integer, default=24)
+    quoted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Acceptance/Decline
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    declined_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    decline_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Relationships
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendors.id"), nullable=False)
+    service_id: Mapped[int] = mapped_column(ForeignKey("vendor_services.id"), nullable=False)
+    requested_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    event_id: Mapped[Optional[int]] = mapped_column(ForeignKey("events.id"), nullable=True)
+    
+    # Relationships
+    vendor = relationship("Vendor")
+    service = relationship("VendorService")
+    requested_by = relationship("User", back_populates="vendor_quote_requests")
+    event = relationship("Event")
+    
+    # Database indexes for performance
+    __table_args__ = (
+        Index('idx_vendor_quote_quote_id', 'quote_id'),
+        Index('idx_vendor_quote_vendor_id', 'vendor_id'),
+        Index('idx_vendor_quote_status', 'status'),
+        Index('idx_vendor_quote_requested_by_id', 'requested_by_id'),
+        Index('idx_vendor_quote_event_date', 'event_date'),
+        Index('idx_vendor_quote_valid_until', 'valid_until'),
+        Index('idx_vendor_quote_vendor_status', 'vendor_id', 'status'),
+    )
+    
+    def __repr__(self):
+        return f"<VendorQuote(id={self.id}, quote_id='{self.quote_id}', status='{self.status}')>"
+    
+    @property
+    def is_expired(self) -> bool:
+        """Check if the quote has expired."""
+        return datetime.utcnow() > self.valid_until
+    
+    @property
+    def is_pending_vendor_response(self) -> bool:
+        """Check if waiting for vendor to provide quote."""
+        return self.status == QuoteStatus.PENDING and not self.quoted_at
