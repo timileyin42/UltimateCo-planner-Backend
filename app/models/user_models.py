@@ -132,6 +132,7 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     vendor_bookings = relationship("VendorBooking", back_populates="booked_by")
     vendor_payments = relationship("VendorPayment", back_populates="paid_by")
     vendor_reviews = relationship("VendorReview", back_populates="reviewer")
+    vendor_quote_requests = relationship("VendorQuote", back_populates="requested_by")
     
     # AI Chat relationships
     ai_chat_sessions = relationship("AIChatSession", back_populates="user", cascade="all, delete-orphan")

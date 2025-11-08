@@ -5,6 +5,11 @@ from typing import List, Optional
 from app.core.deps import get_db, get_current_active_user
 from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden
 from app.services.vendor_service import VendorService
+from app.models.vendor_models import VendorBooking
+from sqlalchemy.orm import joinedload
+import uuid
+from app.models.vendor_models import Vendor, VendorPortfolio
+from app.models.vendor_models import VendorService as VendorServiceModel
 from app.schemas.vendor import (
     # Vendor schemas
     VendorCreate, VendorUpdate, VendorResponse, VendorListResponse, VendorSearchParams,
@@ -40,6 +45,7 @@ from app.schemas.vendor import (
 from app.models.user_models import User
 from app.models.vendor_models import VendorCategory, BookingStatus, PaymentStatus
 from datetime import datetime, timedelta
+from app.services.gcp_storage_service import gcp_storage_service
 
 vendors_router = APIRouter()
 
@@ -70,7 +76,6 @@ async def get_my_vendor_profile(
 ):
     """Get the current user's vendor profile"""
     try:
-        from app.models.vendor_models import Vendor
         
         vendor = db.query(Vendor).filter(Vendor.user_id == current_user.id).first()
         
@@ -93,7 +98,6 @@ async def update_vendor_profile(
 ):
     """Update the current user's vendor profile"""
     try:
-        from app.models.vendor_models import Vendor
         
         vendor = db.query(Vendor).filter(Vendor.user_id == current_user.id).first()
         
@@ -317,8 +321,6 @@ async def get_my_bookings(
 ):
     """Get bookings for the current user (as client)"""
     try:
-        from app.models.vendor_models import VendorBooking
-        from sqlalchemy.orm import joinedload
         
         # Build query
         query = db.query(VendorBooking).options(
@@ -370,8 +372,6 @@ async def get_vendor_bookings(
 ):
     """Get bookings for the current user's vendor (as vendor)"""
     try:
-        from app.models.vendor_models import Vendor, VendorBooking
-        from sqlalchemy.orm import joinedload
         
         # Get user's vendor profile
         vendor = db.query(Vendor).filter(Vendor.user_id == current_user.id).first()
@@ -559,7 +559,6 @@ async def get_vendor_portfolio(
 ):
     """Get portfolio items for a vendor"""
     try:
-        from app.models.vendor_models import VendorPortfolio
         
         portfolio_items = db.query(VendorPortfolio).filter(
             VendorPortfolio.vendor_id == vendor_id
@@ -627,40 +626,200 @@ async def request_quote(
 ):
     """Request a quote from a vendor"""
     try:
-        from app.models.vendor_models import VendorService as VendorServiceModel
-        from sqlalchemy.orm import joinedload
+        vendor_service = VendorService(db)
         
-        # Get service and vendor info
-        service = db.query(VendorServiceModel).options(
-            joinedload(VendorServiceModel.vendor)
-        ).filter(VendorServiceModel.id == quote_request.service_id).first()
+        # Create quote request in database
+        quote = vendor_service.create_quote_request(
+            service_id=quote_request.service_id,
+            user_id=current_user.id,
+            quote_data=quote_request.model_dump()
+        )
         
-        if not service:
-            raise http_404_not_found("Service not found")
-        
-        # Generate quote ID
-        quote_id = f"QT-{uuid.uuid4().hex[:8].upper()}"
-        
-        # For now, return a basic quote response
-        # In a real implementation, this would create a quote request record
-        # and notify the vendor
+        # Load relationships for response
+        db.refresh(quote)
         
         return VendorQuoteResponse(
-            quote_id=quote_id,
-            vendor=VendorResponse.model_validate(service.vendor),
-            service=VendorServiceResponse.model_validate(service),
-            quoted_price=None,  # Will be filled by vendor
-            quote_details=None,
-            valid_until=datetime.utcnow() + timedelta(days=7),
-            response_time_hours=24,
-            status="pending"
+            quote_id=quote.quote_id,
+            vendor=VendorResponse.model_validate(quote.vendor),
+            service=VendorServiceResponse.model_validate(quote.service),
+            quoted_price=quote.quoted_price,
+            quote_details=quote.quote_details,
+            valid_until=quote.valid_until,
+            response_time_hours=quote.response_time_hours,
+            status=quote.status
         )
         
     except Exception as e:
         if "not found" in str(e).lower():
             raise http_404_not_found(str(e))
         else:
-            raise http_400_bad_request("Failed to request quote")
+            raise http_400_bad_request(f"Failed to request quote: {str(e)}")
+
+@vendors_router.put("/quotes/{quote_id}/respond", response_model=VendorQuoteResponse)
+async def respond_to_quote(
+    quote_id: int,
+    quoted_price: float = Query(..., description="Price quoted by vendor"),
+    quote_details: Optional[str] = Query(None, description="Details of the quote"),
+    quote_notes: Optional[str] = Query(None, description="Additional notes"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Vendor responds to a quote request with pricing"""
+    try:
+        vendor_service = VendorService(db)
+        
+        quote = vendor_service.update_quote_response(
+            quote_id=quote_id,
+            vendor_user_id=current_user.id,
+            quoted_price=quoted_price,
+            quote_details=quote_details,
+            quote_notes=quote_notes
+        )
+        
+        return VendorQuoteResponse(
+            quote_id=quote.quote_id,
+            vendor=VendorResponse.model_validate(quote.vendor),
+            service=VendorServiceResponse.model_validate(quote.service),
+            quoted_price=quote.quoted_price,
+            quote_details=quote.quote_details,
+            valid_until=quote.valid_until,
+            response_time_hours=quote.response_time_hours,
+            status=quote.status
+        )
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission" in str(e).lower() or "authorization" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to respond to quote: {str(e)}")
+
+@vendors_router.post("/quotes/{quote_id}/accept", response_model=VendorQuoteResponse)
+async def accept_quote(
+    quote_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Client accepts a quote from vendor"""
+    try:
+        vendor_service = VendorService(db)
+        
+        quote = vendor_service.accept_quote(quote_id, current_user.id)
+        
+        return VendorQuoteResponse(
+            quote_id=quote.quote_id,
+            vendor=VendorResponse.model_validate(quote.vendor),
+            service=VendorServiceResponse.model_validate(quote.service),
+            quoted_price=quote.quoted_price,
+            quote_details=quote.quote_details,
+            valid_until=quote.valid_until,
+            response_time_hours=quote.response_time_hours,
+            status=quote.status
+        )
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission" in str(e).lower() or "authorization" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to accept quote: {str(e)}")
+
+@vendors_router.post("/quotes/{quote_id}/decline", response_model=VendorQuoteResponse)
+async def decline_quote(
+    quote_id: int,
+    decline_reason: Optional[str] = Query(None, description="Reason for declining"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Client or vendor declines a quote"""
+    try:
+        vendor_service = VendorService(db)
+        
+        quote = vendor_service.decline_quote(quote_id, current_user.id, decline_reason)
+        
+        return VendorQuoteResponse(
+            quote_id=quote.quote_id,
+            vendor=VendorResponse.model_validate(quote.vendor),
+            service=VendorServiceResponse.model_validate(quote.service),
+            quoted_price=quote.quoted_price,
+            quote_details=quote.quote_details,
+            valid_until=quote.valid_until,
+            response_time_hours=quote.response_time_hours,
+            status=quote.status
+        )
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission" in str(e).lower() or "authorization" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to decline quote: {str(e)}")
+
+@vendors_router.get("/my-quotes", response_model=List[VendorQuoteResponse])
+async def get_my_quote_requests(
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all quote requests made by the current user"""
+    try:
+        vendor_service = VendorService(db)
+        
+        quotes, total = vendor_service.get_user_quotes(current_user.id, page=page, per_page=per_page)
+        
+        return [
+            VendorQuoteResponse(
+                quote_id=quote.quote_id,
+                vendor=VendorResponse.model_validate(quote.vendor),
+                service=VendorServiceResponse.model_validate(quote.service),
+                quoted_price=quote.quoted_price,
+                quote_details=quote.quote_details,
+                valid_until=quote.valid_until,
+                response_time_hours=quote.response_time_hours,
+                status=quote.status
+            )
+            for quote in quotes
+        ]
+        
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to get quote requests: {str(e)}")
+
+@vendors_router.get("/vendor-quotes", response_model=List[VendorQuoteResponse])
+async def get_vendor_quote_requests(
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all quote requests received by the current user's vendor"""
+    try:
+        vendor_service = VendorService(db)
+        
+        quotes, total = vendor_service.get_vendor_quotes(current_user.id, page=page, per_page=per_page)
+        
+        return [
+            VendorQuoteResponse(
+                quote_id=quote.quote_id,
+                vendor=VendorResponse.model_validate(quote.vendor),
+                service=VendorServiceResponse.model_validate(quote.service),
+                quoted_price=quote.quoted_price,
+                quote_details=quote.quote_details,
+                valid_until=quote.valid_until,
+                response_time_hours=quote.response_time_hours,
+                status=quote.status
+            )
+            for quote in quotes
+        ]
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to get vendor quotes: {str(e)}")
 
 # Statistics endpoints
 @vendors_router.get("/my-statistics", response_model=VendorStatistics)
@@ -670,7 +829,6 @@ async def get_my_vendor_statistics(
 ):
     """Get statistics for the current user's vendor"""
     try:
-        from app.models.vendor_models import Vendor
         
         vendor = db.query(Vendor).filter(Vendor.user_id == current_user.id).first()
         
@@ -787,7 +945,6 @@ async def upload_vendor_image(
 ):
     """Upload an image for vendor profile or portfolio"""
     try:
-        from app.services.gcp_storage_service import gcp_storage_service
         
         # Read file content
         file_content = await file.read()

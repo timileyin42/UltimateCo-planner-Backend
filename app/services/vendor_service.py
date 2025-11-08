@@ -6,7 +6,7 @@ from app.repositories.vendor_repo import VendorRepository
 from app.repositories.event_repo import EventRepository
 from app.models.vendor_models import (
     Vendor, VendorService as VendorServiceModel, VendorBooking, VendorPayment, VendorReview,
-    VendorPortfolio, VendorAvailability,
+    VendorPortfolio, VendorAvailability, VendorQuote, QuoteStatus,
     VendorCategory, VendorStatus, BookingStatus, PaymentStatus, ServiceType
 )
 from app.models.event_models import Event
@@ -675,6 +675,219 @@ class VendorService:
             vendor.total_reviews = 0
         
         self.db.commit()
+    
+    # Quote request operations
+    def create_quote_request(
+        self,
+        service_id: int,
+        user_id: int,
+        quote_data: Dict[str, Any]
+    ) -> VendorQuote:
+        """Create a new quote request from client to vendor."""
+        # Get service and vendor
+        service = self.db.query(VendorServiceModel).options(
+            joinedload(VendorServiceModel.vendor)
+        ).filter(VendorServiceModel.id == service_id).first()
+        
+        if not service:
+            raise NotFoundError("Service not found")
+        
+        if not service.is_active:
+            raise ValidationError("Service is not available for quotes")
+        
+        # Generate unique quote ID
+        quote_id = f"QT-{uuid.uuid4().hex[:8].upper()}"
+        
+        # Calculate valid_until (default 7 days from now)
+        valid_until = datetime.utcnow() + timedelta(days=7)
+        
+        # Create quote request
+        quote = VendorQuote(
+            quote_id=quote_id,
+            vendor_id=service.vendor_id,
+            service_id=service_id,
+            requested_by_id=user_id,
+            event_type=quote_data.get('event_type'),
+            event_date=quote_data['event_date'],
+            guest_count=quote_data.get('guest_count'),
+            venue_location=quote_data.get('venue_location'),
+            special_requirements=quote_data.get('special_requirements'),
+            budget_range=quote_data.get('budget_range'),
+            event_id=quote_data.get('event_id'),
+            valid_until=valid_until,
+            response_time_hours=24,
+            status=QuoteStatus.PENDING
+        )
+        
+        self.db.add(quote)
+        self.db.commit()
+        self.db.refresh(quote)
+        
+        # TODO: Send notification to vendor
+        # self._notify_vendor_of_quote_request(quote)
+        
+        return quote
+    
+    def update_quote_response(
+        self,
+        quote_id: int,
+        vendor_user_id: int,
+        quoted_price: float,
+        quote_details: Optional[str] = None,
+        quote_notes: Optional[str] = None
+    ) -> VendorQuote:
+        """Vendor responds to a quote request with price and details."""
+        quote = self.db.query(VendorQuote).options(
+            joinedload(VendorQuote.vendor)
+        ).filter(VendorQuote.id == quote_id).first()
+        
+        if not quote:
+            raise NotFoundError("Quote request not found")
+        
+        # Verify vendor ownership
+        if quote.vendor.user_id != vendor_user_id:
+            raise AuthorizationError("You don't have permission to respond to this quote")
+        
+        if quote.status != QuoteStatus.PENDING:
+            raise ValidationError(f"Quote is already {quote.status}")
+        
+        if quote.is_expired:
+            quote.status = QuoteStatus.EXPIRED
+            self.db.commit()
+            raise ValidationError("Quote request has expired")
+        
+        # Update quote with vendor's response
+        quote.quoted_price = quoted_price
+        quote.quote_details = quote_details
+        quote.quote_notes = quote_notes
+        quote.status = QuoteStatus.QUOTED
+        quote.quoted_at = datetime.utcnow()
+        quote.responded_at = datetime.utcnow()
+        
+        self.db.commit()
+        self.db.refresh(quote)
+        
+        # TODO: Send notification to client
+        # self._notify_client_of_quote_response(quote)
+        
+        return quote
+    
+    def accept_quote(self, quote_id: int, user_id: int) -> VendorQuote:
+        """Client accepts a quote."""
+        quote = self.db.query(VendorQuote).filter(VendorQuote.id == quote_id).first()
+        
+        if not quote:
+            raise NotFoundError("Quote request not found")
+        
+        # Verify client ownership
+        if quote.requested_by_id != user_id:
+            raise AuthorizationError("You don't have permission to accept this quote")
+        
+        if quote.status != QuoteStatus.QUOTED:
+            raise ValidationError(f"Quote cannot be accepted. Current status: {quote.status}")
+        
+        if quote.is_expired:
+            quote.status = QuoteStatus.EXPIRED
+            self.db.commit()
+            raise ValidationError("Quote has expired")
+        
+        quote.status = QuoteStatus.ACCEPTED
+        quote.accepted_at = datetime.utcnow()
+        
+        self.db.commit()
+        self.db.refresh(quote)
+        
+        # TODO: Send notification to vendor and create a draft booking
+        # self._notify_vendor_of_quote_acceptance(quote)
+        
+        return quote
+    
+    def decline_quote(
+        self,
+        quote_id: int,
+        user_id: int,
+        decline_reason: Optional[str] = None
+    ) -> VendorQuote:
+        """Client or vendor declines a quote."""
+        quote = self.db.query(VendorQuote).options(
+            joinedload(VendorQuote.vendor)
+        ).filter(VendorQuote.id == quote_id).first()
+        
+        if not quote:
+            raise NotFoundError("Quote request not found")
+        
+        # Verify ownership (either client or vendor can decline)
+        is_client = quote.requested_by_id == user_id
+        is_vendor = quote.vendor.user_id == user_id
+        
+        if not (is_client or is_vendor):
+            raise AuthorizationError("You don't have permission to decline this quote")
+        
+        if quote.status in [QuoteStatus.ACCEPTED, QuoteStatus.CANCELLED]:
+            raise ValidationError(f"Quote cannot be declined. Current status: {quote.status}")
+        
+        quote.status = QuoteStatus.DECLINED
+        quote.declined_at = datetime.utcnow()
+        quote.decline_reason = decline_reason
+        
+        self.db.commit()
+        self.db.refresh(quote)
+        
+        return quote
+    
+    def get_user_quotes(
+        self,
+        user_id: int,
+        status: Optional[QuoteStatus] = None,
+        page: int = 1,
+        per_page: int = 20
+    ) -> Tuple[List[VendorQuote], int]:
+        """Get quote requests made by a user."""
+        query = self.db.query(VendorQuote).options(
+            joinedload(VendorQuote.vendor),
+            joinedload(VendorQuote.service)
+        ).filter(VendorQuote.requested_by_id == user_id)
+        
+        if status:
+            query = query.filter(VendorQuote.status == status)
+        
+        total = query.count()
+        
+        quotes = query.order_by(
+            VendorQuote.created_at.desc()
+        ).offset((page - 1) * per_page).limit(per_page).all()
+        
+        return quotes, total
+    
+    def get_vendor_quotes(
+        self,
+        vendor_user_id: int,
+        status: Optional[QuoteStatus] = None,
+        page: int = 1,
+        per_page: int = 20
+    ) -> Tuple[List[VendorQuote], int]:
+        """Get quote requests received by a vendor."""
+        # Get vendor profile
+        vendor = self.db.query(Vendor).filter(Vendor.user_id == vendor_user_id).first()
+        
+        if not vendor:
+            raise NotFoundError("Vendor profile not found")
+        
+        query = self.db.query(VendorQuote).options(
+            joinedload(VendorQuote.requested_by),
+            joinedload(VendorQuote.service)
+        ).filter(VendorQuote.vendor_id == vendor.id)
+        
+        if status:
+            query = query.filter(VendorQuote.status == status)
+        
+        total = query.count()
+        
+        quotes = query.order_by(
+            VendorQuote.created_at.desc()
+        ).offset((page - 1) * per_page).limit(per_page).all()
+        
+        return quotes, total
 
 # Global vendor service instance
 def get_vendor_service(db: Session) -> VendorService:
