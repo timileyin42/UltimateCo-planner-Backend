@@ -377,3 +377,7 @@ class SMSService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify token due to network error"
             )
+
+
+# Create service instance
+sms_service = SMSService()

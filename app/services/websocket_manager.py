@@ -132,6 +132,10 @@ class ConnectionManager:
     def is_user_online(self, user_id: int) -> bool:
         """Check if a user has any active WebSocket connections."""
         return user_id in self.active_connections and len(self.active_connections[user_id]) > 0
+
+    def is_user_connected(self, user_id: int) -> bool:
+        """Backward-compatible alias used by API routes."""
+        return self.is_user_online(user_id)
     
     async def ping_connections(self):
         """Send ping to all connections to keep them alive."""

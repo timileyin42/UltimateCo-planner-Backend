@@ -5,10 +5,13 @@ Provides secure file upload, download, and management functionality.
 
 import logging
 import os
+import base64
+import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import uuid
 from google.cloud import storage
+from google.oauth2 import service_account
 from google.cloud.exceptions import NotFound, GoogleCloudError
 from app.core.config import get_settings
 
@@ -26,14 +29,41 @@ class GCPStorageService:
     def _initialize_client(self):
         """Initialize GCP Storage client."""
         try:
-            # Initialize the client
-            if hasattr(self.settings, 'GOOGLE_APPLICATION_CREDENTIALS'):
+            # Check if base64 encoded key is available from settings
+            encoded_key = self.settings.GCP_SERVICE_ACCOUNT_KEY_BASE64
+            
+            if encoded_key:
+                # Decode base64 key
+                try:
+                    decoded_bytes = base64.b64decode(encoded_key)
+                    key_dict = json.loads(decoded_bytes)
+                    
+                    # Fix escaped newlines in private key
+                    if 'private_key' in key_dict:
+                        key_dict['private_key'] = key_dict['private_key'].replace('\\n', '\n')
+                    
+                    credentials = service_account.Credentials.from_service_account_info(key_dict)
+                    
+                    self.client = storage.Client(
+                        project=self.settings.GCP_PROJECT_ID,
+                        credentials=credentials
+                    )
+                    logger.info("GCP Storage client initialized using base64 encoded credentials")
+                except Exception as e:
+                    logger.error(f"Failed to decode base64 credentials: {str(e)}")
+                    raise
+            elif hasattr(self.settings, 'GOOGLE_APPLICATION_CREDENTIALS') and self.settings.GOOGLE_APPLICATION_CREDENTIALS:
+                # Fallback to JSON file path
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.settings.GOOGLE_APPLICATION_CREDENTIALS
+                self.client = storage.Client(project=self.settings.GCP_PROJECT_ID)
+                logger.info("GCP Storage client initialized using credentials file")
+            else:
+                # Try default credentials (for GCP environments)
+                self.client = storage.Client(project=self.settings.GCP_PROJECT_ID)
+                logger.info("GCP Storage client initialized using default credentials")
             
-            self.client = storage.Client(project=self.settings.GCP_PROJECT_ID)
             self.bucket = self.client.bucket(self.settings.GCP_STORAGE_BUCKET)
-            
-            logger.info(f"GCP Storage client initialized for project: {self.settings.GCP_PROJECT_ID}")
+            logger.info(f"GCP Storage configured for bucket: {self.settings.GCP_STORAGE_BUCKET}")
             
         except Exception as e:
             logger.error(f"Failed to initialize GCP Storage client: {str(e)}")
@@ -51,7 +81,8 @@ class GCPStorageService:
         filename: str,
         content_type: str,
         folder: str = "uploads",
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        make_public: bool = False
     ) -> Dict[str, Any]:
         """
         Upload a file to GCP Cloud Storage.
@@ -62,6 +93,7 @@ class GCPStorageService:
             content_type: MIME type of the file
             folder: Folder/prefix in the bucket
             user_id: Optional user ID for organizing files
+            make_public: Whether to make the file publicly accessible (for QR codes, public assets)
             
         Returns:
             Dict containing file URL, filename, size, etc.
@@ -82,12 +114,20 @@ class GCPStorageService:
                 blob = self.bucket.blob(blob_path)
                 blob.upload_from_string(file_content, content_type=content_type)
                 
-                # Make the blob publicly readable (optional, based on your needs)
-                # blob.make_public()
+                # Set cache control for better performance
+                blob.cache_control = "public, max-age=3600"
+                blob.patch()
                 
-                file_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
+                # With uniform bucket-level access, all objects are public or private based on bucket policy
+                # Generate public URL directly without ACL operations
+                if make_public:
+                    # Public URL format: https://storage.googleapis.com/bucket_name/blob_path
+                    file_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
+                else:
+                    # For private files, return the blob path - we'll generate signed URLs when needed
+                    file_url = blob_path  # Store path, not URL
                 
-                logger.info(f"File uploaded to GCP Storage: {blob_path}")
+                logger.info(f"File uploaded to GCP Storage: {blob_path} (public={make_public})")
                 
             else:
                 # Fallback to local storage
@@ -101,6 +141,7 @@ class GCPStorageService:
                 "file_size": len(file_content),
                 "content_type": content_type,
                 "blob_path": blob_path,
+                "is_public": make_public,
                 "uploaded_at": datetime.utcnow().isoformat()
             }
             
@@ -154,10 +195,15 @@ class GCPStorageService:
             if self.client and self.bucket:
                 blob = self.bucket.blob(blob_path)
                 
-                # Generate signed URL
+                # Check if blob exists
+                if not blob.exists():
+                    logger.warning(f"Blob not found: {blob_path}")
+                    return None
+                
+                # Generate signed URL (works for both public and private buckets)
                 url = blob.generate_signed_url(
                     version="v4",
-                    expiration=datetime.utcnow() + timedelta(minutes=expiration_minutes),
+                    expiration=timedelta(minutes=expiration_minutes),
                     method="GET"
                 )
                 
@@ -169,6 +215,22 @@ class GCPStorageService:
         except Exception as e:
             logger.error(f"Failed to generate signed URL for {blob_path}: {str(e)}")
             return None
+    
+    def get_public_url(self, blob_path: str) -> str:
+        """
+        Get public URL for a blob (doesn't check if actually public).
+        Use this for files you know are public.
+        
+        Args:
+            blob_path: Path to the blob in the bucket
+            
+        Returns:
+            Public URL
+        """
+        if self.client and self.bucket:
+            return f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
+        else:
+            return f"/static/{blob_path}"
     
     async def list_files(self, prefix: str = "", limit: int = 100) -> List[Dict[str, Any]]:
         """
