@@ -7,8 +7,7 @@ from app.models.contact_models import ContactInviteStatus
 
 
 class ContactBase(BaseModel):
-    first_name: str = Field(..., min_length=1, max_length=50)
-    last_name: Optional[str] = Field(None, max_length=50)
+    name: str = Field(..., min_length=1, max_length=255)
     phone_number: Optional[str] = Field(None, max_length=20)
     email: Optional[EmailStr] = None
     notes: Optional[str] = Field(None, max_length=500)
@@ -30,8 +29,7 @@ class ContactCreate(ContactBase):
 
 
 class ContactUpdate(BaseModel):
-    first_name: Optional[str] = Field(None, min_length=1, max_length=50)
-    last_name: Optional[str] = Field(None, max_length=50)
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
     phone_number: Optional[str] = Field(None, max_length=20)
     email: Optional[EmailStr] = None
     notes: Optional[str] = Field(None, max_length=500)

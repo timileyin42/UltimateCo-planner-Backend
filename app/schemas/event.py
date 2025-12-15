@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from app.models.shared_models import EventType, EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.user import UserSummary
 from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, LocationOptimizationResponse
@@ -130,6 +130,11 @@ class EventInvitationResponse(EventInvitationBase):
     
     model_config = ConfigDict(from_attributes=True)
 
+class CollaboratorAddRequest(BaseModel):
+    """Schema for adding collaborators to an event"""
+    user_ids: List[int] = Field(..., min_items=1)
+    send_notifications: bool = Field(False, description="Whether to notify newly added collaborators")
+
 # Task schemas
 class TaskBase(BaseModel):
     """Base task schema"""
@@ -207,11 +212,11 @@ class ExpenseResponse(ExpenseBase):
     event_id: int
     paid_by_user_id: int
     receipt_url: Optional[str] = None
-    paid_by: UserSummary
+    paid_by: UserSummary = Field(..., alias="paid_by_user")
     created_at: datetime
     updated_at: datetime
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 # Comment schemas
 class CommentBase(BaseModel):
@@ -233,11 +238,19 @@ class CommentResponse(CommentBase):
     author_id: int
     parent_id: Optional[int] = None
     author: UserSummary
-    replies: List['CommentResponse'] = []
+    replies: List['CommentResponse'] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("replies", mode="before")
+    @classmethod
+    def ensure_replies_list(cls, value):
+        """Normalize replies so ResponseValidation always receives a list."""
+        if value is None:
+            return []
+        return value
 
 # Poll schemas
 class PollOptionBase(BaseModel):
@@ -317,6 +330,14 @@ class EventStatsResponse(BaseModel):
     total_attendees: int
     confirmed_attendees: int
     pending_responses: int
+    rsvp_counts: Dict[str, int]
+    task_counts: Dict[str, int]
+    total_expenses: float
+    budget_remaining: Optional[float] = None
+    total_invitations: int
+    total_tasks: int
+    total_comments: int
+    total_polls: int
 
 # Location optimization schemas for events
 class EventLocationOptimizationRequest(LocationOptimizationRequest):

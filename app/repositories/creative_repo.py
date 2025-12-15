@@ -50,8 +50,13 @@ class CreativeRepository:
         ).filter(Moodboard.event_id == event_id)
         
         if filters:
-            if filters.get('type'):
-                query = query.filter(Moodboard.type == filters['type'])
+            moodboard_type = filters.get('moodboard_type') or filters.get('type')
+            if moodboard_type:
+                try:
+                    parsed_type = moodboard_type if isinstance(moodboard_type, MoodboardType) else MoodboardType(moodboard_type)
+                    query = query.filter(Moodboard.moodboard_type == parsed_type)
+                except ValueError:
+                    query = query.filter(False)
             
             if filters.get('is_public') is not None:
                 query = query.filter(Moodboard.is_public == filters['is_public'])
@@ -61,10 +66,12 @@ class CreativeRepository:
         
         total = query.count()
         
-        moodboards = query.order_by(
-            desc(Moodboard.is_featured),
-            desc(Moodboard.created_at)
-        ).offset(pagination.offset).limit(pagination.limit).all()
+        order_columns = []
+        if hasattr(Moodboard, 'is_featured'):
+            order_columns.append(desc(Moodboard.is_featured))
+        order_columns.append(desc(Moodboard.created_at))
+
+        moodboards = query.order_by(*order_columns).offset(pagination.offset).limit(pagination.limit).all()
         
         return moodboards, total
     
@@ -88,19 +95,27 @@ class CreativeRepository:
                 )
             )
         
-        if search_params.get('type'):
-            query = query.filter(Moodboard.type == search_params['type'])
+        moodboard_type = search_params.get('moodboard_type') or search_params.get('type')
+        if moodboard_type:
+            try:
+                parsed_type = moodboard_type if isinstance(moodboard_type, MoodboardType) else MoodboardType(moodboard_type)
+                query = query.filter(Moodboard.moodboard_type == parsed_type)
+            except ValueError:
+                query = query.filter(False)
         
         if search_params.get('event_type'):
             query = query.join(Event).filter(Event.event_type == search_params['event_type'])
         
         total = query.count()
         
-        moodboards = query.order_by(
-            desc(Moodboard.is_featured),
-            desc(Moodboard.total_likes),
-            desc(Moodboard.created_at)
-        ).offset(pagination.offset).limit(pagination.limit).all()
+        order_columns = []
+        if hasattr(Moodboard, 'is_featured'):
+            order_columns.append(desc(Moodboard.is_featured))
+        if hasattr(Moodboard, 'total_likes'):
+            order_columns.append(desc(Moodboard.total_likes))
+        order_columns.append(desc(Moodboard.created_at))
+
+        moodboards = query.order_by(*order_columns).offset(pagination.offset).limit(pagination.limit).all()
         
         return moodboards, total
     
@@ -148,6 +163,22 @@ class CreativeRepository:
         self.update_moodboard_stats(item.moodboard_id)
         
         return item
+
+    def get_moodboard_item_by_id(
+        self,
+        item_id: int,
+        include_relations: bool = False
+    ) -> Optional[MoodboardItem]:
+        """Fetch a single moodboard item."""
+        query = self.db.query(MoodboardItem).filter(MoodboardItem.id == item_id)
+
+        if include_relations:
+            query = query.options(
+                joinedload(MoodboardItem.moodboard),
+                joinedload(MoodboardItem.added_by)
+            )
+
+        return query.first()
     
     def get_moodboard_items(self, moodboard_id: int) -> List[MoodboardItem]:
         """Get all items for a moodboard"""
@@ -169,6 +200,24 @@ class CreativeRepository:
         self.update_moodboard_stats(moodboard_id)
         
         return True
+
+    def update_moodboard_item(self, item_id: int, update_data: Dict[str, Any]) -> Optional[MoodboardItem]:
+        """Update moodboard item by ID"""
+        item = self.db.query(MoodboardItem).filter(MoodboardItem.id == item_id).first()
+        if not item:
+            return None
+
+        for field, value in update_data.items():
+            if hasattr(item, field):
+                setattr(item, field, value)
+
+        self.db.commit()
+        self.db.refresh(item)
+
+        # Update related moodboard stats after modification
+        self.update_moodboard_stats(item.moodboard_id)
+
+        return item
     
     # Moodboard Like operations
     def create_moodboard_like(self, like_data: Dict[str, Any]) -> MoodboardLike:
@@ -321,7 +370,7 @@ class CreativeRepository:
             joinedload(PlaylistTrack.added_by)
         ).filter(
             PlaylistTrack.playlist_id == playlist_id
-        ).order_by(PlaylistTrack.order_index, PlaylistTrack.created_at).all()
+        ).order_by(PlaylistTrack.position.asc(), PlaylistTrack.created_at.asc()).all()
     
     def get_track_by_id(self, track_id: int) -> Optional[PlaylistTrack]:
         """Get playlist track by ID"""
@@ -568,8 +617,9 @@ class CreativeRepository:
         
         # Count tracks and calculate total duration
         tracks = self.get_playlist_tracks(playlist_id)
-        playlist.total_tracks = len(tracks)
-        playlist.total_duration_ms = sum(track.duration_ms for track in tracks if track.duration_ms)
+        playlist.total_duration_seconds = sum(
+            track.duration_seconds or 0 for track in tracks
+        )
         
         self.db.commit()
     

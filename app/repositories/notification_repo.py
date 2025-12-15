@@ -270,6 +270,36 @@ class NotificationRepository:
         ).offset(pagination.offset).limit(pagination.limit).all()
         
         return logs, total
+
+    def get_user_notifications(
+        self,
+        user_id: int,
+        limit: int,
+        include_read: bool = True
+    ) -> List[NotificationLog]:
+        """Get notifications for a user"""
+        query = self.db.query(NotificationLog).options(
+            joinedload(NotificationLog.event),
+            joinedload(NotificationLog.recipient)
+        ).filter(NotificationLog.recipient_id == user_id)
+
+        if not include_read:
+            query = query.filter(NotificationLog.read_at.is_(None))
+
+        return query.order_by(desc(NotificationLog.created_at)).limit(limit).all()
+
+    def count_user_notifications(self, user_id: int) -> int:
+        """Count total notifications for a user"""
+        return self.db.query(NotificationLog).filter(
+            NotificationLog.recipient_id == user_id
+        ).count()
+
+    def count_unread_notifications(self, user_id: int) -> int:
+        """Count unread notifications for a user"""
+        return self.db.query(NotificationLog).filter(
+            NotificationLog.recipient_id == user_id,
+            NotificationLog.read_at.is_(None)
+        ).count()
     
     # Notification Preferences operations
     def get_user_preferences(self, user_id: int) -> List[NotificationPreference]:

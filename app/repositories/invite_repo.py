@@ -1,5 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
+import secrets
+import string
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from app.models.invite_models import InviteCode, InviteLink, InviteLinkUsage, InviteType
@@ -12,13 +14,38 @@ class InviteRepository:
     def __init__(self, db: Session):
         self.db = db
     
+    # Internal helpers
+    def _generate_unique_code(self, length: int = 8) -> str:
+        """Generate a unique invite code consisting of uppercase letters and digits."""
+        alphabet = string.ascii_uppercase + string.digits
+        while True:
+            candidate = ''.join(secrets.choice(alphabet) for _ in range(length))
+            if not self.db.query(InviteCode).filter(InviteCode.code == candidate).first():
+                return candidate
+
+    def _generate_unique_link_id(self, length: int = 12) -> str:
+        """Generate a unique, URL-safe invite link identifier."""
+        alphabet = string.ascii_lowercase + string.digits
+        while True:
+            candidate = ''.join(secrets.choice(alphabet) for _ in range(length))
+            if not self.db.query(InviteLink).filter(InviteLink.link_id == candidate).first():
+                return candidate
+
+    @staticmethod
+    def _normalize_invite_type(invite_type: Optional[Union[InviteType, str]]) -> str:
+        """Ensure invite type is stored as the expected string value."""
+        if isinstance(invite_type, InviteType):
+            return invite_type.value
+        return invite_type or InviteType.APP_GENERAL.value
+
     # Invite Code operations
     def create_invite_code(self, user_id: int, invite_type: InviteType = InviteType.APP_GENERAL, 
                           expires_at: Optional[datetime] = None) -> InviteCode:
         """Create a new invite code"""
         invite_code = InviteCode(
+            code=self._generate_unique_code(),
             user_id=user_id,
-            invite_type=invite_type,
+            invite_type=self._normalize_invite_type(invite_type),
             expires_at=expires_at
         )
         self.db.add(invite_code)
@@ -81,11 +108,14 @@ class InviteRepository:
                           expires_at: Optional[datetime] = None, max_uses: Optional[int] = None) -> InviteLink:
         """Create a new invite link"""
         invite_link = InviteLink(
+            link_id=self._generate_unique_link_id(),
             user_id=user_id,
             title=title,
             description=description,
             expires_at=expires_at,
-            max_uses=max_uses
+            max_uses=max_uses,
+            invite_type=InviteType.APP_GENERAL.value,
+            current_uses=0
         )
         self.db.add(invite_link)
         self.db.commit()

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_validator
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -12,6 +12,32 @@ class DeviceRegistrationRequest(BaseModel):
     device_type: DeviceType
     os_version: Optional[str] = Field(None, max_length=50)
     app_version: Optional[str] = Field(None, max_length=20)
+
+    @field_validator("device_type", mode="before")
+    def normalize_device_type(cls, value):
+        if isinstance(value, DeviceType):
+            return value
+        if value is None:
+            return DeviceType.ANDROID
+        normalized = str(value).strip().lower()
+        alias_map = {
+            "mobile": DeviceType.ANDROID,
+            "phone": DeviceType.ANDROID,
+            "tablet": DeviceType.ANDROID,
+            "ios": DeviceType.IOS,
+            "iphone": DeviceType.IOS,
+            "ipad": DeviceType.IOS,
+            "android": DeviceType.ANDROID,
+            "web": DeviceType.WEB,
+            "desktop": DeviceType.DESKTOP,
+            "browser": DeviceType.WEB
+        }
+        if normalized in alias_map:
+            return alias_map[normalized]
+        try:
+            return DeviceType(normalized)
+        except ValueError:
+            raise ValueError(f"Unsupported device type '{value}'")
 
 
 class DeviceResponse(BaseModel):
