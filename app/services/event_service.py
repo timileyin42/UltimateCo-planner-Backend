@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 from datetime import datetime, timedelta
 from app.models.event_models import (
@@ -253,7 +253,7 @@ class EventService:
                 priority=task.priority,
                 assigned_to_id=None,  # Don't copy assignments
                 creator_id=user_id,
-                status=TaskStatus.PENDING
+                status=task.status or TaskStatus.TODO
             )
             self.db.add(new_task)
         
@@ -416,6 +416,73 @@ class EventService:
             raise AuthorizationError("Permission denied to view invitations")
         
         return event.invitations
+
+    def get_event_attendees(self, event_id: int, user_id: int) -> List[EventInvitation]:
+        """Get attendee invitations for an event"""
+        event = self.get_event_by_id(event_id, user_id)
+        if not event:
+            raise NotFoundError("Event not found")
+
+        invitations = self.db.query(EventInvitation).options(
+            joinedload(EventInvitation.user)
+        ).filter(
+            EventInvitation.event_id == event_id,
+            EventInvitation.is_deleted == False
+        ).order_by(EventInvitation.created_at.asc()).all()
+
+        return invitations
+
+    def get_event_collaborators(self, event_id: int, user_id: int) -> List[User]:
+        """List event collaborators"""
+        event = self.get_event_by_id(event_id, user_id)
+        if not event:
+            raise NotFoundError("Event not found")
+
+        return list(event.collaborators)
+
+    def add_event_collaborators(
+        self,
+        event_id: int,
+        user_id: int,
+        collaborator_ids: List[int],
+        send_notifications: bool = False
+    ) -> List[User]:
+        """Add collaborators to an event"""
+        if not collaborator_ids:
+            raise ValidationError("No collaborator IDs provided")
+
+        event = self.get_event_by_id(event_id, user_id)
+        if not event:
+            raise NotFoundError("Event not found")
+
+        if not self._can_edit_event(event, user_id):
+            raise AuthorizationError("Permission denied to manage collaborators")
+
+        unique_ids = list({collab_id for collab_id in collaborator_ids if collab_id})
+        existing_ids = {collaborator.id for collaborator in event.collaborators}
+
+        ids_to_add = [collab_id for collab_id in unique_ids if collab_id not in existing_ids]
+        if not ids_to_add:
+            return list(event.collaborators)
+
+        users = self.db.query(User).filter(User.id.in_(ids_to_add)).all()
+        found_ids = {user.id for user in users}
+        missing_ids = set(ids_to_add) - found_ids
+        if missing_ids:
+            missing_str = ", ".join(str(identifier) for identifier in sorted(missing_ids))
+            raise NotFoundError(f"Users not found: {missing_str}")
+
+        for collaborator in users:
+            if collaborator not in event.collaborators:
+                event.collaborators.append(collaborator)
+
+        self.db.commit()
+        self.db.refresh(event)
+
+        # Placeholder for future notification handling
+        _ = send_notifications
+
+        return list(event.collaborators)
     
     # Task management methods
     def create_task(self, event_id: int, task_data: TaskCreate, creator_id: int) -> Task:
@@ -433,15 +500,28 @@ class EventService:
             if not assignee:
                 raise NotFoundError("Assignee not found")
         
+        task_payload = task_data.model_dump(exclude_unset=True)
+        assignee_id = task_payload.pop("assignee_id", None)
+
+        # Remove optional fields explicitly set to None so SQLAlchemy ignores them
+        task_payload = {key: value for key, value in task_payload.items() if value is not None}
+
         task = Task(
-            **task_data.model_dump(),
+            **task_payload,
+            assigned_to_id=assignee_id,
             event_id=event_id,
             creator_id=creator_id
         )
         
-        self.db.add(task)
-        self.db.commit()
-        self.db.refresh(task)
+        try:
+            self.db.add(task)
+            self.db.commit()
+            self.db.refresh(task)
+        except Exception as exc:
+            self.db.rollback()
+            logger.exception("Failed to create task", exc_info=exc)
+            raise
+
         return task
     
     def update_task(self, task_id: int, task_data: TaskUpdate, user_id: int) -> Task:
@@ -475,6 +555,36 @@ class EventService:
             raise NotFoundError("Event not found")
         
         return event.tasks
+
+    def get_task_by_id(self, task_id: int, user_id: int) -> Task:
+        """Get a single task by ID"""
+        task = self.db.query(Task).options(
+            joinedload(Task.event),
+            joinedload(Task.creator),
+            joinedload(Task.assigned_to)
+        ).filter(
+            Task.id == task_id,
+            Task.is_deleted == False
+        ).first()
+
+        if not task:
+            raise NotFoundError("Task not found")
+
+        if not self._can_access_event(task.event, user_id):
+            raise AuthorizationError("Access denied to this task")
+
+        return task
+
+    def delete_task(self, task_id: int, user_id: int) -> bool:
+        """Delete (soft delete) a task"""
+        task = self.get_task_by_id(task_id, user_id)
+
+        if not self._can_edit_task(task, user_id):
+            raise AuthorizationError("Permission denied to delete this task")
+
+        task.soft_delete()
+        self.db.commit()
+        return True
     
     # Expense management methods
     def create_expense(self, event_id: int, expense_data: ExpenseCreate, user_id: int) -> Expense:
@@ -526,7 +636,41 @@ class EventService:
         if not event:
             raise NotFoundError("Event not found")
         
-        return event.expenses
+        return self.db.query(Expense).options(
+            joinedload(Expense.paid_by_user)
+        ).filter(
+            Expense.event_id == event_id,
+            Expense.is_deleted == False
+        ).order_by(Expense.expense_date.desc()).all()
+
+    def get_expense_by_id(self, expense_id: int, user_id: int) -> Expense:
+        """Get a single expense by ID"""
+        expense = self.db.query(Expense).options(
+            joinedload(Expense.event),
+            joinedload(Expense.paid_by_user)
+        ).filter(
+            Expense.id == expense_id,
+            Expense.is_deleted == False
+        ).first()
+
+        if not expense:
+            raise NotFoundError("Expense not found")
+
+        if not self._can_access_event(expense.event, user_id):
+            raise AuthorizationError("Access denied to this expense")
+
+        return expense
+
+    def delete_expense(self, expense_id: int, user_id: int) -> bool:
+        """Delete (soft delete) an expense"""
+        expense = self.get_expense_by_id(expense_id, user_id)
+
+        if not self._can_edit_event(expense.event, user_id):
+            raise AuthorizationError("Permission denied to delete this expense")
+
+        expense.soft_delete()
+        self.db.commit()
+        return True
     
     # Comment methods
     def create_comment(self, event_id: int, comment_data: CommentCreate, author_id: int) -> Comment:
@@ -547,12 +691,69 @@ class EventService:
         return comment
     
     def get_event_comments(self, event_id: int, user_id: int) -> List[Comment]:
-        """Get all comments for an event"""
+        """Get all top-level comments for an event"""
         event = self.get_event_by_id(event_id, user_id)
         if not event:
             raise NotFoundError("Event not found")
-        
-        return event.comments
+
+        return self.db.query(Comment).options(
+            joinedload(Comment.author),
+            joinedload(Comment.replies).joinedload(Comment.author)
+        ).filter(
+            Comment.event_id == event_id,
+            Comment.parent_id.is_(None),
+            Comment.is_deleted == False
+        ).order_by(Comment.created_at.asc()).all()
+
+    def get_comment_by_id(self, comment_id: int, user_id: int) -> Comment:
+        """Get a single comment by ID"""
+        comment = self.db.query(Comment).options(
+            joinedload(Comment.event),
+            joinedload(Comment.author),
+            joinedload(Comment.replies).joinedload(Comment.author)
+        ).filter(
+            Comment.id == comment_id,
+            Comment.is_deleted == False
+        ).first()
+
+        if not comment:
+            raise NotFoundError("Comment not found")
+
+        if not self._can_access_event(comment.event, user_id):
+            raise AuthorizationError("Access denied to this comment")
+
+        return comment
+
+    def delete_comment(self, comment_id: int, user_id: int) -> bool:
+        """Delete (soft delete) a comment"""
+        comment = self.get_comment_by_id(comment_id, user_id)
+
+        can_delete = (
+            comment.author_id == user_id or
+            self._can_edit_event(comment.event, user_id)
+        )
+
+        if not can_delete:
+            raise AuthorizationError("Permission denied to delete this comment")
+
+        comment.soft_delete()
+
+        # Soft delete any nested replies while guarding against None values or
+        # already-deleted entries so we do not trigger unexpected errors during
+        # traversal.
+        stack = [reply for reply in (comment.replies or []) if reply and not reply.is_deleted]
+        while stack:
+            reply = stack.pop()
+            if not reply or reply.is_deleted:
+                continue
+
+            reply.soft_delete()
+
+            children = getattr(reply, "replies", None) or []
+            stack.extend(child for child in children if child and not child.is_deleted)
+
+        self.db.commit()
+        return True
     
     # Poll methods
     def create_poll(self, event_id: int, poll_data: PollCreate, creator_id: int) -> Poll:
@@ -630,6 +831,36 @@ class EventService:
         
         self.db.commit()
         return votes
+
+    def get_poll(self, poll_id: int, user_id: int) -> Poll:
+        """Get poll details"""
+        poll = self.db.query(Poll).options(
+            joinedload(Poll.event),
+            joinedload(Poll.creator),
+            joinedload(Poll.options)
+        ).filter(
+            Poll.id == poll_id,
+            Poll.is_deleted == False
+        ).first()
+
+        if not poll:
+            raise NotFoundError("Poll not found")
+
+        if not self._can_access_event(poll.event, user_id):
+            raise AuthorizationError("Access denied to this poll")
+
+        return poll
+
+    def delete_poll(self, poll_id: int, user_id: int) -> bool:
+        """Delete a poll"""
+        poll = self.get_poll(poll_id, user_id)
+
+        if not self._can_edit_event(poll.event, user_id):
+            raise AuthorizationError("Permission denied to delete this poll")
+
+        poll.soft_delete()
+        self.db.commit()
+        return True
     
     # Permission helper methods
     def _can_access_event(self, event: Event, user_id: int) -> bool:
@@ -693,11 +924,19 @@ class EventService:
                 if task.status == status
             ])
         
+        # Calculate aggregate attendee stats
+        total_attendees = sum(rsvp_counts.values())
+        confirmed_attendees = rsvp_counts.get(RSVPStatus.ACCEPTED.value, 0)
+        pending_responses = rsvp_counts.get(RSVPStatus.PENDING.value, 0)
+
         # Calculate budget info
         total_expenses = sum(exp.amount for exp in event.expenses)
         budget_remaining = (event.total_budget - total_expenses) if event.total_budget else None
         
         return {
+            "total_attendees": total_attendees,
+            "confirmed_attendees": confirmed_attendees,
+            "pending_responses": pending_responses,
             "rsvp_counts": rsvp_counts,
             "task_counts": task_counts,
             "total_expenses": total_expenses,

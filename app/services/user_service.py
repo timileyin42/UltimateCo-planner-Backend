@@ -267,9 +267,18 @@ class UserService:
         if not user.is_friend_with(friend_id):
             raise ValidationError("Users are not friends")
         
-        # Remove friendship (bidirectional)
-        user.friends.remove(friend)
-        friend.friends.remove(user)
+        # Remove friendship (bidirectional) - handle cases where relationship might only exist in one direction
+        try:
+            if friend in user.friends:
+                user.friends.remove(friend)
+        except ValueError:
+            pass  # Already removed
+        
+        try:
+            if user in friend.friends:
+                friend.friends.remove(user)
+        except ValueError:
+            pass  # Already removed
         
         self.db.commit()
         return True
@@ -305,24 +314,90 @@ class UserService:
         
         return mutual_friends
     
-    def suggest_friends(self, user_id: int, limit: int = 10) -> List[User]:
-        """Suggest potential friends based on mutual connections"""
+    def suggest_friends(
+        self,
+        user_id: int,
+        limit: int = 10,
+        name_query: Optional[str] = None,
+        city: Optional[str] = None,
+    ) -> List[User]:
+        """Suggest potential friends.
+
+        Default behavior: friend-of-friend suggestions (mutual connections).
+        If filters are provided (name or city), they are applied to narrow results.
+        If the user has no friends and filters are provided, fall back to a
+        global search of active users with those filters (excluding self and existing friends).
+        """
         user = self.get_user_by_id(user_id)
         if not user:
             raise NotFoundError("User not found")
         
+        # If the user has no friends yet, optionally fall back to filter-based search
+        if not user.friends:
+            # Fallback: allow location/name based discovery excluding self if filters provided
+            if name_query or city:
+                exclude_ids = {user_id}
+                # Exclude any existing friends even if list is empty now for completeness
+                for f in user.friends:
+                    exclude_ids.add(f.id)
+
+                q = self.db.query(User).filter(
+                    User.is_active == True,
+                    ~User.id.in_(exclude_ids)
+                )
+                if name_query:
+                    like = f"%{name_query}%"
+                    from sqlalchemy import or_
+                    q = q.filter(or_(User.full_name.ilike(like), User.username.ilike(like)))
+                if city:
+                    q = q.filter(User.city.ilike(f"%{city}%"))
+                return q.limit(limit).all()
+            return []
+
         # Get friends of friends who are not already friends
         current_friend_ids = {friend.id for friend in user.friends}
         current_friend_ids.add(user_id)  # Exclude self
-        
+
+        friend_ids = [friend.id for friend in user.friends]
+
+        # Build OR conditions for friends-of-friends to avoid IN() issues
+        from sqlalchemy import or_
+        fof_condition = or_(*[User.friends.any(User.id == fid) for fid in friend_ids])
+
         # Find users who are friends with current user's friends
-        suggested_users = self.db.query(User).join(
-            User.friends
-        ).filter(
-            User.friends.any(User.id.in_([friend.id for friend in user.friends])),
-            ~User.id.in_(current_friend_ids),
-            User.is_active == True
-        ).distinct().limit(limit).all()
+        q = (
+            self.db.query(User)
+            .filter(
+                fof_condition,
+                ~User.id.in_(current_friend_ids),
+                User.is_active == True,
+            )
+            .distinct()
+        )
+
+        # Apply optional filters
+        if name_query:
+            like = f"%{name_query}%"
+            from sqlalchemy import or_
+            q = q.filter(or_(User.full_name.ilike(like), User.username.ilike(like)))
+        if city:
+            q = q.filter(User.city.ilike(f"%{city}%"))
+
+        suggested_users = q.limit(limit).all()
+
+        # If filters were provided but yielded no mutual suggestions, try fallback global search
+        if (name_query or city) and not suggested_users:
+            q2 = self.db.query(User).filter(
+                User.is_active == True,
+                ~User.id.in_(current_friend_ids)
+            )
+            if name_query:
+                like = f"%{name_query}%"
+                from sqlalchemy import or_
+                q2 = q2.filter(or_(User.full_name.ilike(like), User.username.ilike(like)))
+            if city:
+                q2 = q2.filter(User.city.ilike(f"%{city}%"))
+            suggested_users = q2.limit(limit).all()
         
         return suggested_users
     
