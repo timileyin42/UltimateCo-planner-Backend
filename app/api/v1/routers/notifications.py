@@ -36,10 +36,43 @@ from app.schemas.notification import (
     
     # In-app notifications and device management
     InAppNotificationResponse, InAppNotificationListResponse, MarkNotificationReadRequest,
-    DeviceRegistrationRequest, DeviceResponse, WebSocketStatsResponse
+    DeviceRegistrationRequest, DeviceResponse, WebSocketStatsResponse,
+    UserNotificationListResponse
 )
 
 notifications_router = APIRouter()
+
+# User notifications endpoint
+@notifications_router.get("/", response_model=UserNotificationListResponse)
+async def get_user_notifications(
+    limit: int = Query(50, ge=1, le=100, description="Maximum notifications to return"),
+    unread_only: bool = Query(False, description="Return only unread notifications"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get notifications for the current user"""
+    try:
+        notification_service = NotificationService(db)
+        result = notification_service.get_user_notifications(
+            user_id=current_user.id,
+            limit=limit,
+            unread_only=unread_only
+        )
+
+        notifications = [
+            NotificationLogResponse.model_validate(notification)
+            for notification in result['notifications']
+        ]
+
+        return UserNotificationListResponse(
+            notifications=notifications,
+            total=result['total'],
+            unread_count=result['unread_count'],
+            limit=result['limit']
+        )
+
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to get notifications: {str(e)}")
 
 # Smart Reminder endpoints
 @notifications_router.post("/events/{event_id}/reminders", response_model=SmartReminderResponse)

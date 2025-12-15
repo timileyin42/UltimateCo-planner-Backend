@@ -1,11 +1,12 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user_models import User
-from app.models.contact_models import ContactInviteStatus
+from app.models.contact_models import ContactInviteStatus, UserContact
 from app.services.contact_service import ContactService
 from app.schemas.contact_schemas import (
     ContactCreate, ContactUpdate, ContactResponse, ContactListResponse,
@@ -52,21 +53,18 @@ async def get_contacts(
     )
     
     # Get total count for pagination
-    total_query = db.query(contact_service.db.query(contact_service.UserContact).filter(
-        contact_service.UserContact.user_id == current_user.id
-    ))
+    total_query = db.query(UserContact).filter(UserContact.user_id == current_user.id)
     if search:
         search_term = f"%{search}%"
         total_query = total_query.filter(
-            contact_service.or_(
-                contact_service.UserContact.first_name.ilike(search_term),
-                contact_service.UserContact.last_name.ilike(search_term),
-                contact_service.UserContact.phone_number.ilike(search_term),
-                contact_service.UserContact.email.ilike(search_term)
+            or_(
+                UserContact.name.ilike(search_term),
+                UserContact.phone_number.ilike(search_term),
+                UserContact.email.ilike(search_term)
             )
         )
     if favorites_only:
-        total_query = total_query.filter(contact_service.UserContact.is_favorite == True)
+        total_query = total_query.filter(UserContact.is_favorite == True)
     
     total = total_query.count()
     
@@ -77,6 +75,52 @@ async def get_contacts(
         per_page=per_page,
         has_next=offset + per_page < total,
         has_prev=page > 1
+    )
+
+
+@router.get("/stats", response_model=ContactStatsResponse)
+async def get_contact_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get contact statistics for the user"""
+    from app.models.contact_models import UserContact, ContactGroup, ContactInvitation
+
+    total_contacts = db.query(UserContact).filter(UserContact.user_id == current_user.id).count()
+    favorite_contacts = db.query(UserContact).filter(
+        UserContact.user_id == current_user.id,
+        UserContact.is_favorite == True
+    ).count()
+    total_groups = db.query(ContactGroup).filter(ContactGroup.user_id == current_user.id).count()
+
+    pending_sent = db.query(ContactInvitation).filter(
+        ContactInvitation.sender_id == current_user.id,
+        ContactInvitation.status == ContactInviteStatus.PENDING
+    ).count()
+
+    pending_received = db.query(ContactInvitation).filter(
+        ContactInvitation.recipient_id == current_user.id,
+        ContactInvitation.status == ContactInviteStatus.PENDING
+    ).count()
+
+    accepted = db.query(ContactInvitation).filter(
+        ContactInvitation.sender_id == current_user.id,
+        ContactInvitation.status == ContactInviteStatus.ACCEPTED
+    ).count()
+
+    declined = db.query(ContactInvitation).filter(
+        ContactInvitation.sender_id == current_user.id,
+        ContactInvitation.status == ContactInviteStatus.DECLINED
+    ).count()
+
+    return ContactStatsResponse(
+        total_contacts=total_contacts,
+        favorite_contacts=favorite_contacts,
+        total_groups=total_groups,
+        pending_invitations_sent=pending_sent,
+        pending_invitations_received=pending_received,
+        accepted_invitations=accepted,
+        declined_invitations=declined
     )
 
 
@@ -167,54 +211,6 @@ async def delete_contact(
     db.commit()
 
 
-@router.post("/import", response_model=ContactImportResponse)
-async def import_contacts(
-    import_data: ContactImportRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Import multiple contacts"""
-    contact_service = ContactService(db)
-    imported_contacts = []
-    errors = []
-    skipped_count = 0
-    
-    for contact_data in import_data.contacts:
-        try:
-            contact = contact_service.add_contact(current_user.id, contact_data.model_dump())
-            imported_contacts.append(contact)
-        except HTTPException as e:
-            errors.append(f"Contact {contact_data.first_name} {contact_data.last_name}: {e.detail}")
-            skipped_count += 1
-        except Exception as e:
-            errors.append(f"Contact {contact_data.first_name} {contact_data.last_name}: {str(e)}")
-            skipped_count += 1
-    
-    return ContactImportResponse(
-        imported_count=len(imported_contacts),
-        skipped_count=skipped_count,
-        errors=errors,
-        imported_contacts=imported_contacts
-    )
-
-
-# Contact Invitations
-@router.post("/invitations", response_model=ContactInvitationResponse, status_code=status.HTTP_201_CREATED)
-async def send_contact_invitation(
-    invitation_data: ContactInvitationCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Send invitation to a contact"""
-    contact_service = ContactService(db)
-    return contact_service.send_contact_invitation(
-        sender_id=current_user.id,
-        contact_id=invitation_data.contact_id,
-        event_id=invitation_data.event_id,
-        message=invitation_data.message
-    )
-
-
 @router.post("/invitations/bulk", response_model=List[ContactInvitationResponse], status_code=status.HTTP_201_CREATED)
 async def send_bulk_invitations(
     invitation_data: BulkContactInvitationCreate,
@@ -230,6 +226,20 @@ async def send_bulk_invitations(
         message=invitation_data.message
     )
 
+@router.post("/invitations", response_model=ContactInvitationResponse, status_code=status.HTTP_201_CREATED)
+async def send_invitation(
+    invitation_data: ContactInvitationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send an invitation to a single contact"""
+    contact_service = ContactService(db)
+    return contact_service.send_invitation(
+        sender_id=current_user.id,
+        contact_id=invitation_data.contact_id,
+        event_id=invitation_data.event_id,
+        message=invitation_data.message
+    )
 
 @router.get("/invitations/sent", response_model=InvitationListResponse)
 async def get_sent_invitations(

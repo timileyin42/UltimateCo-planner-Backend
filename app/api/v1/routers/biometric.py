@@ -3,12 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from datetime import datetime, timedelta
-from app.models.biometric_models import UserDevice, BiometricAuth, BiometricAuthAttempt
+from app.models.biometric_models import BiometricDevice, BiometricAuth, BiometricAuthAttempt
 from sqlalchemy import and_, func
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user_models import User
-from app.models.biometric_models import BiometricType, DeviceType, BiometricStatus, UserDevice, BiometricAuth
+from app.models.biometric_models import BiometricType, DeviceType, BiometricStatus, BiometricDevice, BiometricAuth
 from app.services.biometric_service import BiometricService
 from app.schemas.biometric_schemas import (
     DeviceRegistrationRequest, DeviceResponse, DeviceListResponse, UpdateDeviceRequest,
@@ -67,10 +67,10 @@ async def update_device(
     db: Session = Depends(get_db)
 ):
     """Update device information"""
-    device = db.query(UserDevice).filter(
+    device = db.query(BiometricDevice).filter(
         and_(
-            UserDevice.user_id == current_user.id,
-            UserDevice.device_id == device_id
+            BiometricDevice.user_id == current_user.id,
+            BiometricDevice.device_id == device_id
         )
     ).first()
     
@@ -145,8 +145,8 @@ async def authenticate_with_biometric(
         )
         
         # Update device last used
-        device = db.query(UserDevice).filter(
-            UserDevice.device_id == auth_data.device_id
+        device = db.query(BiometricDevice).filter(
+            BiometricDevice.device_id == auth_data.device_id
         ).first()
         if device:
             device.last_used_at = datetime.utcnow()
@@ -310,9 +310,9 @@ async def get_biometric_stats(
     """Get biometric authentication statistics for the current user"""
     
     # Get device stats
-    total_devices = db.query(UserDevice).filter(UserDevice.user_id == current_user.id).count()
-    active_devices = db.query(UserDevice).filter(
-        and_(UserDevice.user_id == current_user.id, UserDevice.is_active == True)
+    total_devices = db.query(BiometricDevice).filter(BiometricDevice.user_id == current_user.id).count()
+    active_devices = db.query(BiometricDevice).filter(
+        and_(BiometricDevice.user_id == current_user.id, BiometricDevice.is_active == True)
     ).count()
     
     # Get biometric auth stats

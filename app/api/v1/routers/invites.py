@@ -29,7 +29,7 @@ async def create_invite_code(
 ):
     """Create a new invite code with QR code"""
     try:
-        return invite_service.create_invite_code(current_user.id, invite_data)
+        return await invite_service.create_invite_code(current_user.id, invite_data)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -45,7 +45,7 @@ async def create_invite_link(
 ):
     """Create a new invite link with QR code"""
     try:
-        return invite_service.create_invite_link(current_user.id, invite_data)
+        return await invite_service.create_invite_link(current_user.id, invite_data)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -61,7 +61,7 @@ async def generate_qr_code(
 ):
     """Generate a custom QR code"""
     try:
-        return invite_service.generate_custom_qr_code(qr_request)
+        return await invite_service.generate_custom_qr_code(qr_request, user_id=current_user.id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -76,7 +76,7 @@ async def generate_profile_qr_code(
 ):
     """Generate QR code for user profile sharing"""
     try:
-        return invite_service.generate_user_profile_qr(current_user.id)
+        return await invite_service.generate_user_profile_qr(current_user.id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -90,7 +90,7 @@ async def generate_app_qr_code(
 ):
     """Generate QR code for general app invitation (public endpoint)"""
     try:
-        return invite_service.generate_app_invite_qr()
+        return await invite_service.generate_app_invite_qr()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -176,6 +176,28 @@ async def deactivate_invite_code(
     return {"message": "Invite code deactivated successfully"}
 
 
+@router.delete("/codes/{invite_id}/with-qr")
+async def delete_invite_code_with_qr(
+    invite_id: int,
+    current_user: User = Depends(get_current_user),
+    invite_service: InviteService = Depends(get_invite_service)
+):
+    """Delete an invite code and its QR code from database and GCP bucket"""
+    try:
+        success = await invite_service.delete_invite_code_with_qr(invite_id, current_user.id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invite code not found or not owned by user"
+            )
+        return {"message": "Invite code and QR code deleted successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 @router.delete("/links/{invite_id}")
 async def deactivate_invite_link(
     invite_id: int,
@@ -190,6 +212,28 @@ async def deactivate_invite_link(
             detail="Invite link not found or not owned by user"
         )
     return {"message": "Invite link deactivated successfully"}
+
+
+@router.delete("/links/{invite_id}/with-qr")
+async def delete_invite_link_with_qr(
+    invite_id: int,
+    current_user: User = Depends(get_current_user),
+    invite_service: InviteService = Depends(get_invite_service)
+):
+    """Delete an invite link and its QR code from database and GCP bucket"""
+    try:
+        success = await invite_service.delete_invite_link_with_qr(invite_id, current_user.id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invite link not found or not owned by user"
+            )
+        return {"message": "Invite link and QR code deleted successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 # Public endpoints for processing invites (no authentication required)
