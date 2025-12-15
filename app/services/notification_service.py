@@ -156,10 +156,10 @@ class NotificationService:
         if rsvp_reminder:
             created_reminders.append(rsvp_reminder)
         
-        # Create event reminder (1 day before event)
-        event_reminder = self._create_event_reminder(event)
-        if event_reminder:
-            created_reminders.append(event_reminder)
+        # Create event reminders (1 month, 1 week, 1 day, and day-of)
+        event_reminders = self._create_event_reminders(event)
+        if event_reminders:
+            created_reminders.extend(event_reminders)
         
         # Create dress code reminder if applicable
         dress_code_reminder = self._create_dress_code_reminder(event)
@@ -211,8 +211,16 @@ class NotificationService:
     
     # Notification preferences
     def get_user_preferences(self, user_id: int) -> List:
-        """Get notification preferences for a user."""
-        return self.notification_repo.get_user_preferences(user_id)
+        """Get notification preferences for a user, seeding defaults on first access."""
+        preferences = self.notification_repo.get_user_preferences(user_id)
+        if preferences:
+            return preferences
+
+        default_preferences = self._build_default_preferences()
+        if not default_preferences:
+            return []
+
+        return self.notification_repo.update_user_preferences(user_id, default_preferences)
     
     def update_user_preferences(
         self, 
@@ -221,6 +229,27 @@ class NotificationService:
     ) -> List:
         """Update user notification preferences."""
         return self.notification_repo.update_user_preferences(user_id, preferences)
+
+    def _build_default_preferences(self) -> List[Dict[str, Any]]:
+        """Construct the system default preference payloads for every notification type."""
+        defaults: List[Dict[str, Any]] = []
+
+        for notification_type in NotificationType:
+            defaults.append(
+                {
+                    'notification_type': notification_type,
+                    'email_enabled': True,
+                    'sms_enabled': False,
+                    'push_enabled': True,
+                    'in_app_enabled': True,
+                    'advance_notice_hours': 24,
+                    'quiet_hours_start': None,
+                    'quiet_hours_end': None,
+                    'max_daily_notifications': 10,
+                }
+            )
+
+        return defaults
     
     # Template management
     def create_reminder_template(
@@ -322,6 +351,31 @@ class NotificationService:
             'queued_notifications': queued_count,
             'failed_notifications': failed_count,
             'processing_status': 'active' if queued_count > 0 else 'idle'
+        }
+
+    def get_user_notifications(
+        self,
+        user_id: int,
+        limit: int = 50,
+        unread_only: bool = False
+    ) -> Dict[str, Any]:
+        """Get notifications for a specific user."""
+        page_size = max(1, min(limit, 100))
+
+        notifications = self.notification_repo.get_user_notifications(
+            user_id=user_id,
+            limit=page_size,
+            include_read=not unread_only
+        )
+
+        total = self.notification_repo.count_user_notifications(user_id)
+        unread_count = self.notification_repo.count_unread_notifications(user_id)
+
+        return {
+            'notifications': notifications,
+            'total': total,
+            'unread_count': unread_count,
+            'limit': page_size
         }
     
     def retry_failed_notifications(self) -> int:
@@ -837,35 +891,56 @@ class NotificationService:
         
         return reminder
     
-    def _create_event_reminder(self, event):
-        """Create automatic event reminder."""
-        # Only create if event is more than 1 day away
-        hours_until_event = (event.start_datetime - datetime.utcnow()).total_seconds() / 3600
+    def _create_event_reminders(self, event):
+        """Create automatic event reminders at 1 month, 1 week, 1 day, and day-of."""
+        now = datetime.utcnow()
+        offsets = [
+            (timedelta(days=30), "1 month"),
+            (timedelta(days=7), "1 week"),
+            (timedelta(days=1), "1 day"),
+            (timedelta(hours=0), "today")
+        ]
+        created_reminders = []
         
-        if hours_until_event < 24:
-            return None
+        for offset, label in offsets:
+            scheduled_time = event.start_datetime - offset
+            
+            # Skip if this reminder would occur in the past
+            if scheduled_time <= now:
+                continue
+            
+            # Build label-specific messaging
+            if label == "today":
+                title = f'Event Reminder (Today) - {event.title}'
+                message = f"{event.title} is today at {event.start_datetime.strftime('%I:%M %p')}."
+            elif label == "1 day":
+                title = f'Event Reminder (Tomorrow) - {event.title}'
+                message = f"Reminder: {event.title} is tomorrow at {event.start_datetime.strftime('%I:%M %p')}."
+            else:
+                title = f'Event Reminder ({label}) - {event.title}'
+                message = (
+                    f"Reminder: {event.title} is in {label} on "
+                    f"{event.start_datetime.strftime('%B %d, %Y at %I:%M %p')}.")
+            
+            reminder_data = {
+                'title': title,
+                'message': message,
+                'notification_type': NotificationType.EVENT_REMINDER,
+                'scheduled_time': scheduled_time,
+                'frequency': ReminderFrequency.ONCE,
+                'event_id': event.id,
+                'creator_id': event.creator_id,
+                'target_all_guests': True,
+                'send_email': True,
+                'send_push': True,
+                'send_in_app': True
+            }
+            
+            reminder = self.notification_repo.create_reminder(reminder_data)
+            self._queue_reminder_notifications(reminder)
+            created_reminders.append(reminder)
         
-        # Schedule for 24 hours before event
-        scheduled_time = event.start_datetime - timedelta(hours=24)
-        
-        reminder_data = {
-            'title': f'Event Reminder - {event.title}',
-            'message': f'Reminder: {event.title} is tomorrow at {event.start_datetime.strftime("%I:%M %p")}.',
-            'notification_type': NotificationType.EVENT_REMINDER,
-            'scheduled_time': scheduled_time,
-            'frequency': ReminderFrequency.ONCE,
-            'event_id': event.id,
-            'creator_id': event.creator_id,
-            'target_all_guests': True,
-            'send_email': True,
-            'send_push': True,
-            'send_in_app': True
-        }
-        
-        reminder = self.notification_repo.create_reminder(reminder_data)
-        self._queue_reminder_notifications(reminder)
-        
-        return reminder
+        return created_reminders
     
     def _create_dress_code_reminder(self, event):
         """Create dress code reminder if event has dress code."""
