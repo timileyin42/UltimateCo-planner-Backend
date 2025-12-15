@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ASYNC_DATABASE_URL: str
     
+    # Individual Postgres connection parameters (optional, for building connection strings)
+    POSTGRES_HOST: Optional[str] = None
+    POSTGRES_PORT: Optional[int] = None
+    POSTGRES_DB: Optional[str] = None
+    POSTGRES_USER: Optional[str] = None
+    POSTGRES_PASSWORD: Optional[str] = None
+    
     # Read Replica Configuration
     READ_REPLICA_URLS: List[str] = []
     
@@ -85,7 +92,8 @@ class Settings(BaseSettings):
     SUPPORT_EMAIL: str
     
     # Frontend URL for email links
-    FRONTEND_URL: str
+    FRONTEND_URL: str  # Web frontend URL
+    MOBILE_APP_SCHEME: Optional[str] = None  # Mobile app deep link scheme (e.g., 'myapp://')
     
     
     # File Upload Configuration
@@ -118,21 +126,26 @@ class Settings(BaseSettings):
     # Push Notifications - Firebase Cloud Messaging
     FIREBASE_CREDENTIALS_PATH: Optional[str] = None
     FIREBASE_CREDENTIALS_JSON: Optional[str] = None
+    FIREBASE_CREDENTIALS_BASE64: Optional[str] = None
     
     # File Storage - GCP Storage
     GCP_PROJECT_ID: Optional[str] = None
     GCP_STORAGE_BUCKET: Optional[str] = None
     GCP_STORAGE_REGION: str
+    GCP_SERVICE_ACCOUNT_KEY_BASE64: Optional[str] = None
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
     
     # Google OAuth Configuration
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: Optional[str] = None  # Web redirect URI
+    GOOGLE_MOBILE_REDIRECT_URI: Optional[str] = None  # Mobile deep link
     
     # Calendar Integration Configuration
     # Google Calendar
     GOOGLE_CALENDAR_SCOPES: Union[List[str], str] = []
-    GOOGLE_CALENDAR_REDIRECT_URI: Optional[str] = None
+    GOOGLE_CALENDAR_REDIRECT_URI: Optional[str] = None  # Web redirect URI
+    GOOGLE_CALENDAR_MOBILE_REDIRECT_URI: Optional[str] = None  # Mobile deep link
     
     # Apple Calendar (CalDAV)
     APPLE_CALENDAR_SERVER_URL: Optional[str] = None
@@ -158,6 +171,12 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
     STRIPE_PRICE_ID_PRO_MONTHLY: Optional[str] = None
     STRIPE_PRICE_ID_PRO_YEARLY: Optional[str] = None
+    
+    # Spotify Configuration
+    SPOTIFY_CLIENT_ID: Optional[str] = None
+    SPOTIFY_CLIENT_SECRET: Optional[str] = None
+    SPOTIFY_REDIRECT_URI: Optional[str] = None  # Web redirect URI
+    SPOTIFY_MOBILE_REDIRECT_URI: Optional[str] = None  # Mobile deep link
     
     # Environment
     ENVIRONMENT: str
