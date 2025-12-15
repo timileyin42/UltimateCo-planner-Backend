@@ -1,6 +1,7 @@
 # Core FastAPI and web framework
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
+gunicorn==21.2.0
 python-multipart==0.0.12
 
 # Database
@@ -12,6 +13,7 @@ asyncpg==0.30.0
 # Authentication and Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
 
 # Environment and Configuration
 python-dotenv==1.0.1
@@ -84,3 +86,6 @@ psutil==5.9.6
 
 # Payment Processing
 stripe==11.1.0
+
+# Music Streaming - Spotify
+spotipy==2.24.0
