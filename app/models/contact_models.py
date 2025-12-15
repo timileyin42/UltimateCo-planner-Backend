@@ -45,7 +45,7 @@ class UserContact(BaseModel, TimestampMixin):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     
     # Relationships
-    owner = relationship("User", back_populates="contacts")
+    user = relationship("User", foreign_keys=[user_id], back_populates="contacts")
     invitations = relationship("ContactInvitation", back_populates="contact", cascade="all, delete-orphan")
     
     # Database indexes
@@ -101,11 +101,13 @@ class ContactInvitation(BaseModel, TimestampMixin):
     # Relationships
     contact_id: Mapped[int] = mapped_column(ForeignKey("user_contacts.id"), nullable=False)
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    recipient_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)  # User who accepted the invitation
     event_id: Mapped[Optional[int]] = mapped_column(ForeignKey("events.id"), nullable=True)  # For event invites
     
     # Relationships
     contact = relationship("UserContact", back_populates="invitations")
     sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_contact_invitations")
+    recipient = relationship("User", foreign_keys=[recipient_id], back_populates="received_contact_invitations")
     event = relationship("Event", back_populates="contact_invitations")
     
     # Database indexes
@@ -170,7 +172,7 @@ class ContactGroup(BaseModel, TimestampMixin):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     
     # Relationships
-    owner = relationship("User", back_populates="contact_groups")
+    user = relationship("User", foreign_keys=[user_id], back_populates="contact_groups")
     memberships = relationship("ContactGroupMembership", back_populates="group", cascade="all, delete-orphan")
     
     # Database indexes

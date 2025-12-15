@@ -93,6 +93,9 @@ class InviteLink(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     invite_type = Column(String(50), nullable=False, index=True)
     custom_message = Column(Text, nullable=True)
     
+    # QR code specific fields
+    qr_code_url = Column(String(500), nullable=True)  # URL to generated QR code image
+    
     # Relationships
     creator = relationship("User", foreign_keys=[user_id], back_populates="created_invite_links")
     usages = relationship("InviteLinkUsage", back_populates="invite_link", cascade="all, delete-orphan")

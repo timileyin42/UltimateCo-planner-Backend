@@ -28,7 +28,7 @@ class BiometricStatus(str, enum.Enum):
     EXPIRED = "expired"
     SUSPENDED = "suspended"
 
-class UserDevice(BaseModel, TimestampMixin):
+class BiometricDevice(BaseModel, TimestampMixin):
     """User devices for biometric authentication"""
     __tablename__ = "biometric_devices"
     
@@ -58,8 +58,7 @@ class UserDevice(BaseModel, TimestampMixin):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     
     # Relationships
-    user = relationship("User", back_populates="devices")
-    biometric_auths = relationship("BiometricAuth", back_populates="device", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="biometric_devices")
     
     # Database indexes
     __table_args__ = (
@@ -229,8 +228,8 @@ class BiometricToken(BaseModel, TimestampMixin):
     device_id: Mapped[Optional[int]] = mapped_column(ForeignKey("biometric_devices.id"), nullable=True)
     
     # Relationships
-    user = relationship("User")
-    device = relationship("UserDevice")
+    user = relationship("User", back_populates="biometric_tokens")
+    device = relationship("BiometricDevice")
     
     # Database indexes
     __table_args__ = (

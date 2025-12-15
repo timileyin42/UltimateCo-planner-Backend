@@ -11,6 +11,7 @@ from app.models.vendor_models import *
 from app.models.ai_chat_models import *
 from app.models.subscription_models import *
 from app.models.invite_models import InviteCode, InviteLink, InviteLinkUsage, InviteType
+from app.models.contact_models import *
 from app.models.shared_models import *
 
 __all__ = [

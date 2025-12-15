@@ -9,7 +9,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Foreign
 from sqlalchemy.orm import relationship
 import enum
 
-from app.core.database import Base
+from app.db.base import Base
 
 
 class CalendarProviderEnum(str, enum.Enum):
