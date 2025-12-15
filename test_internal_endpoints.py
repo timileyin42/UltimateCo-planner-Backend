@@ -605,6 +605,188 @@ def test_get_user_devices():
         print_error(f"Get devices error: {str(e)}")
 
 # ==========================================================================
+# CALENDAR INTEGRATION TESTS
+# ==========================================================================
+
+def test_get_calendar_auth_url():
+    """Test getting calendar authorization URL"""
+    print("\n" + "="*50)
+    print("Testing Get Calendar Auth URL")
+    print("="*50)
+
+    try:
+        response = requests.get(
+            f"{API_V1}/calendar/auth/google/url",
+            headers=get_headers()
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            print_info(f"Response: {json.dumps(data, indent=2)}")
+            
+            # Verify response structure
+            assert "auth_url" in data, "Missing 'auth_url' field"
+            assert "provider" in data, "Missing 'provider' field"
+            assert "instructions" in data, "Missing 'instructions' field"
+            
+            assert data["provider"] == "google", "Provider should be google"
+            assert data["auth_url"].startswith("https://"), "Auth URL should be HTTPS"
+            
+            print_success("Calendar auth URL retrieved successfully")
+            print_info(f"Provider: {data['provider']}")
+            print_info(f"Auth URL available: Yes")
+            return True
+        else:
+            print_error(f"Get auth URL failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except AssertionError as ae:
+        print_error(f"Assertion failed: {str(ae)}")
+        return False
+    except Exception as e:
+        print_error(f"Error getting auth URL: {str(e)}")
+        return False
+
+def test_list_calendar_connections():
+    """Test listing calendar connections"""
+    print("\n" + "="*50)
+    print("Testing List Calendar Connections")
+    print("="*50)
+
+    try:
+        response = requests.get(
+            f"{API_V1}/calendar/connections",
+            headers=get_headers()
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            print_info(f"Response: {json.dumps(data, indent=2)}")
+            
+            # Verify response structure
+            assert "connections" in data, "Missing 'connections' field"
+            assert "total" in data, "Missing 'total' field"
+            
+            connections = data.get("connections", [])
+            total = data.get("total", 0)
+            
+            print_success(f"Calendar connections retrieved: {total} connection(s)")
+            
+            if connections:
+                for i, conn in enumerate(connections, 1):
+                    print_info(f"  Connection {i}:")
+                    print_info(f"    Provider: {conn.get('provider')}")
+                    print_info(f"    Email: {conn.get('calendar_email')}")
+                    print_info(f"    Status: {conn.get('status')}")
+                    print_info(f"    Is Primary: {conn.get('is_primary')}")
+            else:
+                print_info("No calendar connections found (user hasn't connected any calendars)")
+            
+            return True
+        else:
+            print_error(f"List connections failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except AssertionError as ae:
+        print_error(f"Assertion failed: {str(ae)}")
+        return False
+    except Exception as e:
+        print_error(f"Error listing connections: {str(e)}")
+        return False
+
+def test_list_calendar_events():
+    """Test listing calendar events"""
+    print("\n" + "="*50)
+    print("Testing List Calendar Events")
+    print("="*50)
+
+    try:
+        # Query events from the last 7 days to next 30 days
+        response = requests.get(
+            f"{API_V1}/calendar/events",
+            headers=get_headers()
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            print_info(f"Response: {json.dumps(data, indent=2)}")
+            
+            # Verify response structure
+            assert "events" in data, "Missing 'events' field"
+            assert "total" in data, "Missing 'total' field"
+            
+            events = data.get("events", [])
+            total = data.get("total", 0)
+            
+            print_success(f"Calendar events retrieved: {total} event(s)")
+            
+            if events:
+                for i, event in enumerate(events[:5], 1):  # Show first 5
+                    print_info(f"  Event {i}:")
+                    print_info(f"    Title: {event.get('title')}")
+                    print_info(f"    Start: {event.get('start_datetime')}")
+                    print_info(f"    End: {event.get('end_datetime')}")
+                    print_info(f"    Location: {event.get('location', 'N/A')}")
+                    print_info(f"    Calendar: {event.get('calendar_name', 'Unknown')}")
+            else:
+                print_info("No calendar events found (user may not have any events or connections)")
+            
+            return True
+        else:
+            print_error(f"List events failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except AssertionError as ae:
+        print_error(f"Assertion failed: {str(ae)}")
+        return False
+    except Exception as e:
+        print_error(f"Error listing events: {str(e)}")
+        return False
+
+def test_get_calendar_stats():
+    """Test getting calendar statistics"""
+    print("\n" + "="*50)
+    print("Testing Get Calendar Stats")
+    print("="*50)
+
+    try:
+        response = requests.get(
+            f"{API_V1}/calendar/stats",
+            headers=get_headers()
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            print_info(f"Response: {json.dumps(data, indent=2)}")
+            
+            # Verify response structure
+            assert "total_connections" in data, "Missing 'total_connections' field"
+            assert "active_connections" in data, "Missing 'active_connections' field"
+            assert "total_events" in data, "Missing 'total_events' field"
+            
+            print_success("Calendar stats retrieved successfully")
+            print_info(f"Total connections: {data.get('total_connections', 0)}")
+            print_info(f"Active connections: {data.get('active_connections', 0)}")
+            print_info(f"Total events: {data.get('total_events', 0)}")
+            print_info(f"Upcoming events: {data.get('upcoming_events', 0)}")
+            print_info(f"Past events: {data.get('past_events', 0)}")
+            
+            if data.get("last_sync"):
+                print_info(f"Last sync: {data['last_sync']}")
+            
+            return True
+        else:
+            print_error(f"Get stats failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except AssertionError as ae:
+        print_error(f"Assertion failed: {str(ae)}")
+        return False
+    except Exception as e:
+        print_error(f"Error getting stats: {str(e)}")
+        return False
+
+# ==========================================================================
 # RUNNER
 # ==========================================================================
 
@@ -653,6 +835,12 @@ def run_all_tests():
     results["update_token"] = test_update_device_token()
     results["get_devices"] = test_get_user_devices()
     results["delete_device"] = test_delete_device()
+
+    # Calendar Integration
+    results["calendar_get_auth_url"] = test_get_calendar_auth_url()
+    results["calendar_list_connections"] = test_list_calendar_connections()
+    results["calendar_list_events"] = test_list_calendar_events()
+    results["calendar_stats"] = test_get_calendar_stats()
 
     print_summary(results)
 

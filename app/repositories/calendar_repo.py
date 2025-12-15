@@ -208,6 +208,7 @@ class CalendarEventRepository:
     ) -> Tuple[List[CalendarEvent], int]:
         """Get calendar events by user ID with pagination and filters"""
         query = self.db.query(CalendarEvent).filter(CalendarEvent.user_id == user_id)
+        joined_connection = False
         
         if filters:
             if filters.get('connection_id'):
@@ -222,6 +223,16 @@ class CalendarEventRepository:
             if filters.get('sync_status'):
                 sync_status = SyncStatusEnum(filters['sync_status'])
                 query = query.filter(CalendarEvent.sync_status == sync_status)
+
+            if filters.get('provider'):
+                if not joined_connection:
+                    query = query.join(
+                        CalendarConnection,
+                        CalendarEvent.calendar_connection_id == CalendarConnection.id
+                    )
+                    joined_connection = True
+                provider_enum = CalendarProviderEnum(filters['provider'].upper())
+                query = query.filter(CalendarConnection.provider == provider_enum)
         
         total = query.count()
         
@@ -230,6 +241,10 @@ class CalendarEventRepository:
         ).limit(pagination.limit).all()
         
         return events, total
+
+    def count_by_user_id(self, user_id: int) -> int:
+        """Count total calendar events for a user"""
+        return self.db.query(CalendarEvent).filter(CalendarEvent.user_id == user_id).count()
     
     def create(self, event_data: Dict[str, Any]) -> CalendarEvent:
         """Create a new calendar event"""
@@ -335,3 +350,18 @@ class CalendarSyncLogRepository:
             'total_events_deleted': total_events_deleted,
             'last_sync': logs[0].sync_started_at if logs else None
         }
+
+    def count_errors_since(self, since: datetime, user_id: Optional[int] = None) -> int:
+        """Count sync errors since a given timestamp (optionally scoped to user)"""
+        query = self.db.query(CalendarSyncLog).join(
+            CalendarConnection,
+            CalendarSyncLog.calendar_connection_id == CalendarConnection.id
+        ).filter(
+            CalendarSyncLog.sync_status == SyncStatusEnum.FAILED,
+            CalendarSyncLog.sync_started_at >= since
+        )
+
+        if user_id is not None:
+            query = query.filter(CalendarConnection.user_id == user_id)
+
+        return query.count()
