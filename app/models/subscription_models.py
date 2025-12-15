@@ -229,7 +229,7 @@ class StripeEventLog(Base, IDMixin, TimestampMixin):
     processing_status = Column(String(50), default="pending", nullable=False)  # pending, processing, completed, failed
     
     # Event metadata (stored as JSON string)
-    metadata = Column(Text, nullable=True)
+    event_metadata = Column(Text, nullable=True)
     
     # Processing details
     processed_at = Column(DateTime, nullable=True)

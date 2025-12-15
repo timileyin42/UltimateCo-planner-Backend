@@ -64,6 +64,7 @@ class Event(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     
     # Related models
     invitations = relationship("EventInvitation", back_populates="event", cascade="all, delete-orphan")
+    contact_invitations = relationship("ContactInvitation", back_populates="event", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="event", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="event", cascade="all, delete-orphan")
     media = relationship("Media", back_populates="event")
@@ -170,7 +171,7 @@ class Task(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     
     event_id = Column(ForeignKey("events.id"), nullable=False)
     creator_id = Column(ForeignKey("users.id"), nullable=False)
-    assignee_id = Column(ForeignKey("users.id"), nullable=True)
+    assigned_to_id = Column(ForeignKey("users.id"), nullable=True)
     
     # Task details
     title = Column(String(255), nullable=False)
@@ -192,14 +193,14 @@ class Task(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     # Relationships
     event = relationship("Event", back_populates="tasks")
     creator = relationship("User", back_populates="created_tasks", foreign_keys=[creator_id])
-    assignee = relationship("User", back_populates="assigned_tasks", foreign_keys=[assignee_id])
+    assigned_to = relationship("User", back_populates="assigned_tasks", foreign_keys=[assigned_to_id])
     timeline_items = relationship("TimelineItem", back_populates="task")
     
     # Database indexes for performance
     __table_args__ = (
         Index('idx_task_event_id', 'event_id'),
         Index('idx_task_creator_id', 'creator_id'),
-        Index('idx_task_assignee_id', 'assignee_id'),
+        Index('idx_task_assignee_id', 'assigned_to_id'),
         Index('idx_task_status', 'status'),
         Index('idx_task_priority', 'priority'),
         Index('idx_task_due_date', 'due_date'),
@@ -208,7 +209,7 @@ class Task(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         Index('idx_task_is_deleted', 'is_deleted'),
         # Combined indexes for common queries
         Index('idx_task_event_status', 'event_id', 'status'),
-        Index('idx_task_assignee_status', 'assignee_id', 'status'),
+        Index('idx_task_assignee_status', 'assigned_to_id', 'status'),
         Index('idx_task_due_status', 'due_date', 'status'),
         Index('idx_task_priority_status', 'priority', 'status'),
     )
@@ -241,7 +242,7 @@ class Expense(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     
     # Relationships
     event = relationship("Event", back_populates="expenses")
-    paid_by = relationship("User", backref="paid_expenses")
+    paid_by_user = relationship("User", foreign_keys=[paid_by_user_id], back_populates="paid_expenses")
     splits = relationship("ExpenseSplit", back_populates="expense", cascade="all, delete-orphan")
     
     # Database indexes for performance
@@ -276,7 +277,7 @@ class ExpenseSplit(Base, IDMixin, TimestampMixin):
     
     # Relationships
     expense = relationship("Expense", back_populates="splits")
-    user = relationship("User", backref="expense_splits")
+    user = relationship("User", foreign_keys=[user_id], back_populates="expense_splits")
     
     def __repr__(self):
         return f"<ExpenseSplit(expense_id={self.expense_id}, user_id={self.user_id}, amount={self.amount_owed})>"
@@ -330,7 +331,7 @@ class Poll(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     
     # Relationships
     event = relationship("Event", back_populates="polls")
-    creator = relationship("User", backref="created_polls")
+    creator = relationship("User", foreign_keys=[creator_id], back_populates="created_polls")
     options = relationship("PollOption", back_populates="poll", cascade="all, delete-orphan")
     
     # Database indexes for performance
@@ -381,7 +382,7 @@ class PollVote(Base, IDMixin, TimestampMixin):
     # Relationships
     poll = relationship("Poll", backref="votes")
     option = relationship("PollOption", back_populates="votes")
-    user = relationship("User", backref="poll_votes")
+    user = relationship("User", foreign_keys=[user_id], back_populates="poll_votes")
     
     def __repr__(self):
         return f"<PollVote(poll_id={self.poll_id}, option_id={self.option_id}, user_id={self.user_id})>"

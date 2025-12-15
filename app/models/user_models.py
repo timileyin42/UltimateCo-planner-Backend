@@ -89,7 +89,8 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     uploaded_media = relationship("Media", foreign_keys="Media.uploaded_by_id", back_populates="uploaded_by")
     media_likes = relationship("MediaLike", back_populates="user")
     media_comments = relationship("MediaComment", back_populates="author")
-    media_shares = relationship("MediaShare", back_populates="shared_by")
+    media_shares = relationship("MediaShare", foreign_keys="MediaShare.shared_by_user_id", back_populates="shared_by")
+    received_media_shares = relationship("MediaShare", foreign_keys="MediaShare.shared_with_user_id", back_populates="shared_with")
     
     # Message relationships
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
@@ -163,10 +164,14 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     contact_groups = relationship("ContactGroup", back_populates="user", cascade="all, delete-orphan")
     
     # Biometric authentication relationships
-    devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
+    devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")  # For notification devices
+    biometric_devices = relationship("BiometricDevice", back_populates="user", cascade="all, delete-orphan")  # For biometric auth devices
     biometric_auths = relationship("BiometricAuth", back_populates="user", cascade="all, delete-orphan")
-    biometric_attempts = relationship("BiometricAuthAttempt", back_populates="user", cascade="all, delete-orphan")
     biometric_tokens = relationship("BiometricToken", back_populates="user", cascade="all, delete-orphan")
+    
+    # Calendar relationships
+    calendar_connections = relationship("CalendarConnection", back_populates="user", cascade="all, delete-orphan")
+    calendar_events = relationship("CalendarEvent", back_populates="user", cascade="all, delete-orphan")
     
     # Database indexes for performance optimization
     __table_args__ = (

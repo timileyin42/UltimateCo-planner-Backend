@@ -31,7 +31,7 @@ class Media(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     alt_text = Column(String(255), nullable=True)  # for accessibility
     
     # Upload information
-    uploader_id = Column(ForeignKey("users.id"), nullable=False)
+    uploaded_by_id = Column(ForeignKey("users.id"), nullable=False)
     event_id = Column(ForeignKey("events.id"), nullable=True)  # Optional event association
     
     # Privacy and sharing
@@ -46,13 +46,13 @@ class Media(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     thumbnail_url = Column(String(500), nullable=True)
     
     # Relationships
-    uploader = relationship("User", back_populates="uploaded_media")
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id], back_populates="uploaded_media")
     event = relationship("Event", back_populates="media")
     tags = relationship("MediaTag", back_populates="media", cascade="all, delete-orphan")
     
     # Database indexes for performance optimization
     __table_args__ = (
-        Index('idx_media_uploader_id', 'uploader_id'),
+        Index('idx_media_uploaded_by_id', 'uploaded_by_id'),
         Index('idx_media_event_id', 'event_id'),
         Index('idx_media_media_type', 'media_type'),
         Index('idx_media_mime_type', 'mime_type'),
@@ -66,12 +66,12 @@ class Media(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
         Index('idx_media_created_at', 'created_at'),
         Index('idx_media_updated_at', 'updated_at'),
         # Combined indexes for common queries
-        Index('idx_media_uploader_created', 'uploader_id', 'created_at'),
+        Index('idx_media_uploaded_by_created', 'uploaded_by_id', 'created_at'),
         Index('idx_media_event_created', 'event_id', 'created_at'),
         Index('idx_media_type_public', 'media_type', 'is_public'),
         Index('idx_media_event_type', 'event_id', 'media_type'),
         Index('idx_media_event_featured', 'event_id', 'is_featured'),
-        Index('idx_media_uploader_type', 'uploader_id', 'media_type'),
+        Index('idx_media_uploaded_by_type', 'uploaded_by_id', 'media_type'),
     )
     
     def __repr__(self):
@@ -212,8 +212,8 @@ class MediaShare(Base, IDMixin, TimestampMixin):
     
     # Relationships
     media = relationship("Media", backref="shares")
-    shared_with = relationship("User", foreign_keys=[shared_with_user_id], backref="received_media_shares")
-    shared_by = relationship("User", foreign_keys=[shared_by_user_id], backref="sent_media_shares")
+    shared_with = relationship("User", foreign_keys=[shared_with_user_id], back_populates="received_media_shares")
+    shared_by = relationship("User", foreign_keys=[shared_by_user_id], back_populates="media_shares")
     
     # Database indexes for performance optimization
     __table_args__ = (
@@ -253,7 +253,7 @@ class MediaLike(Base, IDMixin, TimestampMixin):
     
     # Relationships
     media = relationship("Media", backref="likes")
-    user = relationship("User", backref="media_likes")
+    user = relationship("User", foreign_keys=[user_id], back_populates="media_likes")
     
     # Database indexes for performance optimization
     __table_args__ = (
@@ -283,7 +283,7 @@ class MediaComment(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     
     # Relationships
     media = relationship("Media", backref="comments")
-    author = relationship("User", backref="media_comments")
+    author = relationship("User", foreign_keys=[author_id], back_populates="media_comments")
     replies = relationship("MediaComment", backref="parent", remote_side="MediaComment.id")
     
     # Database indexes for performance optimization

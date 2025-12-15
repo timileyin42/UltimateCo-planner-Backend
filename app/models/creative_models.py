@@ -6,42 +6,62 @@ from typing import Optional, List, Dict, Any
 from app.models.shared_models import BaseModel, TimestampMixin
 import enum
 
-class MoodboardType(str, enum.Enum):
+
+class CaseInsensitiveStrEnum(str, enum.Enum):
+    """Str-based enum that accepts case-insensitive values."""
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            candidate = value.strip()
+            if not candidate:
+                return None
+            upper_candidate = candidate.upper()
+            for member in cls:
+                if member.name == upper_candidate or member.value.upper() == upper_candidate:
+                    return member
+        return None
+
+    def db_value(self) -> str:
+        """Database representation uses enum name to align with upper-case enums."""
+        return self.name
+
+class MoodboardType(CaseInsensitiveStrEnum):
     """Types of moodboards."""
-    DECORATIONS = "decorations"
-    FOOD = "food"
-    THEMES = "themes"
-    COLORS = "colors"
-    VENUES = "venues"
-    OUTFITS = "outfits"
-    GENERAL = "general"
+    DECORATIONS = "DECORATIONS"
+    FOOD = "FOOD"
+    THEMES = "THEMES"
+    COLORS = "COLORS"
+    VENUES = "VENUES"
+    OUTFITS = "OUTFITS"
+    GENERAL = "GENERAL"
 
-class PlaylistProvider(str, enum.Enum):
+class PlaylistProvider(CaseInsensitiveStrEnum):
     """Music streaming provider."""
-    SPOTIFY = "spotify"
-    CUSTOM = "custom"
+    SPOTIFY = "SPOTIFY"
+    CUSTOM = "CUSTOM"
 
-class PlaylistType(str, enum.Enum):
+class PlaylistType(CaseInsensitiveStrEnum):
     """Types of playlists."""
-    COLLABORATIVE = "collaborative"
-    CURATED = "curated"
-    GENERATED = "generated"
+    COLLABORATIVE = "COLLABORATIVE"
+    CURATED = "CURATED"
+    GENERATED = "GENERATED"
 
-class GameType(str, enum.Enum):
+class GameType(CaseInsensitiveStrEnum):
     """Types of party games."""
-    TRIVIA = "trivia"
-    ICEBREAKER = "icebreaker"
-    PARTY_GAME = "party_game"
-    QUIZ = "quiz"
-    SCAVENGER_HUNT = "scavenger_hunt"
-    BINGO = "bingo"
-    CUSTOM = "custom"
+    TRIVIA = "TRIVIA"
+    ICEBREAKER = "ICEBREAKER"
+    PARTY_GAME = "PARTY_GAME"
+    QUIZ = "QUIZ"
+    SCAVENGER_HUNT = "SCAVENGER_HUNT"
+    BINGO = "BINGO"
+    CUSTOM = "CUSTOM"
 
-class GameDifficulty(str, enum.Enum):
+class GameDifficulty(CaseInsensitiveStrEnum):
     """Game difficulty levels."""
-    EASY = "easy"
-    MEDIUM = "medium"
-    HARD = "hard"
+    EASY = "EASY"
+    MEDIUM = "MEDIUM"
+    HARD = "HARD"
 
 class Moodboard(BaseModel, TimestampMixin):
     """Moodboards for event inspiration."""
