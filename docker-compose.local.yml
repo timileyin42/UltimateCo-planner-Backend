@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for local development
+  db:
+    image: postgres:15-alpine
+    container_name: planetal-db-local
+    environment:
+      POSTGRES_DB: planetal
+      POSTGRES_USER: planetal
+      POSTGRES_PASSWORD: planetal123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U planetal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for local development
+  redis:
+    image: redis:7-alpine
+    container_name: planetal-redis-local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_local_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_local_data:
+  redis_local_data:
