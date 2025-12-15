@@ -1,15 +1,16 @@
 from typing import Generator, Optional
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.core.security import verify_token
 from app.core.errors import http_401_unauthorized, http_403_forbidden
 from app.services.user_service import UserService
 from app.models.user_models import User
+from app.core.config import settings
 
-# Security scheme
-security = HTTPBearer()
+# OAuth2 scheme for Swagger UI login
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token", auto_error=False)
 
 def get_db() -> Generator:
     """Database dependency"""
@@ -20,10 +21,9 @@ def get_db() -> Generator:
         db.close()
 
 def get_current_user_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    token: str = Depends(oauth2_scheme)
 ) -> str:
-    """Extract and verify JWT token"""
-    token = credentials.credentials
+    """Extract and verify JWT token from OAuth2 scheme"""
     user_id = verify_token(token)
     if user_id is None:
         raise http_401_unauthorized("Invalid authentication credentials")
@@ -64,14 +64,14 @@ def get_user_service(db: Session = Depends(get_db)) -> UserService:
 
 def get_optional_current_user(
     db: Session = Depends(get_db),
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    token: Optional[str] = Depends(oauth2_scheme)
 ) -> Optional[User]:
     """Get current user if authenticated, otherwise None"""
-    if not credentials:
+    if not token:
         return None
     
     try:
-        user_id = verify_token(credentials.credentials)
+        user_id = verify_token(token)
         if user_id is None:
             return None
         
