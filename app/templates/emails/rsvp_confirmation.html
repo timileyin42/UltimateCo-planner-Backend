@@ -28,12 +28,12 @@
             font-size: 48px;
             margin-bottom: 20px;
         }
-        .status-accepted { color: #10b981; }
-        .status-declined { color: #ef4444; }
-        .status-maybe { color: #f59e0b; }
+        .status-accepted { color: #00ACC1; }
+        .status-declined { color: #FF5252; }
+        .status-maybe { color: #FFC107; }
         .event-title {
             font-size: 24px;
-            color: #1f2937;
+            color: #FF5252;
             margin-bottom: 10px;
             font-weight: bold;
         }
@@ -42,10 +42,11 @@
             margin-bottom: 30px;
         }
         .event-details {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #FFF9E6, #FFECB3);
             padding: 25px;
-            border-radius: 8px;
+            border-radius: 10px;
             margin: 25px 0;
+            border-left: 4px solid #FFC107;
         }
         .detail-row {
             display: flex;
@@ -61,20 +62,20 @@
             flex: 1;
         }
         .response-details {
-            background-color: #dbeafe;
+            background-color: #E0F7FA;
             padding: 20px;
             border-radius: 8px;
             margin: 20px 0;
-            border-left: 4px solid #3b82f6;
+            border-left: 4px solid #00ACC1;
         }
         .plus-one-info {
-            background-color: #f0f9ff;
+            background-color: #FFF9E6;
             padding: 15px;
             border-radius: 6px;
             margin: 15px 0;
         }
         .dietary-info {
-            background-color: #fef3c7;
+            background-color: #FFEBEE;
             padding: 15px;
             border-radius: 6px;
             margin: 15px 0;
@@ -191,7 +192,7 @@
         
         <div class="footer">
             <p>This confirmation was sent via Plan et al. <a href="{{ event_url }}">View event online</a></p>
-            <p>© 2025 Plan et al. All rights reserved.</p>
+            <p>© {{ current_year() }} Plan et al. All rights reserved.</p>
         </div>
     </div>
 </body>

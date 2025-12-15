@@ -4,6 +4,7 @@ Celery application configuration.
 
 import os
 from celery import Celery
+from celery.schedules import crontab
 from app.core.config import settings
 
 # Create Celery instance
@@ -11,7 +12,11 @@ celery_app = Celery(
     "planetal",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.payments"]  # Auto-discover tasks
+    include=[
+        "app.tasks.payments",
+        "app.tasks.cleanup_qr_codes",
+        "app.tasks.notifications",
+    ]  # Auto-discover tasks
 )
 
 # Celery configuration
@@ -30,6 +35,18 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     result_expires=3600,  # Results expire after 1 hour
 )
+
+# Periodic tasks (Celery Beat)
+celery_app.conf.beat_schedule = {
+    "cleanup-expired-qr-codes-daily": {
+        "task": "app.tasks.cleanup_qr_codes.run_cleanup",
+        "schedule": crontab(hour=3, minute=0),  # daily at 03:00 UTC
+    },
+    "process-due-notifications": {
+        "task": "app.tasks.notifications.process_due_notifications",
+        "schedule": crontab(minute="*/5"),  # every 5 minutes
+    },
+}
 
 # Task routing (optional - for different queues)
 celery_app.conf.task_routes = {

@@ -36,17 +36,18 @@
         }
         .reminder-message {
             font-size: 18px;
-            color: #6366f1;
+            color: #FF5252;
             margin-bottom: 30px;
-            font-weight: 500;
+            font-weight: 600;
         }
         .countdown {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #FFC107, #FF9999);
             color: white;
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 12px;
             text-align: center;
             margin: 20px 0;
+            box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
         }
         .countdown-number {
             font-size: 36px;
@@ -197,7 +198,7 @@
         <div class="footer">
             <p>This reminder was sent via Plan et al. <a href="{{ event_url }}">View event online</a></p>
             <p>To manage your notification preferences, visit your account settings.</p>
-            <p>© 2025 Plan et al. All rights reserved.</p>
+            <p>© {{ current_year() }} Plan et al. All rights reserved.</p>
         </div>
     </div>
 </body>
