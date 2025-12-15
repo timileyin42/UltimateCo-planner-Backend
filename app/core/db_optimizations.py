@@ -70,12 +70,6 @@ def create_composite_indexes():
             ON vendor_bookings (service_date, status, vendor_id);
         """))
         
-        # Calendar-related composite indexes
-        connection.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_calendar_user_date_range 
-            ON calendar_events (user_id, start_time, end_time);
-        """))
-        
         # Notification-related composite indexes
         connection.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_notification_user_type_status 
@@ -84,9 +78,17 @@ def create_composite_indexes():
         
         # Message-related composite indexes
         connection.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_message_chat_created 
-            ON chat_messages (chat_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_message_event_created 
+            ON messages (event_id, created_at);
         """))
+        
+        # Timeline-related composite indexes
+        connection.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_timeline_event_status 
+            ON timeline_items (timeline_id, status);
+        """))
+        
+        connection.commit()
         
         logger.info("Created composite indexes for frequently queried fields")
 

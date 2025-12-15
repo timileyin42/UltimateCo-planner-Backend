@@ -4,15 +4,19 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
 # Synchronous database setup
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,
-        "options": "-c default_transaction_isolation=read_committed",
+# Configure connect_args based on database type
+if "sqlite" in settings.DATABASE_URL:
+    connect_args = {"check_same_thread": False}
+else:
+    # PostgreSQL-specific connection arguments
+    connect_args = {
         "application_name": "ultimateco_planner",
         "connect_timeout": 10,
-        "command_timeout": 30,
-    } if "sqlite" not in settings.DATABASE_URL else {"check_same_thread": False},
+    }
+
+engine = create_engine(
+    settings.DATABASE_URL,
+    connect_args=connect_args,
     echo=settings.DEBUG,
     pool_size=20,
     max_overflow=30,
