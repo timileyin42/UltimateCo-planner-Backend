@@ -30,7 +30,7 @@
         }
         .event-title {
             font-size: 28px;
-            color: #1f2937;
+            color: #FF5252;
             margin-bottom: 10px;
             font-weight: bold;
         }
@@ -40,10 +40,11 @@
             margin-bottom: 30px;
         }
         .event-details {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #FFF9E6, #FFECB3);
             padding: 25px;
-            border-radius: 8px;
+            border-radius: 10px;
             margin: 25px 0;
+            border-left: 4px solid #FFC107;
         }
         .detail-row {
             display: flex;
@@ -193,7 +194,7 @@
         
         <div class="footer">
             <p>This invitation was sent via Plan et al. <a href="{{ event_url }}">View event online</a></p>
-            <p>© 2025 Plan et al. All rights reserved.</p>
+            <p>© {{ current_year() }} Plan et al. All rights reserved.</p>
         </div>
     </div>
 </body>

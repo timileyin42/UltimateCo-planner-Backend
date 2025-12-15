@@ -27,7 +27,7 @@
         .logo {
             font-size: 28px;
             font-weight: bold;
-            color: #6366f1;
+            color: #FF5252;
             margin-bottom: 10px;
         }
         .verify-icon {
@@ -43,13 +43,13 @@
             margin-bottom: 30px;
         }
         .otp-container {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #FF5252, #FFC107);
             color: white;
             padding: 30px;
             border-radius: 15px;
             text-align: center;
             margin: 30px 0;
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 25px rgba(255, 82, 82, 0.4);
         }
         .otp-label {
             font-size: 16px;
@@ -70,11 +70,11 @@
             margin-top: 15px;
         }
         .instructions {
-            background-color: #f0f9ff;
+            background-color: #E0F7FA;
             padding: 20px;
             border-radius: 8px;
             margin: 20px 0;
-            border-left: 4px solid #3b82f6;
+            border-left: 4px solid #00ACC1;
         }
         .instruction-item {
             margin: 8px 0;
@@ -159,7 +159,7 @@ The {{ app_name }} Team</p>
         <div class="footer">
             <p>This verification code was sent to verify your {{ app_name }} account.</p>
             <p>If you didn't create an account, you can safely ignore this email.</p>
-            <p>© 2025 {{ app_name }}. All rights reserved.</p>
+            <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
         </div>
     </div>
 </body>
