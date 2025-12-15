@@ -20,12 +20,13 @@ from app.schemas.calendar import (
 from app.services.calendar_service import CalendarServiceFactory, CalendarProvider
 from app.services.google_calendar_service import GoogleCalendarService
 from app.repositories.calendar_repo import CalendarConnectionRepository, CalendarEventRepository, CalendarSyncLogRepository
+from app.schemas.pagination import PaginationParams
 from app.core.deps import get_current_user
 from app.core.deps import get_db
 from app.models.user_models import User
 from sqlalchemy.orm import Session
 
-router = APIRouter(prefix="/calendar", tags=["Calendar Integration"])
+router = APIRouter(tags=["Calendar Integration"])
 security = HTTPBearer()
 
 
@@ -583,13 +584,19 @@ async def get_calendar_events(
     try:
         event_repo = CalendarEventRepository(db)
         
-        events = event_repo.get_by_user_id(
+        pagination = PaginationParams(limit=limit, offset=offset)
+        filters = {}
+        if start_date:
+            filters["start_date"] = start_date
+        if end_date:
+            filters["end_date"] = end_date
+        if provider:
+            filters["provider"] = provider
+
+        events, total = event_repo.get_by_user_id(
             current_user.id,
-            start_date=start_date,
-            end_date=end_date,
-            provider=provider,
-            limit=limit,
-            offset=offset
+            pagination,
+            filters=filters if filters else None
         )
         
         event_responses = [
@@ -614,7 +621,7 @@ async def get_calendar_events(
         
         return CalendarEventListResponse(
             events=event_responses,
-            total=len(event_responses)
+            total=total
         )
         
     except Exception as e:
@@ -919,7 +926,7 @@ async def get_calendar_stats(
         # Get sync error count (errors in the last 24 hours)
         from datetime import datetime, timedelta
         error_cutoff = datetime.utcnow() - timedelta(hours=24)
-        sync_errors = sync_log_repo.count_errors_since(error_cutoff)
+        sync_errors = sync_log_repo.count_errors_since(error_cutoff, current_user.id)
         
         return CalendarStatsResponse(
             total_connections=len(all_connections),
