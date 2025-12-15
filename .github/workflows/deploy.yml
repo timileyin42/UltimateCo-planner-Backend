@@ -35,7 +35,7 @@ jobs:
             sleep 10
             
             echo "🏥 Checking API health..."
-            if curl -f http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
               echo "✅ Deployment successful!"
             else
               echo "❌ Health check failed!"
