@@ -1,6 +1,16 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict, Any
+import json
 from datetime import datetime
+from typing import Optional, List, Dict, Any
+
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    model_validator,
+    field_serializer,
+    SerializationInfo,
+)
+
 from app.models.creative_models import (
     MoodboardType, PlaylistProvider, GameType, GameDifficulty
 )
@@ -25,6 +35,14 @@ class MoodboardBase(BaseModel):
     allow_contributions: bool = Field(default=True, description="Allow others to add items")
     tags: Optional[List[str]] = Field(None, description="Tags for categorization")
     color_palette: Optional[List[str]] = Field(None, description="Color palette (hex codes)")
+
+    @field_serializer("moodboard_type")
+    def _serialize_moodboard_type(
+        self,
+        value: MoodboardType,
+        info: SerializationInfo,  # noqa: ARG003
+    ):
+        return value.value.lower() if isinstance(value, MoodboardType) else value
 
 class MoodboardCreate(MoodboardBase):
     """Schema for creating a moodboard."""
@@ -83,6 +101,39 @@ class MoodboardItemResponse(MoodboardItemBase):
     created_at: datetime
     updated_at: datetime
 
+    @model_validator(mode="before")
+    def _parse_json_fields(cls, values: Any):
+        if isinstance(values, dict):
+            parsed = dict(values)
+            raw_tags = parsed.get("tags")
+            if isinstance(raw_tags, str):
+                try:
+                    parsed["tags"] = json.loads(raw_tags)
+                except ValueError:
+                    parsed["tags"] = []
+            raw_vendor = parsed.get("vendor_info")
+            if isinstance(raw_vendor, str):
+                try:
+                    parsed["vendor_info"] = json.loads(raw_vendor)
+                except ValueError:
+                    parsed["vendor_info"] = None
+            return parsed
+        if hasattr(values, "__dict__"):
+            raw_tags = getattr(values, "tags", None)
+            if isinstance(raw_tags, str):
+                try:
+                    setattr(values, "tags", json.loads(raw_tags))
+                except ValueError:
+                    setattr(values, "tags", [])
+            raw_vendor = getattr(values, "vendor_info", None)
+            if isinstance(raw_vendor, str):
+                try:
+                    setattr(values, "vendor_info", json.loads(raw_vendor))
+                except ValueError:
+                    setattr(values, "vendor_info", None)
+            return values
+        return values
+
 class MoodboardResponse(MoodboardBase):
     """Schema for moodboard response."""
     model_config = ConfigDict(from_attributes=True)
@@ -95,6 +146,29 @@ class MoodboardResponse(MoodboardBase):
     created_at: datetime
     updated_at: datetime
     items: List[MoodboardItemResponse] = []
+
+    @model_validator(mode="before")
+    def _parse_json_fields(cls, values: Any):
+        if isinstance(values, dict):
+            parsed = dict(values)
+            for field in ("tags", "color_palette"):
+                raw = parsed.get(field)
+                if isinstance(raw, str):
+                    try:
+                        parsed[field] = json.loads(raw)
+                    except ValueError:
+                        parsed[field] = []
+            return parsed
+        if hasattr(values, "__dict__"):
+            for field in ("tags", "color_palette"):
+                raw = getattr(values, field, None)
+                if isinstance(raw, str):
+                    try:
+                        setattr(values, field, json.loads(raw))
+                    except ValueError:
+                        setattr(values, field, [])
+            return values
+        return values
 
 class MoodboardCommentCreate(BaseModel):
     """Schema for creating a moodboard comment."""
@@ -122,6 +196,14 @@ class PlaylistBase(BaseModel):
     allow_duplicates: bool = Field(default=False, description="Allow duplicate tracks")
     genre_tags: Optional[List[str]] = Field(None, description="Genre tags")
     mood_tags: Optional[List[str]] = Field(None, description="Mood tags")
+
+    @field_serializer("provider")
+    def _serialize_provider(
+        self,
+        value: PlaylistProvider,
+        info: SerializationInfo,  # noqa: ARG003
+    ):
+        return value.value.lower() if isinstance(value, PlaylistProvider) else value
 
 class PlaylistCreate(PlaylistBase):
     """Schema for creating a playlist."""
@@ -197,6 +279,16 @@ class GameBase(BaseModel):
     age_appropriate: bool = Field(default=True, description="Age appropriate content")
     tags: Optional[List[str]] = Field(None, description="Game tags")
     categories: Optional[List[str]] = Field(None, description="Game categories")
+
+    @field_serializer("game_type", "difficulty")
+    def _serialize_game_enums(
+        self,
+        value,
+        info: SerializationInfo,  # noqa: ARG003
+    ):
+        if isinstance(value, (GameType, GameDifficulty)):
+            return value.value.lower()
+        return value
 
 class GameCreate(GameBase):
     """Schema for creating a game."""
@@ -349,6 +441,46 @@ class GameListResponse(BaseModel):
     has_next: bool
     has_prev: bool
 
+# Game Question/Answer schemas
+class QuestionOption(BaseModel):
+    """Individual answer option."""
+    text: str
+    index: int
+
+class GameQuestion(BaseModel):
+    """Game question schema."""
+    id: int
+    text: str
+    options: List[str]
+    points: int = 100
+    explanation: Optional[str] = None
+
+class GameQuestionsResponse(BaseModel):
+    """Response containing game questions."""
+    questions: List[GameQuestion]
+    round: Optional[int] = None
+    total_rounds: Optional[int] = None
+
+class SubmitAnswerRequest(BaseModel):
+    """Schema for submitting an answer."""
+    question_id: int = Field(..., description="Question ID")
+    answer: int = Field(..., ge=0, le=3, description="Selected answer index (0-3)")
+
+class AnswerResult(BaseModel):
+    """Result of answer submission."""
+    is_correct: bool
+    points: int
+    new_score: int
+    correct_answer: int
+    explanation: str
+
+class GenerateQuestionsRequest(BaseModel):
+    """Request to generate AI questions."""
+    topic: str = Field(..., min_length=1, max_length=200, description="Question topic")
+    difficulty: GameDifficulty = Field(default=GameDifficulty.MEDIUM, description="Difficulty level")
+    game_type: GameType = Field(default=GameType.TRIVIA, description="Type of game")
+    count: int = Field(default=10, ge=3, le=50, description="Number of questions")
+
 # Statistics schemas
 class CreativeStatistics(BaseModel):
     """Schema for creative features statistics."""
@@ -390,3 +522,39 @@ class PlaylistExportRequest(BaseModel):
     format: str = Field(default="m3u", description="Export format: m3u, json, csv")
     include_metadata: bool = Field(default=True, description="Include track metadata")
     provider_links: bool = Field(default=True, description="Include streaming links")
+
+# Game Template schemas
+class GameTemplateResponse(BaseModel):
+    """Schema for game template response."""
+    game_type: str = Field(..., description="Type of game: icebreaker, party_game, team_building")
+    template_name: str = Field(..., description="Unique template identifier")
+    title: str = Field(..., description="Display title")
+    description: str = Field(..., description="Template description")
+    instructions: str = Field(..., description="How to play")
+    min_players: int = Field(..., description="Minimum players")
+    max_players: int = Field(..., description="Maximum players")
+    estimated_duration_minutes: int = Field(..., description="Estimated duration")
+    materials_needed: List[str] = Field(..., description="Required materials")
+    game_data: Dict[str, Any] = Field(..., description="Template structure")
+
+class GameTemplateListResponse(BaseModel):
+    """Schema for listing game templates."""
+    templates: Dict[str, List[GameTemplateResponse]] = Field(
+        ..., 
+        description="Templates grouped by game type"
+    )
+    total: int = Field(..., description="Total number of templates")
+
+class CreateGameFromTemplateRequest(BaseModel):
+    """Schema for creating a game from a template."""
+    game_type: str = Field(..., description="Type: icebreaker, party_game, team_building")
+    template_name: str = Field(..., description="Template identifier")
+    title: Optional[str] = Field(None, description="Custom title (overrides template)")
+    description: Optional[str] = Field(None, description="Custom description")
+    instructions: Optional[str] = Field(None, description="Custom instructions")
+    event_id: Optional[int] = Field(None, description="Event to associate with")
+    is_public: bool = Field(default=False, description="Make game public")
+    customizations: Optional[Dict[str, Any]] = Field(
+        None, 
+        description="Custom game_data overrides"
+    )

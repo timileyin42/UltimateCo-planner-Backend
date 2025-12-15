@@ -207,6 +207,13 @@ class NotificationLogListResponse(BaseModel):
     has_next: bool
     has_prev: bool
 
+class UserNotificationListResponse(BaseModel):
+    """Schema for user notification list."""
+    notifications: List[NotificationLogResponse]
+    total: int
+    unread_count: int
+    limit: int
+
 # Test notification schema
 class TestNotificationRequest(BaseModel):
     """Schema for testing notifications."""

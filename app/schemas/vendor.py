@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, ConfigDict, validator
+import json
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, time
 from app.models.vendor_models import (
@@ -45,6 +46,24 @@ class VendorBase(BaseModel):
     accepts_online_payment: bool = Field(default=True, description="Accepts online payment")
     payment_methods: Optional[List[str]] = Field(None, description="Accepted payment methods")
 
+    @field_validator("subcategories", "service_areas", "payment_methods", mode="before")
+    @classmethod
+    def _parse_optional_list(cls, value):
+        if value is None or isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = stripped
+            if parsed is None or isinstance(parsed, list):
+                return parsed
+            return [parsed]
+        return value
+
 class VendorCreate(VendorBase):
     """Schema for creating a vendor."""
     pass
@@ -90,6 +109,24 @@ class VendorResponse(VendorBase):
     user: Optional[UserBasic] = None
     created_at: datetime
     updated_at: datetime
+    
+    @field_validator('subcategories', 'service_areas', 'payment_methods', mode='before')
+    def _parse_json_list(cls, value):
+        """Normalize JSON strings stored in the database."""
+        if value is None or value == []:
+            return None
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped or stripped.lower() == 'null':
+                return None
+            try:
+                parsed = json.loads(stripped)
+                return parsed if isinstance(parsed, list) else [parsed]
+            except json.JSONDecodeError:
+                return [stripped]
+        return value
 
 # Vendor Service schemas
 class VendorServiceBase(BaseModel):

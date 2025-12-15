@@ -29,9 +29,8 @@ class TimelineRepository:
             query = query.options(
                 joinedload(EventTimeline.creator),
                 joinedload(EventTimeline.event),
-                joinedload(EventTimeline.items),
-                joinedload(EventTimeline.dependencies),
-                joinedload(EventTimeline.notifications)
+                joinedload(EventTimeline.items).joinedload(TimelineItem.assigned_to),
+                joinedload(EventTimeline.items).joinedload(TimelineItem.task)
             )
         
         return query.first()
@@ -63,7 +62,6 @@ class TimelineRepository:
         total = query.count()
         
         timelines = query.order_by(
-            desc(EventTimeline.is_main_timeline),
             desc(EventTimeline.created_at)
         ).offset(pagination.offset).limit(pagination.limit).all()
         
@@ -131,10 +129,11 @@ class TimelineRepository:
     def get_timeline_item_by_id(self, item_id: int) -> Optional[TimelineItem]:
         """Get timeline item by ID"""
         return self.db.query(TimelineItem).options(
-            joinedload(TimelineItem.timeline),
-            joinedload(TimelineItem.assignee),
-            joinedload(TimelineItem.dependencies_as_dependent),
-            joinedload(TimelineItem.dependencies_as_prerequisite)
+            joinedload(TimelineItem.timeline).joinedload(EventTimeline.event),
+            joinedload(TimelineItem.assigned_to),
+            joinedload(TimelineItem.task),
+            joinedload(TimelineItem.dependencies),
+            joinedload(TimelineItem.dependent_items)
         ).filter(TimelineItem.id == item_id).first()
     
     def get_timeline_items(
@@ -144,7 +143,7 @@ class TimelineRepository:
     ) -> List[TimelineItem]:
         """Get all items for a timeline"""
         query = self.db.query(TimelineItem).options(
-            joinedload(TimelineItem.assignee)
+            joinedload(TimelineItem.assigned_to)
         ).filter(TimelineItem.timeline_id == timeline_id)
         
         if filters:
@@ -154,8 +153,10 @@ class TimelineRepository:
             if filters.get('status'):
                 query = query.filter(TimelineItem.status == filters['status'])
             
-            if filters.get('assignee_id'):
-                query = query.filter(TimelineItem.assignee_id == filters['assignee_id'])
+            if filters.get('assigned_to_id'):
+                query = query.filter(TimelineItem.assigned_to_id == filters['assigned_to_id'])
+            elif filters.get('assignee_id'):
+                query = query.filter(TimelineItem.assigned_to_id == filters['assignee_id'])
             
             if filters.get('start_date'):
                 query = query.filter(TimelineItem.start_time >= filters['start_date'])
@@ -209,10 +210,10 @@ class TimelineRepository:
         # Delete dependencies first
         self.db.query(TimelineDependency).filter(
             or_(
-                TimelineDependency.dependent_item_id == item_id,
-                TimelineDependency.prerequisite_item_id == item_id
+                TimelineDependency.item_id == item_id,
+                TimelineDependency.depends_on_id == item_id
             )
-        ).delete()
+        ).delete(synchronize_session=False)
         
         self.db.delete(item)
         self.db.commit()
@@ -556,16 +557,9 @@ class TimelineRepository:
             return
         
         items = self.get_timeline_items(timeline_id)
-        
-        timeline.total_items = len(items)
-        timeline.completed_items = len([item for item in items if item.status == TimelineStatus.COMPLETED])
-        
-        # Update completion percentage
-        if timeline.total_items > 0:
-            timeline.completion_percentage = (timeline.completed_items / timeline.total_items) * 100
-        else:
-            timeline.completion_percentage = 0
-        
+        total_duration = sum(item.duration_minutes for item in items)
+        timeline.total_duration_minutes = total_duration if total_duration > 0 else None
+
         self.db.commit()
     
     def validate_timeline_conflicts(self, timeline_id: int) -> List[Dict[str, Any]]:
