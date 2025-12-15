@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 import asyncio
 import logging
 
@@ -19,6 +20,36 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+# Custom OpenAPI schema to configure OAuth2 password flow
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="Plan et al - Event Planning API",
+        version="1.0.0",
+        description="The Ultimate co-planner backend API",
+        routes=app.routes,
+    )
+    
+    # Add OAuth2 password flow security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "OAuth2PasswordBearer": {
+            "type": "oauth2",
+            "flows": {
+                "password": {
+                    "tokenUrl": f"{settings.API_V1_STR}/auth/token",
+                    "scopes": {}
+                }
+            }
+        }
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
 # Set up CORS
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +62,19 @@ app.add_middleware(
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["health"])
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Root endpoint
+@app.get("/", tags=["root"])
+async def root():
+    """Root endpoint - Welcome message"""
+    return {
+        "app_name": settings.PROJECT_NAME,
+        "version": "1.0.0",
+        "status": "running",
+        "message": "Welcome to Plan et al - The Ultimate Co-planner Backend API",
+        "docs": f"{settings.API_V1_STR.rstrip('/api/v1')}/docs",
+        "health": "/health"
+    }
 
 @app.on_event("startup")
 async def startup_event():

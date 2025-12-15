@@ -6,6 +6,7 @@ from app.api.v1.routers.biometric import router as biometric_router
 from app.api.v1.routers.calendar import router as calendar_router
 from app.api.v1.routers.contacts import router as contacts_router
 from app.api.v1.routers.creative import creative_router
+from app.api.v1.routers.spotify import spotify_router
 from app.api.v1.devices import router as devices_router
 from app.api.v1.routers.events import events_router
 from app.api.v1.routers.invites import router as invites_router
@@ -61,6 +62,12 @@ api_router.include_router(
     creative_router,
     prefix="/creative",
     tags=["creative"]
+)
+
+api_router.include_router(
+    spotify_router,
+    prefix="/spotify",
+    tags=["spotify"]
 )
 
 api_router.include_router(
@@ -143,6 +150,7 @@ async def api_info():
             "calendar": "/calendar",
             "contacts": "/contacts",
             "creative": "/creative",
+            "spotify": "/spotify",
             "devices": "/devices",
             "events": "/events",
             "invites": "/invites",

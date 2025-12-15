@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime,timedelta
 from app.core.deps import get_db, get_current_user, get_current_active_user
 from app.core.errors import (
-    http_400_bad_request, http_404_not_found, http_403_forbidden
+    http_400_bad_request, http_404_not_found, http_403_forbidden,
+    AuthorizationError, NotFoundError, ValidationError
 )
 from app.services.event_service import EventService
 from app.services.subscription_service import SubscriptionService, UsageLimitExceededError
@@ -14,7 +15,7 @@ from app.schemas.event import (
     TaskCreate, TaskUpdate, TaskResponse, ExpenseCreate, ExpenseUpdate, ExpenseResponse,
     CommentCreate, CommentResponse, PollCreate, PollResponse, PollVoteCreate,
     EventSearchQuery, EventStatsResponse, EventLocationOptimizationRequest, EventLocationOptimizationResponse,
-    EventDuplicateRequest
+    EventDuplicateRequest, CollaboratorAddRequest
 )
 from app.repositories.event_repo import EventRepository
 from app.schemas.location import (
@@ -27,6 +28,7 @@ from app.models.shared_models import EventStatus, EventType
 from app.models.event_models import Event, EventInvitation
 from app.models.shared_models import RSVPStatus
 from sqlalchemy import and_, or_
+from app.schemas.user import UserSummary
 
 events_router = APIRouter()
 
@@ -40,14 +42,16 @@ async def create_event(
     """Create a new event"""
     try:
         # Check subscription limits before creating event
-        subscription_service = SubscriptionService(db)
-        subscription_service.check_event_limit(current_user.id)
+        subscription_service = SubscriptionService()
+        can_create_event = await subscription_service.check_event_creation_limit(db, current_user.id)
+        if not can_create_event:
+            raise http_403_forbidden("Event creation limit reached for current plan")
         
         event_service = EventService(db)
         event = event_service.create_event(event_data, current_user.id)
         
         # Update usage after successful event creation
-        subscription_service.increment_event_usage(current_user.id)
+        await subscription_service.increment_event_usage(db, current_user.id)
         
         return event
     except UsageLimitExceededError as e:
@@ -465,8 +469,10 @@ async def duplicate_event(
     """Duplicate an existing event"""
     try:
         # Check subscription limits before duplicating event
-        subscription_service = SubscriptionService(db)
-        subscription_service.check_event_limit(current_user.id)
+        subscription_service = SubscriptionService()
+        can_create_event = await subscription_service.check_event_creation_limit(db, current_user.id)
+        if not can_create_event:
+            raise http_403_forbidden("Event creation limit reached for current plan")
         
         event_service = EventService(db)
         duplicated_event = event_service.duplicate_event(
@@ -476,7 +482,7 @@ async def duplicate_event(
         )
         
         # Update usage after successful event duplication
-        subscription_service.increment_event_usage(current_user.id)
+        await subscription_service.increment_event_usage(db, current_user.id)
         
         return duplicated_event
     except UsageLimitExceededError as e:
@@ -566,6 +572,68 @@ async def respond_to_invitation(
         else:
             raise http_400_bad_request("Failed to respond to invitation")
 
+@events_router.get("/{event_id}/attendees", response_model=List[EventInvitationResponse])
+async def get_event_attendees(
+    event_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get attendee invitations for an event"""
+    try:
+        event_service = EventService(db)
+        invitations = event_service.get_event_attendees(event_id, current_user.id)
+        return invitations
+    except NotFoundError:
+        raise http_404_not_found("Event not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this event")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve attendees")
+
+@events_router.get("/{event_id}/collaborators", response_model=List[UserSummary])
+async def get_event_collaborators(
+    event_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get collaborators for an event"""
+    try:
+        event_service = EventService(db)
+        collaborators = event_service.get_event_collaborators(event_id, current_user.id)
+        return [UserSummary.model_validate(collaborator) for collaborator in collaborators]
+    except NotFoundError:
+        raise http_404_not_found("Event not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this event")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve collaborators")
+
+@events_router.post("/{event_id}/collaborators", response_model=List[UserSummary])
+async def add_event_collaborators(
+    event_id: int,
+    collaborator_data: CollaboratorAddRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Add collaborators to an event"""
+    try:
+        event_service = EventService(db)
+        collaborators = event_service.add_event_collaborators(
+            event_id=event_id,
+            user_id=current_user.id,
+            collaborator_ids=collaborator_data.user_ids,
+            send_notifications=collaborator_data.send_notifications
+        )
+        return [UserSummary.model_validate(collaborator) for collaborator in collaborators]
+    except ValidationError as exc:
+        raise http_400_bad_request(exc.message)
+    except NotFoundError as exc:
+        raise http_404_not_found(str(exc))
+    except AuthorizationError:
+        raise http_403_forbidden("Permission denied to manage collaborators")
+    except Exception:
+        raise http_400_bad_request("Failed to add collaborators")
+
 # Task management endpoints
 @events_router.post("/{event_id}/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
@@ -626,6 +694,42 @@ async def update_task(
         else:
             raise http_400_bad_request("Failed to update task")
 
+@events_router.get("/tasks/{task_id}", response_model=TaskResponse)
+async def get_task(
+    task_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single task"""
+    try:
+        event_service = EventService(db)
+        task = event_service.get_task_by_id(task_id, current_user.id)
+        return task
+    except NotFoundError:
+        raise http_404_not_found("Task not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this task")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve task")
+
+@events_router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a task"""
+    try:
+        event_service = EventService(db)
+        event_service.delete_task(task_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError:
+        raise http_404_not_found("Task not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Permission denied to delete this task")
+    except Exception:
+        raise http_400_bad_request("Failed to delete task")
+
 # Expense management endpoints
 @events_router.post("/{event_id}/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
 async def create_expense(
@@ -665,6 +769,42 @@ async def get_event_expenses(
             raise http_403_forbidden("Access denied to this event")
         else:
             raise http_400_bad_request("Failed to retrieve expenses")
+
+@events_router.get("/expenses/{expense_id}", response_model=ExpenseResponse)
+async def get_expense(
+    expense_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single expense"""
+    try:
+        event_service = EventService(db)
+        expense = event_service.get_expense_by_id(expense_id, current_user.id)
+        return expense
+    except NotFoundError:
+        raise http_404_not_found("Expense not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this expense")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve expense")
+
+@events_router.delete("/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_expense(
+    expense_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an expense"""
+    try:
+        event_service = EventService(db)
+        event_service.delete_expense(expense_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError:
+        raise http_404_not_found("Expense not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Permission denied to delete this expense")
+    except Exception:
+        raise http_400_bad_request("Failed to delete expense")
 
 # Comment endpoints
 @events_router.post("/{event_id}/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
@@ -706,6 +846,42 @@ async def get_event_comments(
         else:
             raise http_400_bad_request("Failed to retrieve comments")
 
+@events_router.get("/comments/{comment_id}", response_model=CommentResponse)
+async def get_comment(
+    comment_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single comment"""
+    try:
+        event_service = EventService(db)
+        comment = event_service.get_comment_by_id(comment_id, current_user.id)
+        return comment
+    except NotFoundError:
+        raise http_404_not_found("Comment not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this comment")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve comment")
+
+@events_router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_comment(
+    comment_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a comment"""
+    try:
+        event_service = EventService(db)
+        event_service.delete_comment(comment_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError:
+        raise http_404_not_found("Comment not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Permission denied to delete this comment")
+    except Exception:
+        raise http_400_bad_request("Failed to delete comment")
+
 # Poll endpoints
 @events_router.post("/{event_id}/polls", response_model=PollResponse, status_code=status.HTTP_201_CREATED)
 async def create_poll(
@@ -726,6 +902,42 @@ async def create_poll(
             raise http_403_forbidden("Permission denied to create polls")
         else:
             raise http_400_bad_request("Failed to create poll")
+
+@events_router.get("/polls/{poll_id}", response_model=PollResponse)
+async def get_poll(
+    poll_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get poll details"""
+    try:
+        event_service = EventService(db)
+        poll = event_service.get_poll(poll_id, current_user.id)
+        return poll
+    except NotFoundError:
+        raise http_404_not_found("Poll not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this poll")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve poll")
+
+@events_router.delete("/polls/{poll_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_poll(
+    poll_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a poll"""
+    try:
+        event_service = EventService(db)
+        event_service.delete_poll(poll_id, current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError:
+        raise http_404_not_found("Poll not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Permission denied to delete this poll")
+    except Exception:
+        raise http_400_bad_request("Failed to delete poll")
 
 @events_router.post("/polls/{poll_id}/vote")
 async def vote_on_poll(

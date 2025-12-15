@@ -6,7 +6,12 @@ from app.models.user_models import User
 from app.core.config import settings
 from datetime import datetime
 from app.core.deps import get_db, get_current_active_user
-from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden
+from app.core.errors import (
+    http_400_bad_request,
+    http_404_not_found,
+    http_403_forbidden,
+    AuthorizationError,
+)
 from app.services.timeline_service import TimelineService
 from app.services.email_service import email_service
 from app.schemas.timeline import (
@@ -29,12 +34,15 @@ from app.schemas.timeline import (
 from app.models.user_models import User
 from pydantic import BaseModel
 import asyncio
+import logging
 
 # Sharing schema
 class TimelineShareRequest(BaseModel):
     user_ids: List[int]
     message: Optional[str] = None
     can_edit: bool = False
+
+logger = logging.getLogger(__name__)
 
 timeline_router = APIRouter()
 
@@ -130,13 +138,15 @@ async def update_timeline(
         
         return EventTimelineResponse.model_validate(timeline)
         
+    except AuthorizationError as exc:
+        raise http_403_forbidden(str(exc))
     except Exception as e:
-        if "not found" in str(e).lower():
+        lowered = str(e).lower()
+        if "not found" in lowered:
             raise http_404_not_found(str(e))
-        elif "permission" in str(e).lower():
+        if "permission" in lowered or "access" in lowered:
             raise http_403_forbidden(str(e))
-        else:
-            raise http_400_bad_request("Failed to update timeline")
+        raise http_400_bad_request("Failed to update timeline")
 
 @timeline_router.delete("/timelines/{timeline_id}")
 async def delete_timeline(
@@ -158,6 +168,7 @@ async def delete_timeline(
             raise http_403_forbidden(str(e))
         else:
             raise http_400_bad_request("Failed to delete timeline")
+        raise http_400_bad_request(f"Failed to delete timeline item: {e}")
 
 # Timeline item endpoints
 @timeline_router.post("/timelines/{timeline_id}/items", response_model=TimelineItemResponse)
@@ -173,9 +184,9 @@ async def add_timeline_item(
         item = timeline_service.add_timeline_item(timeline_id, current_user.id, item_data)
         
         # Send email notification to assignee if specified
-        if item.assignee_id and item.assignee_id != current_user.id:
+        if item.assigned_to_id and item.assigned_to_id != current_user.id:
             try:
-                assignee = db.query(User).filter(User.id == item.assignee_id).first()
+                assignee = db.query(User).filter(User.id == item.assigned_to_id).first()
                 if assignee and assignee.email:
                     timeline = item.timeline
                     event = timeline.event
@@ -208,7 +219,6 @@ async def add_timeline_item(
                         html_content=html_content,
                         reply_to=current_user.email
                     ))
-                    
             except Exception as e:
                 print(f"Failed to send timeline item assignment notification: {str(e)}")
         
@@ -220,6 +230,7 @@ async def add_timeline_item(
         elif "permission" in str(e).lower():
             raise http_403_forbidden(str(e))
         else:
+            logger.exception("Failed to add timeline item")
             raise http_400_bad_request("Failed to add timeline item")
 
 @timeline_router.put("/timeline-items/{item_id}", response_model=TimelineItemResponse)
@@ -235,13 +246,16 @@ async def update_timeline_item(
         
         # Get the original item to check if assignee changed
         original_item = timeline_service.timeline_repo.get_timeline_item_by_id(item_id)
-        original_assignee_id = original_item.assignee_id if original_item else None
+        original_assignee_id = original_item.assigned_to_id if original_item else None
         
         # Update the item
         item = timeline_service.update_timeline_item(item_id, current_user.id, update_data)
         
         # Check if assignee was changed and send notification
-        new_assignee_id = getattr(update_data, 'assignee_id', None)
+        new_assignee_id = (
+            getattr(update_data, 'assigned_to_id', None)
+            or getattr(update_data, 'assignee_id', None)
+        )
         if new_assignee_id and new_assignee_id != original_assignee_id and new_assignee_id != current_user.id:
             try:
                 assignee = db.query(User).filter(User.id == new_assignee_id).first()
@@ -327,13 +341,15 @@ async def delete_timeline_item(
         
         return {"message": "Timeline item deleted successfully", "success": success}
         
+    except AuthorizationError as exc:
+        raise http_403_forbidden(str(exc))
     except Exception as e:
-        if "not found" in str(e).lower():
+        lowered = str(e).lower()
+        if "not found" in lowered:
             raise http_404_not_found(str(e))
-        elif "permission" in str(e).lower():
+        if "permission" in lowered or "access" in lowered:
             raise http_403_forbidden(str(e))
-        else:
-            raise http_400_bad_request("Failed to delete timeline item")
+        raise http_400_bad_request("Failed to delete timeline item")
 
 @timeline_router.post("/timelines/{timeline_id}/reorder")
 async def reorder_timeline_items(

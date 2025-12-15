@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from app.core.deps import get_db, get_current_user, get_current_active_user
@@ -6,6 +6,7 @@ from app.core.errors import (
     http_400_bad_request, http_404_not_found, http_409_conflict
 )
 from app.services.user_service import UserService
+from app.services.gcp_storage_service import GCPStorageService
 from app.schemas.user import (
     UserResponse, UserPublicResponse, UserSummary, UserUpdate, 
     UserPasswordUpdate, UserProfileCreate, UserProfileUpdate, UserProfileResponse,
@@ -40,6 +41,83 @@ async def update_current_user(
             raise http_409_conflict(str(e))
         else:
             raise http_400_bad_request("Failed to update user profile")
+
+@users_router.post("/me/avatar", response_model=UserResponse)
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload or update user's profile picture"""
+    try:
+        # Validate file type
+        allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+        if file.content_type not in allowed_types:
+            raise http_400_bad_request("Invalid file type. Only JPEG, PNG, and WebP images are allowed")
+        
+        # Validate file size (max 5MB)
+        file_content = await file.read()
+        if len(file_content) > 5 * 1024 * 1024:
+            raise http_400_bad_request("File size too large. Maximum size is 5MB")
+        
+        # Reset file pointer so the storage client can read it again if needed
+        await file.seek(0)
+        
+        # Upload to GCS using the expected signature (bytes + metadata)
+        storage_service = GCPStorageService()
+        upload_result = await storage_service.upload_file(
+            file_content=file_content,
+            filename=file.filename,
+            content_type=file.content_type,
+            folder="avatars",
+            user_id=current_user.id,
+            make_public=True  # Profile pictures should be publicly accessible
+        )
+        
+        # Update user's avatar_url
+        user_service = UserService(db)
+        current_user.avatar_url = upload_result["file_url"]
+        db.commit()
+        db.refresh(current_user)
+        
+        return current_user
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to upload profile picture: {str(e)}")
+
+@users_router.delete("/me/avatar", response_model=UserResponse)
+async def delete_profile_picture(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete user's profile picture"""
+    try:
+        if not current_user.avatar_url:
+            raise http_404_not_found("No profile picture to delete")
+        
+        # Extract blob path from URL and delete from GCS
+        storage_service = GCPStorageService()
+        # Public URL format: https://storage.googleapis.com/<bucket>/<path>
+        if "storage.googleapis.com" in current_user.avatar_url:
+            blob_path = current_user.avatar_url.split("storage.googleapis.com/")[-1]
+            await storage_service.delete_file(blob_path)
+        else:
+            # If we stored a relative path, delete directly
+            await storage_service.delete_file(current_user.avatar_url)
+        
+        # Clear avatar_url
+        current_user.avatar_url = None
+        db.commit()
+        db.refresh(current_user)
+        
+        return current_user
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to delete profile picture: {str(e)}")
 
 @users_router.put("/me/password")
 async def update_current_user_password(
@@ -331,13 +409,20 @@ async def get_mutual_friends(
 @users_router.get("/me/friends/suggestions", response_model=List[UserSummary])
 async def get_friend_suggestions(
     limit: int = Query(default=10, ge=1, le=50),
+    q: Optional[str] = Query(default=None, min_length=1, max_length=100, description="Filter by name or username"),
+    city: Optional[str] = Query(default=None, min_length=1, max_length=100, description="Filter by city"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get friend suggestions for current user"""
     try:
         user_service = UserService(db)
-        suggestions = user_service.suggest_friends(current_user.id, limit)
+        suggestions = user_service.suggest_friends(
+            current_user.id,
+            limit=limit,
+            name_query=q,
+            city=city,
+        )
         
         return [UserSummary.model_validate(user) for user in suggestions]
     except Exception:

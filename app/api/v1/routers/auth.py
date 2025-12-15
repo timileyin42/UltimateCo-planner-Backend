@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
 from app.core.errors import (
@@ -60,12 +60,15 @@ async def register(
         user = auth_service.register_user(user_data)
         return user
     except Exception as e:
+        import traceback
+        print(f"Registration error: {str(e)}")
+        print(traceback.format_exc())
         if "already exists" in str(e).lower():
             raise http_409_conflict(str(e))
         elif "do not match" in str(e).lower():
             raise http_400_bad_request(str(e))
         else:
-            raise http_400_bad_request("Registration failed")
+            raise http_400_bad_request(f"Registration failed: {str(e)}")
 
 @auth_router.post("/login", response_model=TokenResponse)
 @rate_limit_login
@@ -88,6 +91,40 @@ async def login(
             user_agent=user_agent
         )
         
+        return token_response
+    except Exception as e:
+        if "invalid" in str(e).lower() or "incorrect" in str(e).lower():
+            raise http_401_unauthorized("Invalid email or password")
+        elif "deactivated" in str(e).lower():
+            raise http_401_unauthorized("Account is deactivated")
+        else:
+            raise http_401_unauthorized("Authentication failed")
+
+@auth_router.post("/token", response_model=TokenResponse)
+@rate_limit_login
+async def oauth2_password_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    request: Request = None,
+    db: Session = Depends(get_db)
+):
+    """OAuth2 Password flow-compatible token endpoint for Swagger UI.
+
+    Accepts `application/x-www-form-urlencoded` fields `username` and `password`,
+    maps them to the existing login service (email + password), and returns
+    a `TokenResponse` with `access_token`, `token_type`, and optional fields.
+    """
+    try:
+        auth_service = AuthService(db)
+
+        ip_address = request.client.host if request and request.client else None
+        user_agent = request.headers.get("user-agent") if request else None
+
+        login_payload = UserLogin(email=form_data.username, password=form_data.password)
+        token_response = auth_service.login(
+            login_payload,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
         return token_response
     except Exception as e:
         if "invalid" in str(e).lower() or "incorrect" in str(e).lower():
