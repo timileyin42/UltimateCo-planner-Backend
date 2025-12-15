@@ -53,7 +53,7 @@ class TestCreativeService:
         moodboard.title = "Test Moodboard"
         moodboard.event_id = 1
         moodboard.creator_id = 1
-        moodboard.type = MoodboardType.VISION_BOARD
+        moodboard.moodboard_type = MoodboardType.GENERAL
         moodboard.is_public = True
         moodboard.items = []
         moodboard.likes = []
@@ -72,7 +72,7 @@ class TestCreativeService:
         moodboard_data = {
             "title": "Test Moodboard",
             "description": "Test description",
-            "type": "vision_board",
+            "moodboard_type": "general",
             "is_public": True
         }
         
