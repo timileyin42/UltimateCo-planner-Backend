@@ -30,6 +30,19 @@ class ContactService:
                 detail="Invalid phone number format"
             )
         
+        # Validate name
+        name = contact_data.get('name') or contact_data.get('full_name')
+        if not name:
+            first = contact_data.get('first_name')
+            last = contact_data.get('last_name')
+            combined = " ".join(part for part in [first, last] if part)
+            name = combined.strip() if combined else None
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Contact name is required"
+            )
+
         # Check if contact already exists
         existing_contact = self.db.query(UserContact).filter(
             and_(
@@ -49,8 +62,7 @@ class ContactService:
         
         contact = UserContact(
             user_id=user_id,
-            first_name=contact_data.get('first_name'),
-            last_name=contact_data.get('last_name'),
+            name=name,
             phone_number=phone_number,
             email=contact_data.get('email'),
             notes=contact_data.get('notes'),
@@ -77,8 +89,7 @@ class ContactService:
             search_term = f"%{search}%"
             query = query.filter(
                 or_(
-                    UserContact.first_name.ilike(search_term),
-                    UserContact.last_name.ilike(search_term),
+                    UserContact.name.ilike(search_term),
                     UserContact.phone_number.ilike(search_term),
                     UserContact.email.ilike(search_term)
                 )
@@ -87,7 +98,7 @@ class ContactService:
         if favorites_only:
             query = query.filter(UserContact.is_favorite == True)
         
-        return query.order_by(UserContact.first_name).offset(offset).limit(limit).all()
+        return query.order_by(UserContact.name).offset(offset).limit(limit).all()
 
     def send_contact_invitation(
         self, 

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, or_
 from datetime import datetime, timedelta
@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.exceptions import InvalidSignature
 
 from app.models.biometric_models import (
-    UserDevice, BiometricAuth, BiometricAuthAttempt, BiometricToken,
+    BiometricDevice, BiometricAuth, BiometricAuthAttempt, BiometricToken,
     BiometricType, DeviceType, BiometricStatus
 )
 from app.models.user_models import User
@@ -28,24 +28,53 @@ class BiometricService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _normalize_device_type(self, value: Union[str, DeviceType, None]) -> DeviceType:
+        if isinstance(value, DeviceType):
+            return value
+        if value is None:
+            return DeviceType.ANDROID
+        normalized = str(value).strip().lower()
+        alias_map = {
+            "mobile": DeviceType.ANDROID,
+            "phone": DeviceType.ANDROID,
+            "tablet": DeviceType.ANDROID,
+            "ios": DeviceType.IOS,
+            "iphone": DeviceType.IOS,
+            "ipad": DeviceType.IOS,
+            "android": DeviceType.ANDROID,
+            "web": DeviceType.WEB,
+            "browser": DeviceType.WEB,
+            "desktop": DeviceType.DESKTOP,
+            "laptop": DeviceType.DESKTOP
+        }
+        if normalized in alias_map:
+            return alias_map[normalized]
+        try:
+            return DeviceType(normalized)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unsupported device type '{value}'"
+            )
+
     def register_device(
         self, 
         user_id: int, 
         device_data: Dict[str, Any]
-    ) -> UserDevice:
+    ) -> BiometricDevice:
         """Register a new device for biometric authentication"""
         # Check if device already exists
-        existing_device = self.db.query(UserDevice).filter(
+        existing_device = self.db.query(BiometricDevice).filter(
             and_(
-                UserDevice.user_id == user_id,
-                UserDevice.device_id == device_data.get('device_id')
+                BiometricDevice.user_id == user_id,
+                BiometricDevice.device_id == device_data.get('device_id')
             )
         ).first()
         
         if existing_device:
             # Update existing device
             existing_device.device_name = device_data.get('device_name', existing_device.device_name)
-            existing_device.device_type = DeviceType(device_data.get('device_type', existing_device.device_type.value))
+            existing_device.device_type = self._normalize_device_type(device_data.get('device_type', existing_device.device_type))
             existing_device.os_version = device_data.get('os_version', existing_device.os_version)
             existing_device.app_version = device_data.get('app_version', existing_device.app_version)
             existing_device.is_active = True
@@ -56,11 +85,11 @@ class BiometricService:
             return existing_device
         
         # Create new device
-        device = UserDevice(
+        device = BiometricDevice(
             user_id=user_id,
             device_id=device_data['device_id'],
             device_name=device_data.get('device_name', 'Unknown Device'),
-            device_type=DeviceType(device_data.get('device_type', 'mobile')),
+            device_type=self._normalize_device_type(device_data.get('device_type')),
             os_version=device_data.get('os_version'),
             app_version=device_data.get('app_version'),
             is_active=True
@@ -81,11 +110,11 @@ class BiometricService:
     ) -> BiometricAuth:
         """Setup biometric authentication for a device"""
         # Verify device belongs to user
-        device = self.db.query(UserDevice).filter(
+        device = self.db.query(BiometricDevice).filter(
             and_(
-                UserDevice.user_id == user_id,
-                UserDevice.device_id == device_id,
-                UserDevice.is_active == True
+                BiometricDevice.user_id == user_id,
+                BiometricDevice.device_id == device_id,
+                BiometricDevice.is_active == True
             )
         ).first()
         
@@ -255,11 +284,11 @@ class BiometricService:
                 detail="Authentication system error"
             )
 
-    def get_user_devices(self, user_id: int) -> List[UserDevice]:
+    def get_user_devices(self, user_id: int) -> List[BiometricDevice]:
         """Get all devices registered for a user"""
-        return self.db.query(UserDevice).filter(
-            UserDevice.user_id == user_id
-        ).order_by(desc(UserDevice.last_used_at)).all()
+        return self.db.query(BiometricDevice).filter(
+            BiometricDevice.user_id == user_id
+        ).order_by(desc(BiometricDevice.last_used_at)).all()
 
     def get_device_biometric_auths(self, user_id: int, device_id: str) -> List[BiometricAuth]:
         """Get all biometric authentications for a device"""
@@ -299,10 +328,10 @@ class BiometricService:
     def revoke_device(self, user_id: int, device_id: str) -> bool:
         """Revoke all access for a device"""
         # Disable device
-        device = self.db.query(UserDevice).filter(
+        device = self.db.query(BiometricDevice).filter(
             and_(
-                UserDevice.user_id == user_id,
-                UserDevice.device_id == device_id
+                BiometricDevice.user_id == user_id,
+                BiometricDevice.device_id == device_id
             )
         ).first()
         

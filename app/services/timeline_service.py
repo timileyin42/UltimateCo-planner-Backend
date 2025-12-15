@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from app.repositories.timeline_repo import TimelineRepository
 from app.repositories.event_repo import EventRepository
 from app.models.timeline_models import TimelineItemType, TimelineStatus
@@ -30,16 +30,20 @@ class TimelineService:
         event = self._get_event_with_access(event_id, user_id)
         
         # Prepare timeline data
+        payload = self._to_payload(timeline_data)
+        start_time = self._normalize_time_value(payload.get('start_time'))
+        end_time = self._normalize_time_value(payload.get('end_time'))
         processed_data = {
-            'title': timeline_data['title'],
-            'description': timeline_data.get('description'),
+            'title': payload['title'],
+            'description': payload.get('description'),
             'event_id': event_id,
             'creator_id': user_id,
-            'template_id': timeline_data.get('template_id'),
-            'start_time': timeline_data.get('start_time'),
-            'end_time': timeline_data.get('end_time'),
-            'is_published': timeline_data.get('is_published', False),
-            'is_main_timeline': timeline_data.get('is_main_timeline', False)
+            'start_time': start_time,
+            'end_time': end_time,
+            'default_buffer_minutes': payload.get('default_buffer_minutes', 15),
+            'setup_buffer_minutes': payload.get('setup_buffer_minutes', 30),
+            'cleanup_buffer_minutes': payload.get('cleanup_buffer_minutes', 30),
+            'is_active': payload.get('is_active', True)
         }
         
         return self.timeline_repo.create_timeline(processed_data)
@@ -66,16 +70,17 @@ class TimelineService:
         # Verify event access
         self._get_event_with_access(event_id, user_id)
         
+        search_payload = self._to_payload(search_params)
         # Create pagination params
-        page = search_params.get('page', 1)
-        per_page = search_params.get('per_page', 20)
-        pagination = PaginationParams(page=page, per_page=per_page)
+        page = search_payload.get('page', 1)
+        per_page = search_payload.get('per_page', 20)
+        pagination = PaginationParams(page=page, size=per_page)
         
         # Extract filters
         filters = {
-            'creator_id': search_params.get('creator_id'),
-            'template_id': search_params.get('template_id'),
-            'is_published': search_params.get('is_published')
+            'creator_id': search_payload.get('creator_id'),
+            'template_id': search_payload.get('template_id'),
+            'is_published': search_payload.get('is_published')
         }
         
         return self.timeline_repo.get_event_timelines(event_id, pagination, filters)
@@ -96,8 +101,18 @@ class TimelineService:
         event = self._get_event_with_access(timeline.event_id, user_id)
         if not self._can_edit_timeline(timeline, event, user_id):
             raise AuthorizationError("You don't have permission to edit this timeline")
-        
-        return self.timeline_repo.update_timeline(timeline_id, update_data)
+
+        update_payload = self._to_payload(update_data)
+
+        if "start_time" in update_payload:
+            update_payload["start_time"] = self._normalize_time_value(update_payload["start_time"])
+        if "end_time" in update_payload:
+            update_payload["end_time"] = self._normalize_time_value(update_payload["end_time"])
+
+        if not update_payload:
+            return timeline
+
+        return self.timeline_repo.update_timeline(timeline_id, update_payload)
     
     def delete_timeline(self, timeline_id: int, user_id: int) -> bool:
         """Delete a timeline."""
@@ -131,28 +146,42 @@ class TimelineService:
         if not self._can_edit_timeline(timeline, event, user_id):
             raise AuthorizationError("You don't have permission to edit this timeline")
         
+        item_payload = self._to_payload(item_data)
+        start_time = self._normalize_time_value(item_payload.get('start_time'))
+        if not start_time:
+            raise ValidationError("Timeline items require a start_time")
+        duration_minutes = item_payload.get('duration_minutes', 60)
         # Calculate end time if not provided
-        start_time = item_data['start_time']
-        duration_minutes = item_data.get('duration_minutes', 60)
-        end_time = item_data.get('end_time')
-        
+        end_time = self._normalize_time_value(item_payload.get('end_time'))
         if not end_time:
             end_time = self._calculate_item_end_time(start_time, duration_minutes)
+        item_type_value = item_payload.get('item_type', TimelineItemType.ACTIVITY)
+        item_type = item_type_value if isinstance(item_type_value, TimelineItemType) else TimelineItemType(item_type_value)
+        requirements_value = item_payload.get('requirements')
+        if isinstance(requirements_value, list):
+            requirements_value = json.dumps(requirements_value)
         
         # Prepare item data
+        assigned_to_id = item_payload.get('assigned_to_id', item_payload.get('assignee_id'))
+
         processed_data = {
             'timeline_id': timeline_id,
-            'title': item_data['title'],
-            'description': item_data.get('description'),
-            'item_type': TimelineItemType(item_data.get('item_type', 'activity')),
+            'title': item_payload['title'],
+            'description': item_payload.get('description'),
+            'item_type': item_type,
             'start_time': start_time,
             'end_time': end_time,
             'duration_minutes': duration_minutes,
-            'assignee_id': item_data.get('assignee_id'),
-            'location': item_data.get('location'),
-            'notes': item_data.get('notes'),
-            'order_index': item_data.get('order_index', 0),
-            'status': TimelineStatus.PENDING
+            'buffer_minutes': item_payload.get('buffer_minutes', 0),
+            'assigned_to_id': assigned_to_id,
+            'location': item_payload.get('location'),
+            'notes': item_payload.get('notes'),
+            'order_index': item_payload.get('order_index', 0),
+            'status': TimelineStatus.PENDING,
+            'is_critical': item_payload.get('is_critical', False),
+            'is_flexible': item_payload.get('is_flexible', True),
+            'requirements': requirements_value,
+            'task_id': item_payload.get('task_id')
         }
         
         return self.timeline_repo.create_timeline_item(processed_data)
@@ -176,15 +205,35 @@ class TimelineService:
         if not self._can_edit_timeline(timeline, event, user_id):
             raise AuthorizationError("You don't have permission to edit this timeline item")
         
-        # Recalculate end time if start time or duration changed
-        if 'start_time' in update_data or 'duration_minutes' in update_data:
-            start_time = update_data.get('start_time', item.start_time)
-            duration_minutes = update_data.get('duration_minutes', item.duration_minutes)
-            
-            if 'end_time' not in update_data:
-                update_data['end_time'] = self._calculate_item_end_time(start_time, duration_minutes)
+        update_payload = self._to_payload(update_data)
+        if 'item_type' in update_payload and not isinstance(update_payload['item_type'], TimelineItemType):
+            update_payload['item_type'] = TimelineItemType(update_payload['item_type'])
+        if 'status' in update_payload and not isinstance(update_payload['status'], TimelineStatus):
+            update_payload['status'] = TimelineStatus(update_payload['status'])
+        if 'assignee_id' in update_payload and 'assigned_to_id' not in update_payload:
+            update_payload['assigned_to_id'] = update_payload.pop('assignee_id')
+        if 'start_time' in update_payload:
+            update_payload['start_time'] = self._normalize_time_value(update_payload['start_time'])
+        if 'end_time' in update_payload:
+            update_payload['end_time'] = self._normalize_time_value(update_payload['end_time'])
+        if 'actual_start_time' in update_payload:
+            update_payload['actual_start_time'] = self._normalize_time_value(update_payload['actual_start_time'])
+        if 'actual_end_time' in update_payload:
+            update_payload['actual_end_time'] = self._normalize_time_value(update_payload['actual_end_time'])
+        if 'requirements' in update_payload and isinstance(update_payload['requirements'], list):
+            update_payload['requirements'] = json.dumps(update_payload['requirements'])
         
-        return self.timeline_repo.update_timeline_item(item_id, update_data)
+        # Recalculate end time if start time or duration changed
+        if 'start_time' in update_payload or 'duration_minutes' in update_payload:
+            start_time_value = update_payload.get('start_time', item.start_time)
+            if isinstance(start_time_value, datetime):
+                start_time_value = self._normalize_time_value(start_time_value)
+            duration_minutes = update_payload.get('duration_minutes', item.duration_minutes)
+            update_payload['start_time'] = start_time_value
+            update_payload['duration_minutes'] = duration_minutes
+            update_payload['end_time'] = self._calculate_item_end_time(start_time_value, duration_minutes)
+        
+        return self.timeline_repo.update_timeline_item(item_id, update_payload)
     
     def update_item_status(
         self, 
@@ -203,25 +252,34 @@ class TimelineService:
         event = self._get_event_with_access(timeline.event_id, user_id)
         
         can_update = (
-            item.assignee_id == user_id or 
+            item.assigned_to_id == user_id or 
             self._can_edit_timeline(timeline, event, user_id)
         )
         
         if not can_update:
             raise AuthorizationError("You don't have permission to update this item's status")
         
+        status_payload = self._to_payload(status_data)
+        status_value = status_payload.get('status')
+        status_enum = status_value if isinstance(status_value, TimelineStatus) else TimelineStatus(status_value)
         # Prepare status update data
         update_data = {
-            'status': TimelineStatus(status_data['status'])
+            'status': status_enum
         }
         
         # Add timestamps based on status
-        if status_data['status'] == 'in_progress':
-            update_data['actual_start_time'] = status_data.get('actual_start_time', datetime.utcnow())
-        elif status_data['status'] == 'completed':
-            update_data['actual_end_time'] = status_data.get('actual_end_time', datetime.utcnow())
-            if not item.actual_start_time:
-                update_data['actual_start_time'] = item.start_time
+        if status_enum == TimelineStatus.IN_PROGRESS:
+            actual_start = self._normalize_time_value(status_payload.get('actual_start_time'))
+            update_data['actual_start_time'] = actual_start or datetime.utcnow().time()
+        elif status_enum == TimelineStatus.COMPLETED:
+            actual_end = self._normalize_time_value(status_payload.get('actual_end_time'))
+            update_data['actual_end_time'] = actual_end or datetime.utcnow().time()
+            if status_payload.get('actual_start_time'):
+                update_data.setdefault('actual_start_time', self._normalize_time_value(status_payload['actual_start_time']))
+            elif item.actual_start_time:
+                update_data.setdefault('actual_start_time', item.actual_start_time)
+            else:
+                update_data.setdefault('actual_start_time', item.start_time)
         
         return self.timeline_repo.update_timeline_item(item_id, update_data)
     
@@ -234,6 +292,8 @@ class TimelineService:
         
         # Check permissions
         timeline = self.timeline_repo.get_timeline_by_id(item.timeline_id)
+        if not timeline:
+            raise NotFoundError("Timeline not found")
         event = self._get_event_with_access(timeline.event_id, user_id)
         
         if not self._can_edit_timeline(timeline, event, user_id):
@@ -270,24 +330,26 @@ class TimelineService:
         """Generate a timeline using AI."""
         # Verify event access
         event = self._get_event_with_access(event_id, user_id)
+        request_payload = self._to_payload(ai_request)
         
         # Generate timeline items using AI
         ai_items = ai_service.generate_event_timeline(
-            event_type=ai_request.get('event_type', 'general'),
-            duration_hours=ai_request.get('duration_hours', 4),
-            guest_count=ai_request.get('guest_count', 20),
-            preferences=ai_request.get('preferences', [])
+            event_type=request_payload.get('event_type', 'general'),
+            duration_hours=request_payload.get('duration_hours', 4),
+            guest_count=request_payload.get('guest_count', 20),
+            preferences=request_payload.get('preferences', [])
         )
         
         # Create timeline
         timeline_data = {
             'title': f"AI Generated Timeline - {event.title}",
-            'description': f"Automatically generated timeline for {ai_request.get('event_type', 'event')}",
+            'description': f"Automatically generated timeline for {request_payload.get('event_type', 'event')}",
             'event_id': event_id,
             'creator_id': user_id,
-            'start_time': event.start_datetime,
-            'end_time': event.end_datetime,
-            'is_published': False
+            'start_time': self._normalize_time_value(event.start_datetime) if event.start_datetime else None,
+            'end_time': self._normalize_time_value(event.end_datetime) if event.end_datetime else None,
+            'auto_generated': True,
+            'is_active': True
         }
         
         timeline = self.timeline_repo.create_timeline(timeline_data)
@@ -297,14 +359,16 @@ class TimelineService:
             start_time = event.start_datetime + timedelta(minutes=ai_item.get('start_time_offset_minutes', 0))
             duration_minutes = ai_item.get('duration_minutes', 60)
             end_time = start_time + timedelta(minutes=duration_minutes)
+            start_time_value = self._normalize_time_value(start_time)
+            end_time_value = self._normalize_time_value(end_time)
             
             item_data = {
                 'timeline_id': timeline.id,
                 'title': ai_item['title'],
                 'description': ai_item.get('description'),
                 'item_type': TimelineItemType(ai_item.get('item_type', 'activity')),
-                'start_time': start_time,
-                'end_time': end_time,
+                'start_time': start_time_value,
+                'end_time': end_time_value,
                 'duration_minutes': duration_minutes,
                 'order_index': i,
                 'status': TimelineStatus.PENDING
@@ -321,15 +385,16 @@ class TimelineService:
         template_data: Dict[str, Any]
     ):
         """Create a timeline template."""
+        payload = self._to_payload(template_data)
         processed_data = {
-            'name': template_data['name'],
-            'description': template_data.get('description'),
-            'event_type': template_data.get('event_type'),
-            'duration_hours': template_data.get('duration_hours'),
-            'template_data': json.dumps(template_data.get('template_data', {})),
+            'name': payload['name'],
+            'description': payload.get('description'),
+            'event_type': payload.get('event_type'),
+            'duration_hours': payload.get('duration_hours'),
+            'template_data': json.dumps(payload.get('template_data', {})),
             'creator_id': user_id,
-            'is_public': template_data.get('is_public', False),
-            'category': template_data.get('category')
+            'is_public': payload.get('is_public', False),
+            'category': payload.get('category')
         }
         
         return self.timeline_repo.create_template(processed_data)
@@ -356,10 +421,9 @@ class TimelineService:
             'description': f"Timeline created from template: {template.name}",
             'event_id': event_id,
             'creator_id': user_id,
-            'template_id': template_id,
-            'start_time': event.start_datetime,
-            'end_time': event.end_datetime,
-            'is_published': False
+            'start_time': self._normalize_time_value(event.start_datetime) if event.start_datetime else None,
+            'end_time': self._normalize_time_value(event.end_datetime) if event.end_datetime else None,
+            'is_active': True
         }
         
         timeline = self.timeline_repo.create_timeline(timeline_data)
@@ -372,14 +436,18 @@ class TimelineService:
             start_time = event.start_datetime + timedelta(minutes=start_offset)
             duration_minutes = template_item.get('duration_minutes', 60)
             end_time = start_time + timedelta(minutes=duration_minutes)
+            start_time_value = self._normalize_time_value(start_time)
+            end_time_value = self._normalize_time_value(end_time)
+            item_type_value = template_item.get('item_type', 'activity')
+            item_type = item_type_value if isinstance(item_type_value, TimelineItemType) else TimelineItemType(item_type_value)
             
             item_data = {
                 'timeline_id': timeline.id,
                 'title': template_item['title'],
                 'description': template_item.get('description'),
-                'item_type': TimelineItemType(template_item.get('item_type', 'activity')),
-                'start_time': start_time,
-                'end_time': end_time,
+                'item_type': item_type,
+                'start_time': start_time_value,
+                'end_time': end_time_value,
                 'duration_minutes': duration_minutes,
                 'order_index': i,
                 'status': TimelineStatus.PENDING
@@ -397,17 +465,18 @@ class TimelineService:
         search_params: Dict[str, Any]
     ) -> Tuple[List, int]:
         """Get timeline templates."""
+        search_payload = self._to_payload(search_params)
         # Create pagination params
-        page = search_params.get('page', 1)
-        per_page = search_params.get('per_page', 20)
-        pagination = PaginationParams(page=page, per_page=per_page)
+        page = search_payload.get('page', 1)
+        per_page = search_payload.get('per_page', 20)
+        pagination = PaginationParams(page=page, size=per_page)
         
         # Extract filters
         filters = {
-            'event_type': search_params.get('event_type'),
-            'creator_id': search_params.get('creator_id'),
-            'is_public': search_params.get('is_public'),
-            'category': search_params.get('category')
+            'event_type': search_payload.get('event_type'),
+            'creator_id': search_payload.get('creator_id'),
+            'is_public': search_payload.get('is_public'),
+            'category': search_payload.get('category')
         }
         
         return self.timeline_repo.get_templates(pagination, filters)
@@ -430,15 +499,16 @@ class TimelineService:
         if not self._can_edit_timeline(timeline, event, user_id):
             raise AuthorizationError("You don't have permission to edit timeline dependencies")
         
+        payload = self._to_payload(dependency_data)
         # Validate that both items exist and belong to the timeline
         items = self.timeline_repo.get_timeline_items(timeline_id)
         item_ids = [item.id for item in items]
         
-        if (dependency_data['dependent_item_id'] not in item_ids or 
-            dependency_data['prerequisite_item_id'] not in item_ids):
+        if (payload['dependent_item_id'] not in item_ids or 
+            payload['prerequisite_item_id'] not in item_ids):
             raise ValidationError("Both items must belong to the same timeline")
         
-        return self.timeline_repo.create_timeline_dependency(dependency_data)
+        return self.timeline_repo.create_timeline_dependency(payload)
     
     # Statistics and analytics
     def get_timeline_statistics(self, timeline_id: int, user_id: int) -> Dict[str, Any]:
@@ -496,33 +566,71 @@ class TimelineService:
         search_params: Dict[str, Any]
     ) -> Tuple[List, int]:
         """Search timelines."""
+        search_payload = self._to_payload(search_params)
         # Create pagination params
-        page = search_params.get('page', 1)
-        per_page = search_params.get('per_page', 20)
-        pagination = PaginationParams(page=page, per_page=per_page)
+        page = search_payload.get('page', 1)
+        per_page = search_payload.get('per_page', 20)
+        pagination = PaginationParams(page=page, size=per_page)
         
-        return self.timeline_repo.search_timelines(search_params, pagination)
+        return self.timeline_repo.search_timelines(search_payload, pagination)
     
     # Helper methods
+    def _to_payload(self, data: Any) -> Dict[str, Any]:
+        """Convert Pydantic models or other inputs into standard dicts."""
+        if data is None:
+            return {}
+        if isinstance(data, dict):
+            return data
+        model_dump = getattr(data, "model_dump", None)
+        if callable(model_dump):
+            return model_dump(exclude_unset=True)
+        raise TypeError(f"Unsupported payload type: {type(data)}")
+
+    def _normalize_time_value(self, value: Any) -> Optional[time]:
+        """Ensure time-like values are converted to datetime.time objects."""
+        if value is None:
+            return None
+        if isinstance(value, time):
+            return value
+        if isinstance(value, datetime):
+            return value.time()
+        if isinstance(value, str):
+            try:
+                # Try parsing full datetime strings first
+                return datetime.fromisoformat(value).time()
+            except ValueError:
+                try:
+                    return time.fromisoformat(value)
+                except ValueError as exc:
+                    raise ValidationError("Invalid time format provided") from exc
+        raise ValidationError("Unsupported time value provided")
+
     def _get_event_with_access(self, event_id: int, user_id: int):
         """Get event and verify user has access."""
         event = self.event_repo.get_by_id(event_id, include_relations=True)
         
         if not event:
             raise NotFoundError("Event not found")
-        
-        # Check access (creator, collaborator, or invited)
-        if event.creator_id != user_id:
-            # Check if user is collaborator or invited
-            invitation = self.db.query(EventInvitation).filter(
-                EventInvitation.event_id == event_id,
-                EventInvitation.user_id == user_id
-            ).first()
-            
-            if not invitation:
-                raise AuthorizationError("You don't have access to this event")
-        
-        return event
+
+        # Event creator always has access
+        if event.creator_id == user_id:
+            return event
+
+        # Collaborators can access timelines as well
+        if any(collaborator.id == user_id for collaborator in (event.collaborators or [])):
+            return event
+
+        # Fall back to invitation check for invited guests who accepted
+        invitation = self.db.query(EventInvitation).filter(
+            EventInvitation.event_id == event_id,
+            EventInvitation.user_id == user_id,
+            EventInvitation.is_deleted == False
+        ).first()
+
+        if invitation:
+            return event
+
+        raise AuthorizationError("You don't have access to this event")
     
     def _can_edit_timeline(self, timeline, event, user_id: int) -> bool:
         """Check if user can edit a timeline."""
@@ -536,9 +644,11 @@ class TimelineService:
         
         return False
     
-    def _calculate_item_end_time(self, start_time: datetime, duration_minutes: int) -> datetime:
+    def _calculate_item_end_time(self, start_time: time, duration_minutes: int) -> time:
         """Calculate end time for a timeline item."""
-        return start_time + timedelta(minutes=duration_minutes)
+        base_datetime = datetime.combine(datetime.utcnow().date(), start_time)
+        end_datetime = base_datetime + timedelta(minutes=duration_minutes)
+        return end_datetime.time()
     
     def _validate_timeline_items(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Validate timeline items for conflicts."""
