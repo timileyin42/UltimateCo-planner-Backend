@@ -3,6 +3,7 @@ __pycache__/
 .env
 .cache
 .pytest_cache/
+run_tests.bat
 
 # Celery stuff
 celerybeat-schedule
@@ -38,3 +39,10 @@ temp/
 # Documentation
 docs/
 
+# GCP & Firebase Credentials
+planetdev-475809-914df0ab954b.json
+planet-team-firebase-adminsdk-fbsvc-f113ab3eab.json
+*firebase*.json
+correct_base64.txt
+from_base64.txt
+from_file.txt
