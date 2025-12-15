@@ -3,6 +3,8 @@ Firebase Cloud Messaging (FCM) Push Notification Service
 """
 import json
 import logging
+from datetime import datetime
+from threading import Lock
 from typing import List, Dict, Any, Optional
 from firebase_admin import messaging, credentials, initialize_app
 from firebase_admin.exceptions import FirebaseError
@@ -17,13 +19,25 @@ class PushNotificationService:
     
     def __init__(self):
         self._app = None
+        # In-memory device registry used when Firebase is not configured
+        self._devices: Dict[int, List[Dict[str, Any]]] = {}
+        self._device_lock = Lock()
+        self._device_seq = 1
         self._initialize_firebase()
     
     def _initialize_firebase(self):
         """Initialize Firebase Admin SDK."""
         try:
-            # Prioritize JSON credentials (best for production with Doppler)
-            if settings.FIREBASE_CREDENTIALS_JSON:
+            # Priority order: base64 > JSON string > file path
+            if settings.FIREBASE_CREDENTIALS_BASE64:
+                # Decode base64 credentials (production-ready approach)
+                import base64
+                decoded_bytes = base64.b64decode(settings.FIREBASE_CREDENTIALS_BASE64)
+                cred_dict = json.loads(decoded_bytes)
+                cred = credentials.Certificate(cred_dict)
+                self._app = initialize_app(cred)
+                logger.info("Firebase initialized with base64 credentials from environment")
+            elif settings.FIREBASE_CREDENTIALS_JSON:
                 # Initialize with JSON credentials from environment variable
                 cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
                 cred = credentials.Certificate(cred_dict)
@@ -47,6 +61,61 @@ class PushNotificationService:
     def is_available(self) -> bool:
         """Check if push notification service is available."""
         return self._app is not None
+
+    def is_configured(self) -> bool:
+        """Alias used by API layer when reporting channel availability."""
+        return self.is_available()
+
+    def register_device(
+        self,
+        user_id: int,
+        device_token: str,
+        device_type: str,
+        device_name: Optional[str] = None,
+        app_version: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Register or update a device for push notifications."""
+        now = datetime.utcnow()
+        device_data = {
+            "device_token": device_token,
+            "device_type": device_type,
+            "device_name": device_name,
+            "app_version": app_version,
+            "is_active": True,
+            "last_used": now,
+            "created_at": now,
+        }
+
+        with self._device_lock:
+            user_devices = self._devices.setdefault(user_id, [])
+            for device in user_devices:
+                if device["device_token"] == device_token:
+                    original_created = device.get("created_at")
+                    # Update existing registration
+                    device.update(device_data)
+                    if original_created:
+                        device["created_at"] = original_created
+                    return device.copy()
+
+            device = {"id": self._device_seq, **device_data}
+            self._device_seq += 1
+            user_devices.append(device)
+            return device.copy()
+
+    def get_user_devices(self, user_id: int) -> List[Dict[str, Any]]:
+        """Return registered devices for a user."""
+        with self._device_lock:
+            return [device.copy() for device in self._devices.get(user_id, [])]
+
+    def unregister_device(self, device_id: int, user_id: int) -> bool:
+        """Remove a device registration for a user."""
+        with self._device_lock:
+            user_devices = self._devices.get(user_id, [])
+            for index, device in enumerate(user_devices):
+                if device["id"] == device_id:
+                    user_devices.pop(index)
+                    return True
+        return False
     
     @firebase_circuit_breaker(fallback=firebase_fallback)
     async def send_notification(

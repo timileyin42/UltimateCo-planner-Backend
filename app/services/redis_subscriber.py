@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 import redis.asyncio as redis
 from app.core.config import settings
 from app.services.websocket_manager import websocket_manager
+from app.services.push_service import push_service
 
 logger = logging.getLogger(__name__)
 
@@ -125,13 +126,35 @@ class RedisSubscriber:
                     "channel": channel
                 }
                 
-                # Send to all WebSocket connections for this user
+                # Send to all WebSocket connections for this user (web/active mobile)
                 sent = await websocket_manager.send_user_notification(user_id, notification)
                 
                 if sent:
-                    logger.info(f"Relayed message from {channel} to user {user_id}")
+                    logger.info(f"Relayed message from {channel} to user {user_id} via WebSocket")
                 else:
                     logger.debug(f"No WebSocket connections for user {user_id}")
+                
+                # Also send Firebase push notification for mobile devices
+                try:
+                    # Extract notification content
+                    title = message_data.get("title", "Payment Update")
+                    body = message_data.get("message", message_data.get("body", "You have a payment update"))
+                    
+                    # Send push notification to all registered devices
+                    push_sent = await push_service.send_notification_to_user(
+                        user_id=user_id,
+                        title=title,
+                        body=body,
+                        data=message_data
+                    )
+                    
+                    if push_sent:
+                        logger.info(f"Sent Firebase push notification to user {user_id}")
+                    else:
+                        logger.debug(f"No registered devices for user {user_id}")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to send Firebase push notification: {str(e)}")
                     
         except ValueError as e:
             logger.error(f"Invalid user_id in channel {channel}: {str(e)}")
