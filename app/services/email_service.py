@@ -7,9 +7,16 @@ from app.models.user_models import User
 from app.models.event_models import Event, EventInvitation
 import os
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Initialize Resend
 resend.api_key = settings.RESEND_API_KEY
+
+# Log Resend configuration status
+if not settings.RESEND_API_KEY:
+    logger.warning("Resend API key not configured. Email functionality will be disabled.")
 
 # Initialize Jinja2 for email templates
 template_dir = os.path.join(os.path.dirname(__file__), '..', 'templates', 'emails')
@@ -18,12 +25,23 @@ env = Environment(
     autoescape=select_autoescape(['html', 'xml'])
 )
 
+# Add custom filter for current year
+def current_year():
+    """Return the current year"""
+    return datetime.now().year
+
+env.globals['current_year'] = current_year
+
 class EmailService:
     """Service for sending emails using Resend."""
     
     def __init__(self):
         self.from_email = settings.EMAILS_FROM_EMAIL or "noreply@planetal.com"
         self.from_name = settings.EMAILS_FROM_NAME or "Plan et al"
+
+    def is_configured(self) -> bool:
+        """Return True when outbound email has the minimum configuration."""
+        return bool(settings.RESEND_API_KEY)
     
     @email_circuit_breaker(fallback=email_fallback)
     async def send_email(
@@ -86,7 +104,7 @@ class EmailService:
         try:
             template = env.get_template(template_name)
             return template.render(**context)
-        except Exception as e:
+        except Exception as e: 
             print(f"Failed to render template {template_name}: {str(e)}")
             return ""
     
