@@ -682,61 +682,6 @@ async def generate_ai_questions(
         logger.error(f"Failed to generate questions: {str(e)}")
         raise http_400_bad_request(f"Failed to generate questions: {str(e)}")
 
-@creative_router.get("/games/{game_id}/questions", response_model=GameQuestionsResponse)
-async def get_game_questions(
-    game_id: int,
-    round: Optional[int] = Query(None, description="Filter by round number"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get questions for a game (optionally filtered by round)."""
-    try:
-        creative_service = CreativeService(db)
-        questions = creative_service.get_game_questions(game_id, current_user.id, round)
-        
-        # Get game to extract round info
-        game = creative_service.creative_repo.get_game_by_id(game_id)
-        game_data = json.loads(game.game_data) if isinstance(game.game_data, str) else (game.game_data or {})
-        
-        return GameQuestionsResponse(
-            questions=questions,
-            round=round,
-            total_rounds=game_data.get('rounds')
-        )
-        
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise http_404_not_found(str(e))
-        else:
-            raise http_400_bad_request(str(e))
-
-@creative_router.post("/game-sessions/{session_id}/submit-answer", response_model=AnswerResult)
-async def submit_answer(
-    session_id: int,
-    answer_data: SubmitAnswerRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Submit an answer during active gameplay."""
-    try:
-        creative_service = CreativeService(db)
-        result = creative_service.submit_answer(
-            session_id,
-            current_user.id,
-            answer_data.question_id,
-            answer_data.answer
-        )
-        
-        return AnswerResult(**result)
-        
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise http_404_not_found(str(e))
-        elif "not active" in str(e).lower() or "not participating" in str(e).lower():
-            raise http_400_bad_request(str(e))
-        else:
-            raise http_400_bad_request("Failed to submit answer")
-
 @creative_router.post("/games/{game_id}/rate", response_model=GameRatingResponse)
 async def rate_game(
     game_id: int,
