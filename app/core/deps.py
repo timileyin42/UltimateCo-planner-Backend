@@ -24,6 +24,8 @@ def get_current_user_token(
     token: str = Depends(oauth2_scheme)
 ) -> str:
     """Extract and verify JWT token from OAuth2 scheme"""
+    if not token:
+        raise http_401_unauthorized("Authentication credentials were not provided")
     user_id = verify_token(token)
     if user_id is None:
         raise http_401_unauthorized("Invalid authentication credentials")
