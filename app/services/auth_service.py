@@ -253,6 +253,13 @@ class AuthService:
         # Mark email as verified
         user.is_verified = True
         self.db.commit()
+
+        # Send welcome email when verification succeeds
+        try:
+            if user.email:
+                asyncio.create_task(email_service.send_welcome_email(user))
+        except Exception as e:
+            print(f"Failed to send welcome email: {str(e)}")
         
         return True
     
