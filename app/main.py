@@ -3,12 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 import asyncio
 import logging
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.v1.api_router import api_router
 from app.api.health import health_router
 from app.core.config import settings
 from app.services.redis_subscriber import start_redis_listener, stop_redis_listener
 from app.core.db_optimizations import create_composite_indexes, read_replica_manager
+from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting middleware and handlers
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["health"])
