@@ -402,6 +402,7 @@ The API uses JWT tokens with refresh token rotation:
 
 ##  Testing
 
+### Automated Tests
 ```bash
 # Run all tests
 pytest
@@ -411,6 +412,42 @@ pytest --cov=app
 
 # Run specific test file
 pytest tests/test_auth.py
+```
+
+### API Endpoint Tests
+```bash
+# Test core endpoints (auth, users, events)
+python test_core_api.py
+
+# Test internal/admin endpoints  
+python test_internal_endpoints.py
+
+# Test extended features (collaborators, invites, chat, timeline)
+python test_extended_endpoints.py
+
+# Test verification system (Email via Resend + SMS via Termii)
+python test_verification_system.py
+```
+
+### Verification System
+
+The app supports dual verification methods:
+
+**Email Verification (Resend)**
+- Users who sign up with email receive 6-digit OTP via Resend
+- Sender: noreply@planetal.app
+- Check dashboard: https://resend.com/emails
+
+**SMS Verification (Termii)**
+- Users who sign up with phone number receive OTP via Termii SMS
+- Sender ID: PLANETAL
+- Check dashboard: https://termii.com
+
+**OTP Settings:**
+- 6-digit code, valid for 10 minutes
+- Maximum 5 attempts
+- 2-minute rate limiting between resends
+- Required before accessing protected features
 
 # Development
 ENVIRONMENT=development

@@ -40,14 +40,23 @@ def get_current_user(
         raise http_401_unauthorized("User not found")
     if not user.is_active:
         raise http_403_forbidden("Inactive user")
+    if not user.is_verified:
+        method = "email" if user.signup_method == "email" else "phone number"
+        raise http_403_forbidden(
+            f"Account verification required. Please verify your {method} to access this feature."
+        )
     return user
 
 def get_current_active_user(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Get current active user"""
-    if not current_user.is_active:
-        raise http_403_forbidden("Inactive user")
+    return current_user
+
+def get_current_verified_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Get current verified user - requires account verification via email (Resend) or SMS (Termii)"""
     return current_user
 
 def get_current_superuser(
@@ -77,7 +86,7 @@ def get_optional_current_user(
         
         user_service = UserService(db)
         user = user_service.get_user_by_id(int(user_id))
-        return user if user and user.is_active else None
+        return user if user and user.is_active and user.is_verified else None
     except Exception:
         return None
 

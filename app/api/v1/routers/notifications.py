@@ -396,43 +396,6 @@ async def get_notification_logs(
     except Exception as e:
         raise http_400_bad_request("Failed to get notification logs")
 
-# Test notifications
-@notifications_router.post("/test")
-async def send_test_notification(
-    test_request: TestNotificationRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Send a test notification"""
-    try:
-        notification_service = NotificationService(db)
-        
-        # Create a test notification queue item
-        
-        test_notification = NotificationQueue(
-            notification_type=test_request.notification_type,
-            channel=test_request.channel,
-            subject=test_request.subject,
-            message=test_request.message,
-            scheduled_for=datetime.utcnow(),
-            event_id=1,  # Dummy event ID for test
-            recipient_id=current_user.id,
-            priority=1
-        )
-        
-        # Send immediately
-        success = await notification_service._send_notification(test_notification)
-        
-        return {
-            "message": "Test notification sent" if success else "Test notification failed",
-            "success": success,
-            "channel": test_request.channel.value,
-            "recipient": test_request.recipient_email
-        }
-        
-    except Exception as e:
-        raise http_400_bad_request(f"Failed to send test notification: {str(e)}")
-
 # Bulk operations
 @notifications_router.post("/events/{event_id}/bulk-reminders", response_model=List[SmartReminderResponse])
 async def bulk_create_reminders(

@@ -53,11 +53,11 @@ def get_identifier(request: Request) -> str:
     # Fallback to IP address
     return get_remote_address(request)
 
-# Create limiter instance
+# Create limiter instance with a sane default API-wide limit
 limiter = Limiter(
     key_func=get_identifier,
     storage_uri=settings.REDIS_URL if settings.RATE_LIMIT_ENABLED else None,
-    default_limits=[]
+    default_limits=[RateLimitConfig.API] if settings.RATE_LIMIT_ENABLED else []
 )
 
 # Custom rate limit exceeded handler

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.deps import get_db, get_current_active_user
@@ -453,7 +454,6 @@ async def get_chat_statistics(
         message_service._get_event_with_access(event_id, current_user.id)
         
         # Get basic statistics
-        from sqlalchemy import func, distinct
         from app.models.message_models import Message, MessageReaction, ChatParticipant
         from datetime import datetime, timedelta
         

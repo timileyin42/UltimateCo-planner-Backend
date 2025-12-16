@@ -154,64 +154,6 @@ async def delete_device(
     return {"message": "Device deleted successfully"}
 
 
-@router.post("/test-notification", response_model=PushNotificationResponse)
-async def send_test_notification(
-    notification_data: PushNotificationRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Send a test push notification to user's devices."""
-    try:
-        # Get user's active devices
-        active_devices = db.query(UserDevice).filter(
-            UserDevice.user_id == current_user.id,
-            UserDevice.is_active == True
-        ).all()
-        
-        if not active_devices:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active devices found for user"
-            )
-        
-        device_tokens = [device.device_token for device in active_devices]
-        
-        # Send notification
-        if len(device_tokens) == 1:
-            success = await push_service.send_notification(
-                device_token=device_tokens[0],
-                title=notification_data.title,
-                body=notification_data.body,
-                data=notification_data.data or {}
-            )
-            return PushNotificationResponse(
-                success=success,
-                message="Test notification sent" if success else "Failed to send notification",
-                success_count=1 if success else 0,
-                failure_count=0 if success else 1
-            )
-        else:
-            result = await push_service.send_multicast_notification(
-                device_tokens=device_tokens,
-                title=notification_data.title,
-                body=notification_data.body,
-                data=notification_data.data or {}
-            )
-            return PushNotificationResponse(
-                success=result['success_count'] > 0,
-                message=f"Sent to {result['success_count']} devices, {result['failure_count']} failed",
-                success_count=result['success_count'],
-                failure_count=result['failure_count'],
-                failed_tokens=result.get('failed_tokens', [])
-            )
-            
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send test notification: {str(e)}"
-        )
-
-
 @router.post("/update-token")
 async def update_device_token(
     device_id: str,
