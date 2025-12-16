@@ -40,43 +40,6 @@ async def get_redis_client() -> redis.Redis:
             redis_client = None
     return redis_client
 
-def get_identifier(request: Request) -> str:
-    """
-    Get unique identifier for rate limiting.
-    Uses user ID if authenticated, otherwise IP address.
-    """
-    # Try to get user ID from request state (set by auth middleware)
-    user_id = getattr(request.state, 'user_id', None)
-    if user_id:
-        return f"user:{user_id}"
-    
-    # Fallback to IP address
-    return get_remote_address(request)
-
-# Create limiter instance with a sane default API-wide limit
-limiter = Limiter(
-    key_func=get_identifier,
-    storage_uri=settings.REDIS_URL if settings.RATE_LIMIT_ENABLED else None,
-    default_limits=[RateLimitConfig.API] if settings.RATE_LIMIT_ENABLED else []
-)
-
-# Custom rate limit exceeded handler
-async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    """Custom handler for rate limit exceeded errors."""
-    logger.warning(
-        f"Rate limit exceeded for {get_identifier(request)} "
-        f"on {request.url.path} - {exc.detail}"
-    )
-    
-    return HTTPException(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail={
-            "error": "Rate limit exceeded",
-            "message": "Too many requests. Please try again later.",
-            "retry_after": exc.retry_after if hasattr(exc, 'retry_after') else 60
-        }
-    )
-
 class RateLimitConfig:
     """Rate limit configurations for different endpoint types."""
     
@@ -109,6 +72,46 @@ class RateLimitConfig:
     # Payment specific limits
     PAYMENT_CREATE = "10/minute"
     SUBSCRIPTION_MANAGE = "20/minute"
+
+
+def get_identifier(request: Request) -> str:
+    """
+    Get unique identifier for rate limiting.
+    Uses user ID if authenticated, otherwise IP address.
+    """
+    # Try to get user ID from request state (set by auth middleware)
+    user_id = getattr(request.state, 'user_id', None)
+    if user_id:
+        return f"user:{user_id}"
+    
+    # Fallback to IP address
+    return get_remote_address(request)
+
+
+# Create limiter instance with a sane default API-wide limit
+limiter = Limiter(
+    key_func=get_identifier,
+    storage_uri=settings.REDIS_URL if settings.RATE_LIMIT_ENABLED else None,
+    default_limits=[RateLimitConfig.API] if settings.RATE_LIMIT_ENABLED else []
+)
+
+
+# Custom rate limit exceeded handler
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Custom handler for rate limit exceeded errors."""
+    logger.warning(
+        f"Rate limit exceeded for {get_identifier(request)} "
+        f"on {request.url.path} - {exc.detail}"
+    )
+    
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "error": "Rate limit exceeded",
+            "message": "Too many requests. Please try again later.",
+            "retry_after": exc.retry_after if hasattr(exc, 'retry_after') else 60
+        }
+    )
 
 def create_rate_limit_decorator(limit: str, per_method: bool = False):
     """
