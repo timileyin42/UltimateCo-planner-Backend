@@ -10,6 +10,7 @@ from app.models.user_models import User
 from app.models.event_models import Event
 from app.services.stripe_service import StripeService
 from app.core.errors import PlanEtalException
+from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -159,8 +160,8 @@ class SubscriptionService:
                 'plan_name': 'Free',
                 'plan_type': PlanType.FREE,
                 'events_created': free_plan_usage,
-                'events_limit': 30,
-                'events_remaining': max(0, 10 - free_plan_usage),
+                'events_limit': settings.FREE_PLAN_EVENT_LIMIT,
+                'events_remaining': max(0, settings.FREE_PLAN_EVENT_LIMIT - free_plan_usage),
                 'is_unlimited': False,
                 'subscription_status': None,
                 'billing_interval': None,
@@ -237,7 +238,7 @@ class SubscriptionService:
     async def _check_free_plan_limits(self, db: Session, user_id: int) -> bool:
         """Check if free plan user can create more events."""
         current_usage = await self._get_free_plan_usage(db, user_id)
-        return current_usage < 30  # Free plan limit
+        return current_usage < settings.FREE_PLAN_EVENT_LIMIT  # Free plan limit
     
     async def _get_free_plan_usage(self, db: Session, user_id: int) -> int:
         """Get current month's event count for free plan user."""
