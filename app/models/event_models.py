@@ -122,6 +122,33 @@ class Event(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     def total_expenses(self):
         """Get total expenses for this event"""
         return sum(expense.amount for expense in self.expenses if not expense.is_deleted)
+    
+    @property
+    def task_categories(self):
+        """Get tasks grouped by category"""
+        from collections import defaultdict
+        
+        # Group tasks by category
+        categories_dict = defaultdict(list)
+        for task in self.tasks:
+            if not task.is_deleted:
+                categories_dict[task.category or 'Other'].append({
+                    'id': task.id,
+                    'title': task.title,
+                    'description': task.description,
+                    'completed': task.status == TaskStatus.COMPLETED,
+                    'assignee_id': task.assigned_to_id
+                })
+        
+        # Format as list of categories
+        categories = []
+        for category_name, items in categories_dict.items():
+            categories.append({
+                'name': category_name,
+                'items': items
+            })
+        
+        return categories
 
 class EventInvitation(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     """Event invitation model"""
