@@ -60,10 +60,14 @@ class SubscriptionPlan(Base, IDMixin, TimestampMixin, ActiveMixin):
     priority_support = Column(Boolean, default=False, nullable=False)
     api_access = Column(Boolean, default=False, nullable=False)
     
-    # Stripe integration
+    # Stripe integration (Legacy - Deprecated)
     stripe_price_id_monthly = Column(String(100), nullable=True)
     stripe_price_id_yearly = Column(String(100), nullable=True)
     stripe_product_id = Column(String(100), nullable=True)
+    
+    # Paystack integration
+    paystack_plan_code_monthly = Column(String(100), nullable=True)
+    paystack_plan_code_yearly = Column(String(100), nullable=True)
     
     # Relationships
     subscriptions = relationship("UserSubscription", back_populates="plan")
@@ -74,27 +78,9 @@ class SubscriptionPlan(Base, IDMixin, TimestampMixin, ActiveMixin):
         Index('idx_plan_active', 'is_active'),
         Index('idx_stripe_price_monthly', 'stripe_price_id_monthly'),
         Index('idx_stripe_price_yearly', 'stripe_price_id_yearly'),
+        Index('idx_paystack_plan_monthly', 'paystack_plan_code_monthly'),
+        Index('idx_paystack_plan_yearly', 'paystack_plan_code_yearly'),
     )
-    
-    # Features and limits
-    max_events = Column(Integer, nullable=True)  # NULL means unlimited
-    max_attendees_per_event = Column(Integer, nullable=True)
-    max_storage_gb = Column(Float, nullable=True)
-    
-    # Feature flags
-    ai_suggestions = Column(Boolean, default=False, nullable=False)
-    advanced_analytics = Column(Boolean, default=False, nullable=False)
-    custom_branding = Column(Boolean, default=False, nullable=False)
-    priority_support = Column(Boolean, default=False, nullable=False)
-    api_access = Column(Boolean, default=False, nullable=False)
-    
-    # Stripe integration
-    stripe_price_id_monthly = Column(String(100), nullable=True)
-    stripe_price_id_yearly = Column(String(100), nullable=True)
-    stripe_product_id = Column(String(100), nullable=True)
-    
-    # Relationships
-    subscriptions = relationship("UserSubscription", back_populates="plan")
     
     def __repr__(self):
         return f"<SubscriptionPlan(id={self.id}, name='{self.name}', type='{self.plan_type}')>"
@@ -119,9 +105,14 @@ class UserSubscription(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     current_period_end = Column(DateTime, nullable=True)
     canceled_at = Column(DateTime, nullable=True)
     
-    # Stripe integration
+    # Stripe integration (Legacy - Deprecated)
     stripe_subscription_id = Column(String(100), nullable=True, unique=True)
     stripe_customer_id = Column(String(100), nullable=True)
+    
+    # Paystack integration
+    paystack_subscription_code = Column(String(100), nullable=True, unique=True)
+    paystack_customer_code = Column(String(100), nullable=True)
+    paystack_email_token = Column(String(100), nullable=True)
     
     # Usage tracking
     events_created_this_period = Column(Integer, default=0, nullable=False)
@@ -139,6 +130,8 @@ class UserSubscription(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         Index('idx_subscription_dates', 'start_date', 'end_date'),
         Index('idx_stripe_subscription', 'stripe_subscription_id'),
         Index('idx_stripe_customer', 'stripe_customer_id'),
+        Index('idx_paystack_subscription', 'paystack_subscription_code'),
+        Index('idx_paystack_customer', 'paystack_customer_code'),
         Index('idx_subscription_period', 'current_period_start', 'current_period_end'),
         Index('idx_user_status', 'user_id', 'status'),
     )
@@ -182,9 +175,14 @@ class SubscriptionPayment(Base, IDMixin, TimestampMixin):
     currency = Column(String(3), default="USD", nullable=False)
     status = Column(SQLEnum(PaymentStatus), nullable=False, default=PaymentStatus.PENDING)
     
-    # Stripe integration
+    # Stripe integration (Legacy - Deprecated)
     stripe_payment_intent_id = Column(String(100), nullable=True)
     stripe_invoice_id = Column(String(100), nullable=True)
+    
+    # Paystack integration
+    paystack_reference = Column(String(100), nullable=True, unique=True)
+    paystack_authorization_code = Column(String(100), nullable=True)
+    paystack_access_code = Column(String(100), nullable=True)
     
     # Payment metadata
     billing_reason = Column(String(50), nullable=True)  # subscription_create, subscription_cycle, etc.
@@ -209,14 +207,48 @@ class SubscriptionPayment(Base, IDMixin, TimestampMixin):
         Index('idx_payment_dates', 'paid_at'),
         Index('idx_stripe_payment_intent', 'stripe_payment_intent_id'),
         Index('idx_stripe_invoice', 'stripe_invoice_id'),
+        Index('idx_paystack_reference', 'paystack_reference'),
+        Index('idx_paystack_authorization', 'paystack_authorization_code'),
         Index('idx_payment_amount', 'amount'),
     )
     
     def __repr__(self):
         return f"<SubscriptionPayment(id={self.id}, amount={self.amount}, status='{self.status}')>"
 
+class PaystackEventLog(Base, IDMixin, TimestampMixin):
+    """Log of processed Paystack webhook events for idempotency."""
+    __tablename__ = "paystack_event_logs"
+    
+    # Paystack event ID (unique per event)
+    event_id = Column(String(100), unique=True, nullable=False, index=True)
+    
+    # Event type (e.g., charge.success, subscription.create)
+    event_type = Column(String(100), nullable=True)
+    
+    # Processing status
+    processing_status = Column(String(50), default="pending", nullable=False)  # pending, processing, completed, failed
+    
+    # Event metadata (stored as JSON string)
+    event_metadata = Column(Text, nullable=True)
+    
+    # Processing details
+    processed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    
+    # Database indexes
+    __table_args__ = (
+        Index('idx_paystack_event_id', 'event_id'),
+        Index('idx_paystack_event_type', 'event_type'),
+        Index('idx_paystack_processing_status', 'processing_status'),
+        Index('idx_paystack_processed_at', 'processed_at'),
+    )
+    
+    def __repr__(self):
+        return f"<PaystackEventLog(event_id='{self.event_id}', type='{self.event_type}', status='{self.processing_status}')>"
+
 class StripeEventLog(Base, IDMixin, TimestampMixin):
-    """Log of processed Stripe webhook events for idempotency."""
+    """Log of processed Stripe webhook events for idempotency (Legacy - Deprecated)."""
     __tablename__ = "stripe_event_logs"
     
     # Stripe event ID (unique per event)

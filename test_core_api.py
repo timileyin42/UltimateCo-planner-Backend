@@ -7,6 +7,7 @@ import requests
 import json
 from datetime import datetime, timedelta, timezone
 import os
+import psycopg2
 
 # Load environment variables from .env file
 try:
@@ -18,6 +19,68 @@ except ImportError:
 # Base URL
 BASE_URL = "http://localhost:8000"
 API_V1 = f"{BASE_URL}/api/v1"
+
+# Database connection helper
+def get_db_connection():
+    """Get database connection from environment variables"""
+    try:
+        # First try to parse DATABASE_URL if available
+        database_url = os.getenv("DATABASE_URL", "")
+        if database_url:
+            # Parse postgresql://user:password@host:port/database
+            from urllib.parse import urlparse
+            parsed = urlparse(database_url)
+            conn = psycopg2.connect(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip('/') if parsed.path else "planetal",
+                user=parsed.username or "postgres",
+                password=parsed.password or ""
+            )
+        else:
+            # Fallback to individual environment variables
+            conn = psycopg2.connect(
+                host=os.getenv("POSTGRES_HOST", "localhost"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB", "planetal"),
+                user=os.getenv("POSTGRES_USER", "postgres"),
+                password=os.getenv("POSTGRES_PASSWORD", "")
+            )
+        return conn
+    except Exception as e:
+        print_error(f"Database connection failed: {str(e)}")
+        return None
+
+def verify_user_in_db(user_email):
+    """Directly verify user in database by setting is_verified=True"""
+    conn = get_db_connection()
+    if not conn:
+        print_warning("Could not connect to database for verification")
+        return False
+    
+    try:
+        cursor = conn.cursor()
+        # Update the user's is_verified status
+        cursor.execute(
+            "UPDATE users SET is_verified = TRUE WHERE email = %s",
+            (user_email,)
+        )
+        conn.commit()
+        rows_affected = cursor.rowcount
+        cursor.close()
+        conn.close()
+        
+        if rows_affected > 0:
+            print_success(f"User {user_email} verified in database")
+            return True
+        else:
+            print_warning(f"No user found with email {user_email}")
+            return False
+    except Exception as e:
+        print_error(f"Database verification error: {str(e)}")
+        if conn:
+            conn.close()
+        return False
 
 # Colors for terminal output
 class Colors:
@@ -111,6 +174,10 @@ def test_register():
             print_success("User registration successful")
             print_info(f"User ID: {data.get('id')}")
             print_info(f"Email: {data.get('email')}")
+            
+            # Verify user directly in database
+            verify_user_in_db(user_data["email"])
+            
             return True, user_data
         else:
             print_error(f"Registration failed: {response.status_code}")
@@ -2464,7 +2531,7 @@ def test_create_vendor_profile():
         "service_radius_km": 50,
         "years_in_business": 3,
         "base_price": 50000,
-        "currency": "NGN",
+        "currency": "USD",
         "pricing_model": "custom_quote",
         "payment_methods": ["transfer", "cash"],
         "accepts_online_payment": False

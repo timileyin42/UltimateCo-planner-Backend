@@ -31,8 +31,18 @@ class EventBase(BaseModel):
     requires_approval: bool = False
     allow_guest_invites: bool = True
     total_budget: Optional[float] = Field(None, ge=0)
-    currency: str = "USD"
+    currency: str = Field(default="USD", pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
     theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
+    
+    @field_validator('currency', mode='before')
+    @classmethod
+    def validate_currency(cls, v):
+        if v:
+            v = v.upper()
+            if v not in ['USD', 'GBP']:
+                raise ValueError('Currency must be USD or GBP')
+            return v
+        return 'USD'
 
 class EventCreate(EventBase):
     """Schema for creating a new event"""
@@ -72,8 +82,18 @@ class EventDuplicateRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     allow_guest_invites: Optional[bool] = None
     total_budget: Optional[float] = Field(None, ge=0)
-    currency: Optional[str] = None
+    currency: Optional[str] = Field(None, pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
     theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
+    
+    @field_validator('currency', mode='before')
+    @classmethod
+    def validate_currency_update(cls, v):
+        if v:
+            v = v.upper()
+            if v not in ['USD', 'GBP']:
+                raise ValueError('Currency must be USD or GBP')
+            return v
+        return v
 
 class TaskCategoryItem(BaseModel):
     """Individual task item within a category"""
@@ -243,12 +263,22 @@ class ExpenseBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     amount: float = Field(..., gt=0)
-    currency: str = "USD"
+    currency: str = Field(default="USD", pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
     category: Optional[str] = None
     vendor_name: Optional[str] = None
     expense_date: datetime
     is_shared: bool = False
     split_equally: bool = True
+    
+    @field_validator('currency', mode='before')
+    @classmethod
+    def validate_currency(cls, v):
+        if v:
+            v = v.upper()
+            if v not in ['USD', 'GBP']:
+                raise ValueError('Currency must be USD or GBP')
+            return v
+        return 'USD'
 
 class ExpenseCreate(ExpenseBase):
     """Schema for creating a new expense"""
@@ -259,12 +289,22 @@ class ExpenseUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     amount: Optional[float] = Field(None, gt=0)
-    currency: Optional[str] = None
+    currency: Optional[str] = Field(None, pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
     category: Optional[str] = None
     vendor_name: Optional[str] = None
     expense_date: Optional[datetime] = None
     is_shared: Optional[bool] = None
     split_equally: Optional[bool] = None
+    
+    @field_validator('currency', mode='before')
+    @classmethod
+    def validate_currency(cls, v):
+        if v:
+            v = v.upper()
+            if v not in ['USD', 'GBP']:
+                raise ValueError('Currency must be USD or GBP')
+            return v
+        return v
 
 class ExpenseResponse(ExpenseBase):
     """Schema for expense response"""
