@@ -145,6 +145,9 @@ class EventService:
         event.collaborators.append(creator)
         self.db.commit()
         
+        # Generate default task categories based on event type
+        self._generate_default_task_categories(event)
+        
         # Sync with connected calendars
         asyncio.create_task(self._sync_event_to_calendars(event, 'create'))
         
@@ -1131,3 +1134,139 @@ class EventService:
         except Exception as e:
             logger.error(f"Manual calendar sync failed for user {user_id}: {str(e)}")
             raise
+    
+    def _generate_default_task_categories(self, event: Event) -> None:
+        """Generate default task category templates based on event type"""
+        from app.models.event_models import Task
+        from app.models.shared_models import TaskStatus, TaskPriority
+        
+        # Define default templates by event type
+        task_templates = {
+            'BIRTHDAY': {
+                'Food': [
+                    'Confirm brunch menu with cafe',
+                    'Order cake (chocolate or strawberry)',
+                    'Arrange drinks (mimosas + juice options)',
+                ],
+                'Guests': [
+                    'Send invites to 12 guests',
+                    'Track RSVPs',
+                    'Confirm seating arrangements with venue',
+                ],
+                'Logistics': [
+                    'Book cafe private room by Wednesday',
+                    'Arrange decorations (balloons, banners)',
+                    'Confirm photographer or set up photo corner',
+                ],
+                'Extras': [
+                    'Create playlist for background music',
+                    'Buy party favors (mini candles or gift bags)',
+                    'Prepare a short toast/speech',
+                ],
+            },
+            'WEDDING': {
+                'Venue': [
+                    'Book ceremony location',
+                    'Book reception venue',
+                    'Arrange seating plan',
+                ],
+                'Food': [
+                    'Choose catering menu',
+                    'Arrange wedding cake',
+                    'Plan cocktail hour menu',
+                ],
+                'Entertainment': [
+                    'Book DJ or live band',
+                    'Arrange first dance song',
+                    'Plan reception timeline',
+                ],
+                'Decor': [
+                    'Choose floral arrangements',
+                    'Select table decorations',
+                    'Plan ceremony backdrop',
+                ],
+                'Guests': [
+                    'Send save-the-dates',
+                    'Send formal invitations',
+                    'Track RSVPs',
+                ],
+                'Logistics': [
+                    'Book photographer',
+                    'Book videographer',
+                    'Arrange transportation',
+                ],
+            },
+            'PARTY': {
+                'Food': [
+                    'Plan menu',
+                    'Order catering or groceries',
+                    'Prepare drinks',
+                ],
+                'Guests': [
+                    'Send invitations',
+                    'Track RSVPs',
+                ],
+                'Entertainment': [
+                    'Create playlist',
+                    'Plan activities or games',
+                ],
+                'Decor': [
+                    'Buy decorations',
+                    'Set up venue',
+                ],
+            },
+            'CONFERENCE': {
+                'Venue': [
+                    'Book conference hall',
+                    'Arrange breakout rooms',
+                    'Set up registration desk',
+                ],
+                'Logistics': [
+                    'Arrange AV equipment',
+                    'Print name badges',
+                    'Prepare welcome packs',
+                ],
+                'Food': [
+                    'Arrange coffee breaks',
+                    'Book lunch catering',
+                ],
+                'Guests': [
+                    'Send invitations to speakers',
+                    'Track attendee registrations',
+                ],
+            },
+            'MEETING': {
+                'Logistics': [
+                    'Book meeting room',
+                    'Prepare agenda',
+                    'Set up presentation',
+                ],
+                'Food': [
+                    'Order refreshments',
+                ],
+            },
+        }
+        
+        # Get templates for this event type, or use generic template
+        # Normalize event type to uppercase for matching
+        event_type_key = event.event_type.upper() if hasattr(event.event_type, 'upper') else str(event.event_type).upper()
+        templates = task_templates.get(event_type_key, {
+            'Food': ['Plan food and drinks'],
+            'Guests': ['Send invitations', 'Track RSVPs'],
+            'Logistics': ['Book venue', 'Arrange setup'],
+        })
+        
+        # Create tasks for each category
+        for category_name, task_titles in templates.items():
+            for title in task_titles:
+                task = Task(
+                    event_id=event.id,
+                    creator_id=event.creator_id,
+                    title=title,
+                    category=category_name,
+                    status=TaskStatus.TODO,
+                    priority=TaskPriority.MEDIUM
+                )
+                self.db.add(task)
+        
+        self.db.commit()

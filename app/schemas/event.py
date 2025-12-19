@@ -11,6 +11,14 @@ class EventBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     event_type: EventType = EventType.OTHER
+    
+    @field_validator('event_type', mode='before')
+    @classmethod
+    def normalize_event_type(cls, v):
+        """Normalize event type to lowercase for case-insensitive matching"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
     start_datetime: datetime
     end_datetime: Optional[datetime] = None
     timezone: Optional[str] = None
@@ -38,6 +46,14 @@ class EventUpdate(BaseModel):
     description: Optional[str] = None
     event_type: Optional[EventType] = None
     status: Optional[EventStatus] = None
+    
+    @field_validator('event_type', 'status', mode='before')
+    @classmethod
+    def normalize_enums(cls, v):
+        """Normalize enum values to lowercase for case-insensitive matching"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
     start_datetime: Optional[datetime] = None
     end_datetime: Optional[datetime] = None
     timezone: Optional[str] = None
@@ -59,6 +75,23 @@ class EventDuplicateRequest(BaseModel):
     currency: Optional[str] = None
     theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
 
+class TaskCategoryItem(BaseModel):
+    """Individual task item within a category"""
+    id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    completed: bool = False
+    assignee_id: Optional[int] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class TaskCategory(BaseModel):
+    """Task category with items"""
+    name: str
+    items: List[TaskCategoryItem] = Field(default_factory=list)
+    
+    model_config = ConfigDict(from_attributes=True)
+
 class EventResponse(EventBase):
     """Schema for event response"""
     id: int
@@ -72,6 +105,9 @@ class EventResponse(EventBase):
     total_expenses: float
     created_at: datetime
     updated_at: datetime
+    
+    # Task categories for mobile app
+    task_categories: List[TaskCategory] = Field(default_factory=list)
     
     # Enhanced location fields
     place_id: Optional[str] = None
@@ -112,6 +148,14 @@ class EventInvitationUpdate(BaseModel):
     plus_one_name: Optional[str] = None
     dietary_restrictions: Optional[str] = None
     special_requests: Optional[str] = None
+    
+    @field_validator('rsvp_status', mode='before')
+    @classmethod
+    def normalize_rsvp_status(cls, v):
+        """Normalize RSVP status to lowercase for case-insensitive matching"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 class EventInvitationResponse(EventInvitationBase):
     """Schema for event invitation response"""
@@ -144,6 +188,14 @@ class TaskBase(BaseModel):
     due_date: Optional[datetime] = None
     estimated_cost: Optional[float] = Field(None, ge=0)
     category: Optional[str] = None
+    
+    @field_validator('priority', mode='before')
+    @classmethod
+    def normalize_priority(cls, v):
+        """Normalize priority to lowercase for case-insensitive matching"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 class TaskCreate(TaskBase):
     """Schema for creating a new task"""
@@ -160,6 +212,14 @@ class TaskUpdate(BaseModel):
     actual_cost: Optional[float] = Field(None, ge=0)
     category: Optional[str] = None
     assignee_id: Optional[int] = None
+    
+    @field_validator('status', 'priority', mode='before')
+    @classmethod
+    def normalize_enums(cls, v):
+        """Normalize enum values to lowercase for case-insensitive matching"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 class TaskResponse(TaskBase):
     """Schema for task response"""
