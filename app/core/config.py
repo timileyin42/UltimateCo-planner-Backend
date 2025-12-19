@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
     
+    # Subscription & Billing Configuration
+    FREE_PLAN_EVENT_LIMIT: int = 5  # Monthly event creation limit for free tier users
+    
     # Rate Limiting Configuration
     REDIS_URL: str
     RATE_LIMIT_ENABLED: bool
