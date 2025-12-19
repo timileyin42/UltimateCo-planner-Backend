@@ -168,12 +168,29 @@ class Settings(BaseSettings):
     CALENDAR_SYNC_MAX_RETRIES: int
     CALENDAR_WEBHOOK_BASE_URL: Optional[str] = None
     
-    # Stripe Configuration
+    # Paystack Configuration (Multi-Currency Payment Gateway)
+    PAYSTACK_SECRET_KEY: Optional[str] = None
+    PAYSTACK_PUBLIC_KEY: Optional[str] = None
+    PAYSTACK_WEBHOOK_SECRET: Optional[str] = None
+    PAYSTACK_CURRENCY: str = "USD"  # Default currency (USD or GBP supported)
+    PAYSTACK_SUPPORTED_CURRENCIES: List[str] = ["USD", "GBP"]  # Supported currencies
+    PAYSTACK_CALLBACK_URL: Optional[str] = None
+    PAYSTACK_PLAN_CODE_PRO_MONTHLY: Optional[str] = None
+    PAYSTACK_PLAN_CODE_PRO_YEARLY: Optional[str] = None
+    
+    @field_validator("PAYSTACK_CURRENCY", mode="before")
+    @classmethod
+    def validate_currency(cls, v):
+        """Ensure currency is one of the supported currencies"""
+        supported = ["USD", "GBP"]
+        if v and v.upper() not in supported:
+            raise ValueError(f"Currency must be one of: {', '.join(supported)}")
+        return v.upper() if v else "USD"
+    
+    # Legacy Stripe Configuration (Deprecated)
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
-    STRIPE_PRICE_ID_PRO_MONTHLY: Optional[str] = None
-    STRIPE_PRICE_ID_PRO_YEARLY: Optional[str] = None
     
     # Spotify Configuration
     SPOTIFY_CLIENT_ID: Optional[str] = None

@@ -14,10 +14,81 @@ import requests
 import json
 import time as time_module
 from datetime import datetime, time, timedelta
+import psycopg2
+import os
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, will use system environment
 
 # Base URL
 BASE_URL = "http://localhost:8000"
 API_V1 = f"{BASE_URL}/api/v1"
+
+# Database connection helper
+def get_db_connection():
+    """Get database connection from environment variables"""
+    try:
+        # First try to parse DATABASE_URL if available
+        database_url = os.getenv("DATABASE_URL", "")
+        if database_url:
+            # Parse postgresql://user:password@host:port/database
+            from urllib.parse import urlparse
+            parsed = urlparse(database_url)
+            conn = psycopg2.connect(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip('/') if parsed.path else "planetal",
+                user=parsed.username or "postgres",
+                password=parsed.password or ""
+            )
+        else:
+            # Fallback to individual environment variables
+            conn = psycopg2.connect(
+                host=os.getenv("POSTGRES_HOST", "localhost"),
+                port=os.getenv("POSTGRES_PORT", "5432"),
+                database=os.getenv("POSTGRES_DB", "planetal"),
+                user=os.getenv("POSTGRES_USER", "postgres"),
+                password=os.getenv("POSTGRES_PASSWORD", "")
+            )
+        return conn
+    except Exception as e:
+        print_error(f"Database connection failed: {str(e)}")
+        return None
+
+def verify_user_in_db(user_email):
+    """Directly verify user in database by setting is_verified=True"""
+    conn = get_db_connection()
+    if not conn:
+        print_warning("Could not connect to database for verification")
+        return False
+    
+    try:
+        cursor = conn.cursor()
+        # Update the user's is_verified status
+        cursor.execute(
+            "UPDATE users SET is_verified = TRUE WHERE email = %s",
+            (user_email,)
+        )
+        conn.commit()
+        rows_affected = cursor.rowcount
+        cursor.close()
+        conn.close()
+        
+        if rows_affected > 0:
+            print_success(f"User {user_email} verified in database")
+            return True
+        else:
+            print_warning(f"No user found with email {user_email}")
+            return False
+    except Exception as e:
+        print_error(f"Database verification error: {str(e)}")
+        if conn:
+            conn.close()
+        return False
 
 # Colors for terminal output
 class Colors:
@@ -88,6 +159,9 @@ def test_register_and_login():
             data = response.json()
             auth_tokens["user_id"] = data.get("id")
             print_success("User registration successful")
+            
+            # Verify user directly in database
+            verify_user_in_db(user_data["email"])
         else:
             print_error(f"Registration failed: {response.status_code}")
             return False, None
@@ -133,6 +207,10 @@ def register_collaborator():
                 data = response.json()
                 test_resources["collaborator_id"] = data.get("id")
                 print_success(f"Collaborator registered: ID {test_resources['collaborator_id']}")
+                
+                # Verify collaborator directly in database
+                verify_user_in_db(collab_data["email"])
+                
                 return True
             if response.status_code == 429 and attempt == 0:
                 print_warning("Rate limit hit while registering collaborator. Waiting 25 seconds and retrying...")

@@ -1,5 +1,7 @@
 """
-Celery tasks for processing Stripe webhook events.
+Celery tasks for processing payment webhook events.
+DEPRECATED: Stripe tasks kept for backward compatibility.
+Use paystack_tasks.py for new Paystack payment processing.
 """
 
 import json

@@ -8,8 +8,10 @@ from app.models.subscription_models import (
 )
 from app.models.user_models import User
 from app.models.event_models import Event
-from app.services.stripe_service import StripeService
-from app.core.errors import PlanEtalException
+from app.services.paystack_service import paystack_service
+# Legacy Stripe import (Deprecated)
+# from app.services.stripe_service import StripeService
+from app.core.errors import PlanEtalException, PaymentError
 from app.core.config import settings
 import logging
 
@@ -27,7 +29,9 @@ class SubscriptionService:
     """Service for managing subscriptions and usage limits."""
     
     def __init__(self):
-        self.stripe_service = StripeService()
+        self.paystack_service = paystack_service
+        # Legacy Stripe (Deprecated)
+        # self.stripe_service = StripeService()
     
     async def get_user_subscription(self, db: Session, user_id: int) -> Optional[UserSubscription]:
         """Get user's current subscription."""
@@ -50,10 +54,10 @@ class SubscriptionService:
         user: User,
         plan_id: int,
         billing_interval: BillingInterval,
-        payment_method_id: str,
-        trial_days: Optional[int] = None
+        authorization_code: str,
+        customer_code: Optional[str] = None
     ) -> UserSubscription:
-        """Create a new subscription for a user."""
+        """Create a new subscription for a user via Paystack."""
         # Check if user already has an active subscription
         existing_subscription = await self.get_user_subscription(db, user.id)
         if existing_subscription and existing_subscription.is_active:
@@ -64,26 +68,78 @@ class SubscriptionService:
         if not plan:
             raise SubscriptionError("Subscription plan not found")
         
-        # Create subscription via Stripe
-        subscription = await self.stripe_service.create_subscription(
-            db, user, plan, billing_interval, payment_method_id, trial_days
-        )
+        # Get Paystack plan code based on billing interval
+        plan_code = (plan.paystack_plan_code_monthly if billing_interval == BillingInterval.MONTHLY 
+                     else plan.paystack_plan_code_yearly)
         
-        # Initialize usage limits
-        await self._initialize_usage_limits(db, user.id, plan)
+        if not plan_code:
+            raise SubscriptionError(f"Paystack plan code not configured for {billing_interval.value} billing")
         
-        return subscription
+        # Create subscription via Paystack
+        try:
+            paystack_subscription = await self.paystack_service.create_subscription(
+                customer_code=customer_code or user.email,
+                plan_code=plan_code,
+                authorization_code=authorization_code
+            )
+            
+            # Create local subscription record
+            subscription = UserSubscription(
+                user_id=user.id,
+                plan_id=plan.id,
+                status=SubscriptionStatus.ACTIVE,
+                billing_interval=billing_interval,
+                start_date=datetime.utcnow(),
+                current_period_start=datetime.utcnow(),
+                current_period_end=datetime.utcnow() + timedelta(days=30 if billing_interval == BillingInterval.MONTHLY else 365),
+                paystack_subscription_code=paystack_subscription.get("subscription_code"),
+                paystack_customer_code=paystack_subscription.get("customer", {}).get("customer_code"),
+                paystack_email_token=paystack_subscription.get("email_token")
+            )
+            
+            db.add(subscription)
+            db.commit()
+            db.refresh(subscription)
+            
+            # Initialize usage limits
+            await self._initialize_usage_limits(db, user.id, plan)
+            
+            return subscription
+            
+        except Exception as e:
+            logger.error(f"Failed to create Paystack subscription: {str(e)}")
+            raise SubscriptionError(f"Failed to create subscription: {str(e)}")
     
     async def cancel_subscription(self, db: Session, user_id: int) -> UserSubscription:
-        """Cancel user's subscription."""
+        """Cancel user's subscription via Paystack."""
         subscription = await self.get_user_subscription(db, user_id)
         if not subscription:
             raise SubscriptionError("No active subscription found")
         
-        return await self.stripe_service.cancel_subscription(db, subscription)
+        if not subscription.paystack_subscription_code or not subscription.paystack_email_token:
+            raise SubscriptionError("Invalid subscription: missing Paystack data")
+        
+        try:
+            # Cancel via Paystack
+            success = await self.paystack_service.cancel_subscription(
+                subscription_code=subscription.paystack_subscription_code,
+                email_token=subscription.paystack_email_token
+            )
+            
+            if success:
+                subscription.status = SubscriptionStatus.CANCELED
+                subscription.canceled_at = datetime.utcnow()
+                db.commit()
+                db.refresh(subscription)
+            
+            return subscription
+            
+        except Exception as e:
+            logger.error(f"Failed to cancel Paystack subscription: {str(e)}")
+            raise SubscriptionError(f"Failed to cancel subscription: {str(e)}")
     
     async def reactivate_subscription(self, db: Session, user_id: int) -> UserSubscription:
-        """Reactivate a canceled subscription."""
+        """Reactivate a canceled subscription (requires creating new subscription with Paystack)."""
         subscription = await self.get_user_subscription(db, user_id)
         if not subscription:
             raise SubscriptionError("No subscription found")
@@ -91,7 +147,8 @@ class SubscriptionService:
         if subscription.status != SubscriptionStatus.CANCELED:
             raise SubscriptionError("Subscription is not canceled")
         
-        return await self.stripe_service.reactivate_subscription(db, subscription)
+        # Note: Paystack doesn't support reactivation - user must create new subscription
+        raise SubscriptionError("Please create a new subscription to reactivate. Paystack doesn't support direct reactivation.")
     
     async def upgrade_subscription(
         self,
@@ -100,7 +157,7 @@ class SubscriptionService:
         new_plan_id: int,
         billing_interval: Optional[BillingInterval] = None
     ) -> UserSubscription:
-        """Upgrade user's subscription to a higher plan."""
+        """Upgrade user's subscription to a higher plan via Paystack."""
         current_subscription = await self.get_user_subscription(db, user_id)
         if not current_subscription:
             raise SubscriptionError("No active subscription found")
@@ -109,9 +166,71 @@ class SubscriptionService:
         if not new_plan:
             raise SubscriptionError("New subscription plan not found")
         
-        # TODO: Implement plan upgrade logic with Stripe
-        # This would involve prorating the current subscription and switching to new plan
-        raise NotImplementedError("Subscription upgrades not yet implemented")
+        # Validate upgrade (ensure new plan is higher tier or different)
+        if new_plan.id == current_subscription.plan_id:
+            raise SubscriptionError("Already subscribed to this plan")
+        
+        # Use current billing interval if not specified
+        if not billing_interval:
+            billing_interval = current_subscription.billing_interval
+        
+        # Get authorization code from most recent successful payment
+        last_payment = db.query(SubscriptionPayment).filter(
+            and_(
+                SubscriptionPayment.subscription_id == current_subscription.id,
+                SubscriptionPayment.status == "succeeded",
+                SubscriptionPayment.paystack_authorization_code.isnot(None)
+            )
+        ).order_by(SubscriptionPayment.created_at.desc()).first()
+        
+        if not last_payment or not last_payment.paystack_authorization_code:
+            raise SubscriptionError("No valid payment authorization found. Please create a new subscription.")
+        
+        try:
+            # Cancel current subscription
+            await self.paystack_service.cancel_subscription(
+                subscription_code=current_subscription.paystack_subscription_code,
+                email_token=current_subscription.paystack_email_token
+            )
+            
+            # Get new plan code
+            plan_code = (new_plan.paystack_plan_code_monthly if billing_interval == BillingInterval.MONTHLY 
+                        else new_plan.paystack_plan_code_yearly)
+            
+            if not plan_code:
+                raise SubscriptionError(f"Paystack plan code not configured for {billing_interval.value} billing")
+            
+            # Create new subscription with saved authorization
+            paystack_subscription = await self.paystack_service.create_subscription(
+                customer_code=current_subscription.paystack_customer_code,
+                plan_code=plan_code,
+                authorization_code=last_payment.paystack_authorization_code
+            )
+            
+            # Update subscription record
+            current_subscription.plan_id = new_plan.id
+            current_subscription.status = SubscriptionStatus.ACTIVE
+            current_subscription.billing_interval = billing_interval
+            current_subscription.current_period_start = datetime.utcnow()
+            current_subscription.current_period_end = datetime.utcnow() + timedelta(
+                days=30 if billing_interval == BillingInterval.MONTHLY else 365
+            )
+            current_subscription.paystack_subscription_code = paystack_subscription.get("subscription_code")
+            current_subscription.paystack_email_token = paystack_subscription.get("email_token")
+            current_subscription.canceled_at = None
+            
+            db.commit()
+            db.refresh(current_subscription)
+            
+            # Update usage limits for new plan
+            await self._initialize_usage_limits(db, user_id, new_plan)
+            
+            logger.info(f"User {user_id} upgraded subscription to plan {new_plan.name}")
+            return current_subscription
+            
+        except Exception as e:
+            logger.error(f"Failed to upgrade subscription: {str(e)}")
+            raise SubscriptionError(f"Failed to upgrade subscription: {str(e)}")
     
     async def check_event_creation_limit(self, db: Session, user_id: int) -> bool:
         """Check if user can create more events."""

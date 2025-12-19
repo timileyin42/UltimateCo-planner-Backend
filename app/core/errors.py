@@ -28,6 +28,10 @@ class ConflictError(PlanEtalException):
     """Resource conflict errors"""
     pass
 
+class PaymentError(PlanEtalException):
+    """Payment processing errors"""
+    pass
+
 # HTTP Exception helpers
 def http_400_bad_request(message: str = "Bad request") -> HTTPException:
     return HTTPException(

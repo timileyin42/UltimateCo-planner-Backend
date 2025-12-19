@@ -13,6 +13,7 @@ from app.api.v1.routers.invites import router as invites_router
 from app.api.v1.routers.messages import messages_router
 from app.api.v1.routers.notifications import notifications_router
 from app.api.v1.routers.subscription import subscription_router
+from app.api.v1.paystack import router as paystack_router
 from app.api.v1.routers.timeline import timeline_router
 from app.api.v1.routers.users import users_router
 from app.api.v1.routers.vendors import vendors_router
@@ -105,6 +106,12 @@ api_router.include_router(
 )
 
 api_router.include_router(
+    paystack_router,
+    prefix="/payments",
+    tags=["payments", "paystack"]
+)
+
+api_router.include_router(
     timeline_router,
     prefix="/timeline",
     tags=["timeline"]
@@ -151,6 +158,7 @@ async def api_info():
             "contacts": "/contacts",
             "creative": "/creative",
             "spotify": "/spotify",
+            "payments": "/payments (Paystack)",
             "devices": "/devices",
             "events": "/events",
             "invites": "/invites",
