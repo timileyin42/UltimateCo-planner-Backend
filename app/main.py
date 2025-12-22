@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import asyncio
 import logging
 from slowapi.errors import RateLimitExceeded
@@ -66,6 +68,33 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Custom validation error handler to return simple string messages
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return simple string error messages for validation errors"""
+    errors = exc.errors()
+    if errors:
+        # Get the first error message
+        first_error = errors[0]
+        error_msg = first_error.get('msg', 'Validation error')
+        
+        # If it's a ValueError from model_validator, extract the actual message
+        if 'Value error' in error_msg and 'ctx' in first_error:
+            ctx = first_error.get('ctx', {})
+            if 'error' in ctx:
+                error_obj = ctx['error']
+                if hasattr(error_obj, 'args') and error_obj.args:
+                    error_msg = str(error_obj.args[0])
+        
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": error_msg}
+        )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "Validation error"}
+    )
 
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["health"])
