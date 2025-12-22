@@ -27,6 +27,13 @@ class OTPVerification(BaseModel):
 class OTPRequest(BaseModel):
     email: str = Field(..., description="User's email address")
 
+class PhoneOTPVerification(BaseModel):
+    phone_number: str = Field(..., description="User's phone number")
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+
+class PhoneOTPRequest(BaseModel):
+    phone_number: str = Field(..., description="User's phone number")
+
 class PasswordResetOTP(BaseModel):
     email: str = Field(..., description="User's email address")
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
@@ -284,74 +291,6 @@ async def get_current_user_info(
     """Get current authenticated user information"""
     return current_user
 
-@auth_router.post("/verify-email")
-@rate_limit_email_verification
-async def verify_email(
-    request: Request,
-    verification_token: str,
-    db: Session = Depends(get_db)
-):
-    """Verify user email address using token (legacy method - use /verify-email-otp instead)"""
-    try:
-        auth_service = AuthService(db)
-        
-        # Find user by verification token
-        user = db.query(User).filter(
-            User.email_verification_token == verification_token,
-            User.is_verified == False
-        ).first()
-        
-        if not user:
-            raise http_400_bad_request("Invalid or expired verification token")
-        
-        # Mark email as verified
-        user.is_verified = True
-        user.email_verification_token = None
-        db.commit()
-        
-        # Send welcome email
-        try:
-            import asyncio
-            asyncio.create_task(email_service.send_welcome_email(user))
-        except Exception as e:
-            print(f"Failed to send welcome email: {str(e)}")
-        
-        return {
-            "message": "Email verified successfully",
-            "success": True,
-            "recommendation": "Use /verify-email-otp for better security with OTP codes"
-        }
-    except Exception as e:
-        if "Invalid or expired" in str(e):
-            raise
-        raise http_400_bad_request("Email verification failed")
-
-@auth_router.post("/resend-verification-link")
-@rate_limit_email_verification
-async def resend_verification_link(
-    request: Request,
-    email_request: OTPRequest,
-    db: Session = Depends(get_db)
-):
-    """Resend email verification link (legacy token-based method - use /resend-verification-otp instead)"""
-    try:
-        auth_service = AuthService(db)
-        success = auth_service.send_email_verification_link(email_request.email)
-        
-        # Always return success to prevent email enumeration
-        return {
-            "message": "If the email exists and is not verified, a verification link has been sent",
-            "sent": True,
-            "recommendation": "Use /resend-verification-otp for better security with OTP codes"
-        }
-    except Exception:
-        # Always return success to prevent email enumeration
-        return {
-            "message": "If the email exists and is not verified, a verification link has been sent",
-            "sent": True,
-            "recommendation": "Use /resend-verification-otp for better security with OTP codes"
-        }
-
 @auth_router.get("/sessions")
 async def get_active_sessions(
     current_user: User = Depends(get_current_user),
@@ -534,6 +473,35 @@ async def verify_email_with_otp(
         else:
             raise http_400_bad_request("Email verification failed")
 
+@auth_router.post("/verify-phone-otp")
+@rate_limit_email_verification
+async def verify_phone_with_otp(
+    request: Request,
+    verification: PhoneOTPVerification,
+    db: Session = Depends(get_db)
+):
+    """Verify phone number using OTP"""
+    try:
+        auth_service = AuthService(db)
+        # Use the same verification method but pass phone number
+        success = auth_service.verify_email_otp(verification.phone_number, verification.otp)
+        
+        if success:
+            return {
+                "message": "Phone number verified successfully!",
+                "verified": True
+            }
+        else:
+            raise http_400_bad_request("Phone verification failed")
+            
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found("User not found")
+        elif "invalid" in str(e).lower() or "expired" in str(e).lower():
+            raise http_400_bad_request(str(e))
+        else:
+            raise http_400_bad_request("Phone verification failed")
+
 @auth_router.post("/resend-verification-otp")
 @rate_limit_otp
 async def resend_verification_otp(
@@ -558,6 +526,36 @@ async def resend_verification_otp(
             raise http_404_not_found("User not found")
         elif "already verified" in str(e).lower():
             raise http_400_bad_request("Email is already verified")
+        elif "wait" in str(e).lower():
+            raise http_400_bad_request(str(e))
+        else:
+            raise http_400_bad_request("Failed to send verification code")
+
+@auth_router.post("/resend-phone-otp")
+@rate_limit_otp
+async def resend_phone_otp(
+    request: PhoneOTPRequest,
+    db: Session = Depends(get_db)
+):
+    """Resend phone verification OTP via SMS"""
+    try:
+        auth_service = AuthService(db)
+        # Use the same method but pass phone number
+        success = auth_service.resend_verification_otp(request.phone_number)
+        
+        if success:
+            return {
+                "message": "Verification code sent to your phone",
+                "sent": True
+            }
+        else:
+            raise http_400_bad_request("Failed to send verification code")
+            
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found("User not found")
+        elif "already verified" in str(e).lower():
+            raise http_400_bad_request("Phone number is already verified")
         elif "wait" in str(e).lower():
             raise http_400_bad_request(str(e))
         else:
