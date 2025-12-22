@@ -166,7 +166,7 @@ class NotificationRepository:
         """Get queued notifications ready for processing"""
         query = self.db.query(NotificationQueue).filter(
             NotificationQueue.status == 'queued',
-            NotificationQueue.scheduled_time <= datetime.utcnow()
+            NotificationQueue.scheduled_for <= datetime.utcnow()
         )
         
         if channel:
@@ -174,7 +174,7 @@ class NotificationRepository:
         
         return query.order_by(
             NotificationQueue.priority.asc(),
-            NotificationQueue.scheduled_time.asc()
+            NotificationQueue.scheduled_for.asc()
         ).limit(limit).all()
     
     def update_notification_queue_status(
