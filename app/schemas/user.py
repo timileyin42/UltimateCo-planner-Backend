@@ -162,6 +162,9 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int  # seconds
+    user: Optional['UserResponse'] = None  # User details
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class TokenRefresh(BaseModel):
     """Schema for token refresh request"""
