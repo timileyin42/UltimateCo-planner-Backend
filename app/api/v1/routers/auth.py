@@ -13,7 +13,7 @@ from app.schemas.user import (
     UserLogin, UserRegister, UserResponse, TokenResponse, 
     TokenRefresh, PasswordReset, PasswordResetConfirm
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from app.models.user_models import User
 from app.models.user_models import UserSession
 from typing import Optional
@@ -25,7 +25,23 @@ class OTPVerification(BaseModel):
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
 
 class OTPRequest(BaseModel):
-    email: str = Field(..., description="User's email address")
+    """Request for email or phone OTP"""
+    email: Optional[str] = Field(None, description="User's email address")
+    phone_number: Optional[str] = Field(None, description="User's phone number")
+    
+    @model_validator(mode='after')
+    def validate_email_or_phone(self):
+        """Validate that either email or phone_number is provided"""
+        if not self.email and not self.phone_number:
+            raise ValueError("Either email or phone_number must be provided")
+        if self.email and self.phone_number:
+            raise ValueError("Provide either email or phone_number, not both")
+        return self
+    
+    @property
+    def identifier(self) -> str:
+        """Get the identifier (email or phone)"""
+        return self.email if self.email else self.phone_number
 
 class PhoneOTPVerification(BaseModel):
     phone_number: str = Field(..., description="User's phone number")
@@ -35,14 +51,30 @@ class PhoneOTPRequest(BaseModel):
     phone_number: str = Field(..., description="User's phone number")
 
 class PasswordResetOTP(BaseModel):
-    email: str = Field(..., description="User's email address")
+    """Password reset using OTP for email or phone"""
+    email: Optional[str] = Field(None, description="User's email address")
+    phone_number: Optional[str] = Field(None, description="User's phone number")
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
     new_password: str = Field(..., min_length=8, description="New password")
     confirm_password: str = Field(..., min_length=8, description="Confirm new password")
     
+    @model_validator(mode='after')
+    def validate_email_or_phone(self):
+        """Validate that either email or phone_number is provided"""
+        if not self.email and not self.phone_number:
+            raise ValueError("Either email or phone_number must be provided")
+        if self.email and self.phone_number:
+            raise ValueError("Provide either email or phone_number, not both")
+        return self
+    
     def validate_passwords_match(self):
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
+    
+    @property
+    def identifier(self) -> str:
+        """Get the identifier (email or phone)"""
+        return self.email if self.email else self.phone_number
 
 auth_router = APIRouter()
 security = HTTPBearer()
@@ -228,68 +260,6 @@ async def change_password(
             raise http_400_bad_request("Current password is incorrect")
         else:
             raise http_400_bad_request("Password change failed")
-
-@auth_router.post("/forgot-password")
-@rate_limit_password_reset
-async def forgot_password(
-    request: Request,
-    password_reset: PasswordReset,
-    db: Session = Depends(get_db)
-):
-    """Request password reset token via email"""
-    try:
-        auth_service = AuthService(db)
-        # This method handles security (doesn't reveal if email exists)
-        token = auth_service.generate_password_reset_token(password_reset.email)
-        
-        # Always return success to prevent email enumeration
-        return {
-            "message": "If the email exists, a password reset link has been sent",
-            "sent": True
-        }
-    except Exception:
-        # Always return success to prevent email enumeration
-        return {
-            "message": "If the email exists, a password reset link has been sent",
-            "sent": True
-        }
-
-@auth_router.post("/reset-password")
-@rate_limit_password_reset
-async def reset_password(
-    request: Request,
-    reset_data: PasswordResetConfirm,
-    db: Session = Depends(get_db)
-):
-    """Reset password using reset token"""
-    try:
-        if reset_data.new_password != reset_data.confirm_new_password:
-            raise http_400_bad_request("Passwords do not match")
-        
-        auth_service = AuthService(db)
-        success = auth_service.reset_password(
-            reset_data.token,
-            reset_data.new_password
-        )
-        
-        return {
-            "message": "Password reset successfully",
-            "success": success
-        }
-    except Exception as e:
-        if "invalid" in str(e).lower() or "expired" in str(e).lower():
-            raise http_400_bad_request("Invalid or expired reset token")
-        elif "do not match" in str(e).lower():
-            raise http_400_bad_request("Passwords do not match")
-        else:
-            raise http_400_bad_request("Password reset failed")
-
-@auth_router.get("/me", response_model=UserResponse)
-async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
-):
-    """Get current authenticated user information"""
-    return current_user
 
 @auth_router.get("/sessions")
 async def get_active_sessions(
@@ -588,14 +558,14 @@ async def request_password_reset_otp(
     request: OTPRequest,
     db: Session = Depends(get_db)
 ):
-    """Request password reset OTP"""
+    """Request password reset OTP via email or SMS"""
     try:
         auth_service = AuthService(db)
-        success = auth_service.request_password_reset(request.email)
+        success = auth_service.request_password_reset(request.identifier)
         
         if success:
             return {
-                "message": "Password reset code sent to your email",
+                "message": "Password reset code sent successfully",
                 "sent": True
             }
         else:
@@ -616,14 +586,14 @@ async def reset_password_with_otp(
     reset_data: PasswordResetOTP,
     db: Session = Depends(get_db)
 ):
-    """Reset password using OTP"""
+    """Reset password using OTP (works for both email and phone users)"""
     try:
         # Validate password match
         reset_data.validate_passwords_match()
         
         auth_service = AuthService(db)
         success = auth_service.reset_password_with_otp(
-            reset_data.email, 
+            reset_data.identifier, 
             reset_data.otp, 
             reset_data.new_password
         )
