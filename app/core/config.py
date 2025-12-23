@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ASYNC_DATABASE_URL: str
     
-    # Individual Postgres connection parameters (optional, for building connection strings)
+    # Postgres connection string parameters (optional, for building connection strings)
     POSTGRES_HOST: Optional[str] = None
     POSTGRES_PORT: Optional[int] = None
     POSTGRES_DB: Optional[str] = None
@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     
     # Frontend URL for email links
     FRONTEND_URL: str  # Web frontend URL
-    MOBILE_APP_SCHEME: Optional[str] = None  # Mobile app deep link scheme (e.g., 'myapp://')
+    MOBILE_APP_SCHEME: Optional[str] = None  # Mobile app deep link scheme
     
     
     # File Upload Configuration
