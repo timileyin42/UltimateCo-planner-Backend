@@ -231,36 +231,6 @@ async def logout_all_sessions(
     except Exception:
         raise http_400_bad_request("Logout failed")
 
-@auth_router.post("/change-password")
-async def change_password(
-    current_password: str,
-    new_password: str,
-    confirm_new_password: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Change user password"""
-    try:
-        if new_password != confirm_new_password:
-            raise http_400_bad_request("New passwords do not match")
-        
-        auth_service = AuthService(db)
-        success = auth_service.change_password(
-            current_user.id,
-            current_password,
-            new_password
-        )
-        
-        return {
-            "message": "Password changed successfully",
-            "success": success
-        }
-    except Exception as e:
-        if "incorrect" in str(e).lower():
-            raise http_400_bad_request("Current password is incorrect")
-        else:
-            raise http_400_bad_request("Password change failed")
-
 @auth_router.get("/sessions")
 async def get_active_sessions(
     current_user: User = Depends(get_current_user),
