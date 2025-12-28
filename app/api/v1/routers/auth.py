@@ -89,8 +89,8 @@ rate_limit_otp = create_rate_limit_decorator(RateLimitConfig.OTP_REQUEST)
 @auth_router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @rate_limit_register
 async def register(
-    user_data: UserRegister,
     request: Request,
+    user_data: UserRegister,
     db: Session = Depends(get_db)
 ):
     """Register a new user account"""
@@ -112,8 +112,8 @@ async def register(
 @auth_router.post("/login", response_model=TokenResponse)
 @rate_limit_login
 async def login(
-    login_data: UserLogin,
     request: Request,
+    login_data: UserLogin,
     db: Session = Depends(get_db)
 ):
     """Authenticate user and return access tokens"""
@@ -445,13 +445,14 @@ async def verify_phone_with_otp(
 @auth_router.post("/resend-verification-otp")
 @rate_limit_otp
 async def resend_verification_otp(
-    request: OTPRequest,
+    request: Request,
+    otp_request: OTPRequest,
     db: Session = Depends(get_db)
 ):
     """Resend email verification OTP"""
     try:
         auth_service = AuthService(db)
-        success = auth_service.resend_verification_otp(request.email)
+        success = auth_service.resend_verification_otp(otp_request.email)
         
         if success:
             return {
@@ -474,14 +475,15 @@ async def resend_verification_otp(
 @auth_router.post("/resend-phone-otp")
 @rate_limit_otp
 async def resend_phone_otp(
-    request: PhoneOTPRequest,
+    request: Request,
+    phone_request: PhoneOTPRequest,
     db: Session = Depends(get_db)
 ):
     """Resend phone verification OTP via SMS"""
     try:
         auth_service = AuthService(db)
         # Use the same method but pass phone number
-        success = auth_service.resend_verification_otp(request.phone_number)
+        success = auth_service.resend_verification_otp(phone_request.phone_number)
         
         if success:
             return {
