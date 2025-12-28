@@ -452,7 +452,7 @@ async def resend_verification_otp(
     """Resend email verification OTP"""
     try:
         auth_service = AuthService(db)
-        success = auth_service.resend_verification_otp(otp_request.email)
+        success = auth_service.resend_verification_otp(otp_request.identifier)
         
         if success:
             return {
