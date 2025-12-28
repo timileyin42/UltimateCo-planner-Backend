@@ -525,13 +525,14 @@ async def get_otp_status(
 @auth_router.post("/request-password-reset-otp")
 @rate_limit_otp
 async def request_password_reset_otp(
-    request: OTPRequest,
+    request: Request,
+    otp_request: OTPRequest,
     db: Session = Depends(get_db)
 ):
     """Request password reset OTP via email or SMS"""
     try:
         auth_service = AuthService(db)
-        success = auth_service.request_password_reset(request.identifier)
+        success = auth_service.request_password_reset(otp_request.identifier)
         
         if success:
             return {
