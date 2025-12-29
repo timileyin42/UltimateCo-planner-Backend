@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime,timedelta
@@ -61,6 +61,115 @@ async def create_event(
             raise http_400_bad_request("End date must be after start date")
         else:
             raise http_400_bad_request("Failed to create event")
+
+@events_router.post("/{event_id}/cover-image", response_model=EventResponse)
+async def upload_event_cover_image(
+    event_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload or update event cover image"""
+    try:
+        event_service = EventService(db)
+        event = event_service.get_event_by_id(event_id)
+        
+        if not event:
+            raise http_404_not_found("Event not found")
+        
+        # Check if user is creator or collaborator
+        is_authorized = (
+            event.creator_id == current_user.id or
+            current_user in event.collaborators
+        )
+        
+        if not is_authorized:
+            raise http_403_forbidden("You don't have permission to update this event")
+        
+        # Validate file type
+        allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+        if file.content_type not in allowed_types:
+            raise http_400_bad_request("Invalid file type. Only JPEG, PNG, and WebP images are allowed")
+        
+        # Validate file size (max 10MB)
+        file_content = await file.read()
+        if len(file_content) > 10 * 1024 * 1024:
+            raise http_400_bad_request("File size too large. Maximum size is 10MB")
+        
+        # Reset file pointer
+        await file.seek(0)
+        
+        # Upload to GCS
+        from app.services.gcp_storage_service import GCPStorageService
+        storage_service = GCPStorageService()
+        upload_result = await storage_service.upload_file(
+            file_content=file_content,
+            filename=file.filename,
+            content_type=file.content_type,
+            folder=f"events/{event_id}/cover",
+            user_id=current_user.id,
+            make_public=True
+        )
+        
+        # Update event cover_image_url
+        event.cover_image_url = upload_result["file_url"]
+        db.commit()
+        db.refresh(event)
+        
+        return event
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to upload cover image: {str(e)}")
+
+@events_router.delete("/{event_id}/cover-image", response_model=EventResponse)
+async def delete_event_cover_image(
+    event_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete event cover image"""
+    try:
+        event_service = EventService(db)
+        event = event_service.get_event_by_id(event_id)
+        
+        if not event:
+            raise http_404_not_found("Event not found")
+        
+        # Check if user is creator or collaborator
+        is_authorized = (
+            event.creator_id == current_user.id or
+            current_user in event.collaborators
+        )
+        
+        if not is_authorized:
+            raise http_403_forbidden("You don't have permission to update this event")
+        
+        if not event.cover_image_url:
+            raise http_404_not_found("No cover image to delete")
+        
+        # Delete from GCS
+        from app.services.gcp_storage_service import GCPStorageService
+        storage_service = GCPStorageService()
+        
+        if "storage.googleapis.com" in event.cover_image_url:
+            blob_path = event.cover_image_url.split("storage.googleapis.com/")[-1]
+            await storage_service.delete_file(blob_path)
+        else:
+            await storage_service.delete_file(event.cover_image_url)
+        
+        # Clear cover_image_url
+        event.cover_image_url = None
+        db.commit()
+        db.refresh(event)
+        
+        return event
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to delete cover image: {str(e)}")
 
 @events_router.get("/", response_model=EventListResponse)
 async def get_events(
