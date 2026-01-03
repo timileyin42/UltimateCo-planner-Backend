@@ -423,8 +423,7 @@ async def verify_phone_with_otp(
     """Verify phone number using OTP"""
     try:
         auth_service = AuthService(db)
-        # Use the same verification method but pass phone number
-        success = auth_service.verify_email_otp(verification.phone_number, verification.otp)
+        success = auth_service.verify_phone_otp(verification.phone_number, verification.otp)
         
         if success:
             return {
