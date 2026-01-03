@@ -263,6 +263,20 @@ class AuthService:
             print(f"Failed to send welcome email: {str(e)}")
         
         return True
+
+    def verify_phone_otp(self, phone_number: str, otp: str) -> bool:
+        """Verify phone number using OTP."""
+        user = self.user_db.get_user_by_phone(phone_number)
+        if not user:
+            raise NotFoundError("User not found")
+
+        success, message = self.otp_service.verify_otp(user, otp)
+        if not success:
+            raise ValidationError(message)
+
+        user.is_verified = True
+        self.db.commit()
+        return True
     
     def generate_password_reset_token(self, email: str) -> str:
         """Generate password reset token and send email."""

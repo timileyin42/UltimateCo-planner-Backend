@@ -26,9 +26,17 @@ class SMSService:
         self, 
         to_phone: str, 
         message: str, 
-        media_url: Optional[str] = None
+        media_url: Optional[str] = None,
+        channel: str = "generic"
     ) -> Dict[str, Any]:
-        """Send SMS message to a phone number using Termii API"""
+        """Send SMS message to a phone number using Termii API
+        
+        Args:
+            to_phone: Recipient phone number in international format
+            message: Text message to send
+            media_url: Optional media URL (for future use)
+            channel: Route to use - 'dnd' for transactional/OTP, 'generic' for promotional
+        """
         if not self.is_configured_flag:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -46,7 +54,7 @@ class SMSService:
                 "sms": message,
                 "type": "plain",
                 "api_key": self.api_key,
-                "channel": "generic"
+                "channel": channel
             }
             
             # Send request to Termii API
@@ -101,6 +109,24 @@ class SMSService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to send SMS due to internal error"
             )
+
+    def send_transactional_sms(
+        self,
+        to_phone: str,
+        message: str
+    ) -> Dict[str, Any]:
+        """Send transactional/OTP SMS using DND route.
+        
+        Use this method for:
+        - OTP/verification codes
+        - Password reset codes
+        - Critical account notifications
+        - Time-sensitive transactional messages
+        
+        Per Termii docs: DND route bypasses Do-Not-Disturb restrictions 
+        and ensures reliable delivery of critical messages.
+        """
+        return self.send_sms(to_phone, message, channel="dnd")
 
     def send_event_invitation_sms(
         self, 
@@ -189,24 +215,36 @@ class SMSService:
         to_phone: str, 
         verification_code: str
     ) -> Dict[str, Any]:
-        """Send phone verification code SMS"""
+        """Send phone verification code SMS
+        
+        Note: Using 'generic' channel temporarily. For production:
+        1. Contact Termii support: support@termii.com
+        2. Request DND route activation for your account
+        3. Then switch to: return self.send_transactional_sms(to_phone, message)
+        """
         message = f"Your PlanEtAl verification code is: {verification_code}\n\n"
         message += "This code will expire in 10 minutes.\n"
         message += "Don't share this code with anyone."
         
-        return self.send_sms(to_phone, message)
+        return self.send_sms(to_phone, message, channel="generic")
 
     def send_password_reset_sms(
         self, 
         to_phone: str, 
         reset_code: str
     ) -> Dict[str, Any]:
-        """Send password reset code SMS"""
+        """Send password reset code SMS
+        
+        Note: Using 'generic' channel temporarily. For production:
+        1. Contact Termii support: support@termii.com
+        2. Request DND route activation for your account
+        3. Then switch to: return self.send_transactional_sms(to_phone, message)
+        """
         message = f"Your PlanEtAl password reset code is: {reset_code}\n\n"
         message += "This code will expire in 15 minutes.\n"
         message += "If you didn't request this, please ignore this message."
         
-        return self.send_sms(to_phone, message)
+        return self.send_sms(to_phone, message, channel="generic")
 
     def _clean_phone_number(self, phone_number: str) -> str:
         """Clean and format phone number for Termii API"""

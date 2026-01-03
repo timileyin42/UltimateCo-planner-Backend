@@ -15,7 +15,7 @@ celerybeat.pid
 myenv/
 env/
 venv/
-
+delete_user.py
 
 # FastAPI specific
 .pytest_cache/
