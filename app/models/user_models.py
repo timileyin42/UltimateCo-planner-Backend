@@ -16,7 +16,8 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     __tablename__ = "users"
     
     # Basic user information
-    email = Column(String(255), unique=True, index=True, nullable=False)
+    # Allow null for phone-only signup; still unique when present
+    email = Column(String(255), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
     username = Column(String(100), unique=True, index=True, nullable=True)
