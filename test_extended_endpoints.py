@@ -123,7 +123,8 @@ test_resources = {
     "timeline_id": None,
     "timeline_item_id": None,
     "invite_code": None,
-    "invite_link_id": None
+    "invite_link_id": None,
+    "cover_image_url": None
 }
 
 def get_headers():
@@ -249,6 +250,97 @@ def create_test_event():
             return True
         else:
             print_error(f"Event creation failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Error: {str(e)}")
+        return False
+
+# ==========================================================================
+# EVENT COVER IMAGE TESTS
+# ==========================================================================
+
+def test_upload_event_cover_image():
+    """Test uploading event cover image"""
+    print("\n" + "="*50)
+    print("Testing Upload Event Cover Image")
+    print("="*50)
+    
+    if not test_resources.get("event_id"):
+        print_warning("No event ID available")
+        return None
+    
+    try:
+        # Create a simple test image (1x1 pixel PNG)
+        import io
+        from PIL import Image
+        
+        # Create a small test image
+        img = Image.new('RGB', (100, 100), color='red')
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='PNG')
+        img_bytes.seek(0)
+        
+        files = {
+            'file': ('test_cover.png', img_bytes, 'image/png')
+        }
+        
+        headers_without_content_type = {
+            "Authorization": f"Bearer {auth_tokens['access_token']}"
+        }
+        
+        response = requests.post(
+            f"{API_V1}/events/{test_resources['event_id']}/cover-image",
+            files=files,
+            headers=headers_without_content_type
+        )
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            cover_url = data.get("cover_image_url")
+            test_resources["cover_image_url"] = cover_url
+            print_success("Event cover image uploaded successfully")
+            print_info(f"Cover image URL: {cover_url}")
+            return True
+        else:
+            print_error(f"Cover image upload failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except ImportError:
+        print_warning("PIL (Pillow) not installed - skipping image upload test")
+        print_info("Install with: pip install Pillow")
+        return None
+    except Exception as e:
+        print_error(f"Error: {str(e)}")
+        return False
+
+def test_delete_event_cover_image():
+    """Test deleting event cover image"""
+    print("\n" + "="*50)
+    print("Testing Delete Event Cover Image")
+    print("="*50)
+    
+    if not test_resources.get("event_id"):
+        print_warning("No event ID available")
+        return None
+    
+    if not test_resources.get("cover_image_url"):
+        print_warning("No cover image to delete")
+        return None
+    
+    try:
+        response = requests.delete(
+            f"{API_V1}/events/{test_resources['event_id']}/cover-image",
+            headers=get_headers()
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            print_success("Event cover image deleted successfully")
+            print_info(f"Cover image URL is now: {data.get('cover_image_url')}")
+            return True
+        else:
+            print_error(f"Cover image deletion failed: {response.status_code}")
             print_error(f"Response: {response.text}")
             return False
     except Exception as e:
@@ -1145,6 +1237,10 @@ def run_all_tests():
         print_error("Aborting: event creation failed")
         print_summary(results)
         return
+
+    # Event Cover Image
+    results["upload_cover_image"] = test_upload_event_cover_image()
+    results["delete_cover_image"] = test_delete_event_cover_image()
 
     # Event Collaborators
     results["get_collaborators"] = test_get_event_collaborators()
