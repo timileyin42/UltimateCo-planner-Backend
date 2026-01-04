@@ -68,4 +68,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Run migrations then start the app (CMD can still be overridden)
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "0", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "0", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "--access-logformat", "%(t)s %(h)s - \"%(r)s\" %(s)s"]
