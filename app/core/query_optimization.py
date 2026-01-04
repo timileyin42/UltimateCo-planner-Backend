@@ -447,7 +447,7 @@ class BulkOperationOptimizer:
 def add_query_hints(query: Select, hints: List[str]) -> Select:
     """Add database-specific query hints for optimization"""
     # This would be database-specific implementation
-    # For PostgreSQL, you might use query comments or specific syntax
+    # For PostgreSQL, we might use query comments or specific syntax
     return query
 
 def optimize_join_order(query: Select) -> Select:

@@ -23,6 +23,26 @@
         .header {
             text-align: center;
             margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f3f4f6;
+        }
+        .logo-container {
+            margin-bottom: 20px;
+        }
+        .logo-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 10px;
+            background: linear-gradient(135deg, #FF5252, #FFC107);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(255, 82, 82, 0.3);
+        }
+        .logo-icon svg {
+            width: 40px;
+            height: 40px;
         }
         .logo {
             font-size: 28px;
@@ -32,6 +52,15 @@
             -webkit-text-fill-color: transparent;
             background-clip: text;
             margin-bottom: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-text {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         .welcome-title {
             font-size: 24px;
@@ -87,7 +116,20 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">{{ app_name }}</div>
+            <div class="logo-container">
+                <div class="logo-icon">
+                    <!-- PlanEtAl Logo Icon -->
+                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="50" cy="50" r="45" fill="white" opacity="0.3"/>
+                        <path d="M30 50 Q50 25, 70 50 T70 75" stroke="white" stroke-width="8" fill="none" stroke-linecap="round"/>
+                        <circle cx="35" cy="45" r="6" fill="white"/>
+                        <circle cx="65" cy="55" r="6" fill="white"/>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <span class="logo">{{ app_name }}</span>
+                </div>
+            </div>
             <h1 class="welcome-title">Welcome, {{ user_name }}! 🎉</h1>
         </div>
         
