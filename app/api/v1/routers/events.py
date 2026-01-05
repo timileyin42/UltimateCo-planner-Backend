@@ -246,109 +246,76 @@ async def search_events(
 async def get_my_events(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    status: Optional[EventStatus] = Query(None),
+    status: Optional[EventStatus] = Query(None, description="Filter by event status: draft, planning, confirmed, in_progress, completed, cancelled"),
+    category: Optional[str] = Query(None, description="Filter by category: upcoming, past, drafts, hosting, attending"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get current user's events"""
+    """
+    Get current user's events.
+    
+    Filter options:
+    - category: 
+        - upcoming: Events happening in the future
+        - past: Events that have already ended
+        - drafts: Events with draft status
+        - hosting: Events created by current user
+        - attending: Events user is invited to (not creator)
+    - status: Filter by specific event status (draft, planning, confirmed, etc.)
+    """
     try:
-        event_service = EventService(db)
-        events = event_service.get_user_events(
-            current_user.id,
-            status=status,
-            skip=offset,
-            limit=limit
-        )
-        
-        event_summaries = [EventSummary.model_validate(event) for event in events]
-        
-        return EventListResponse(
-            events=event_summaries,
-            total=len(event_summaries),
-            limit=limit,
-            offset=offset
-        )
-    except Exception:
-        raise http_400_bad_request("Failed to retrieve user events")
-
-
-@events_router.get("/my/upcoming", response_model=EventListResponse)
-async def get_my_upcoming_events(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    days_ahead: int = Query(default=30, ge=1, le=365, description="Number of days ahead to look for events"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get current user's upcoming events"""
-    try:
-        from app.repositories.event_repo import EventRepository
-        from datetime import datetime, timedelta
-        
         event_repo = EventRepository(db)
         
-        # Get upcoming events for the user
-        start_date = datetime.utcnow()
-        end_date = start_date + timedelta(days=days_ahead)
+        # Base query for user's events
+        query = db.query(Event).filter(Event.is_deleted == False)
         
-        # Use the existing get_events_by_date_range method with user filtering
-        events = event_repo.get_events_by_date_range(
-            start_date=start_date,
-            end_date=end_date,
-            user_id=current_user.id
-        )
+        # Apply category filters
+        if category:
+            category = category.lower()
+            
+            if category == "upcoming":
+                # Future events
+                query = query.filter(Event.start_datetime >= datetime.utcnow())
+                query = query.order_by(Event.start_datetime.asc())
+                
+            elif category == "past":
+                # Past events
+                query = query.filter(Event.end_datetime < datetime.utcnow())
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif category == "drafts":
+                # Draft events only
+                query = query.filter(Event.status == EventStatus.DRAFT)
+                
+            elif category == "hosting":
+                # Events created by user
+                query = query.filter(Event.creator_id == current_user.id)
+                
+            elif category == "attending":
+                # Events user is invited to (not creator)
+                query = query.filter(
+                    Event.creator_id != current_user.id,
+                    Event.invitations.any(EventInvitation.user_id == current_user.id)
+                )
+            else:
+                raise http_400_bad_request(f"Invalid category: {category}. Use: upcoming, past, drafts, hosting, or attending")
         
-        # Apply pagination manually
-        total_events = len(events)
-        paginated_events = events[offset:offset + limit]
+        # Filter for user's events (if no category specified or for hosting/attending)
+        if not category or category in ["drafts", "upcoming", "past"]:
+            access_filter = or_(
+                Event.creator_id == current_user.id,
+                Event.collaborators.any(User.id == current_user.id),
+                Event.invitations.any(EventInvitation.user_id == current_user.id)
+            )
+            query = query.filter(access_filter)
         
-        event_summaries = [EventSummary.model_validate(event) for event in paginated_events]
+        # Apply status filter if provided
+        if status:
+            query = query.filter(Event.status == status)
         
-        return EventListResponse(
-            events=event_summaries,
-            total=total_events,
-            limit=limit,
-            offset=offset
-        )
-    except Exception as e:
-        raise http_400_bad_request(f"Failed to retrieve upcoming events: {str(e)}")
-
-
-@events_router.get("/my/past", response_model=EventListResponse)
-async def get_my_past_events(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    days_back: int = Query(default=365, ge=1, le=3650, description="Number of days back to look for events"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get current user's past events"""
-    try:
-        
-        event_repo = EventRepository(db)
-        
-        # Get past events for the user
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=days_back)
-        
-        # Query past events (events that have ended)
-        
-        query = db.query(Event).filter(
-            Event.end_datetime < end_date,
-            Event.start_datetime >= start_date,
-            Event.is_deleted == False
-        )
-        
-        # Filter for user's events (created, collaborating, or invited)
-        access_filter = or_(
-            Event.creator_id == current_user.id,
-            Event.collaborators.any(User.id == current_user.id),
-            Event.invitations.any(EventInvitation.user_id == current_user.id)
-        )
-        query = query.filter(access_filter)
-        
-        # Order by most recent first
-        query = query.order_by(Event.start_datetime.desc())
+        # Default ordering if not set by category
+        if not category or category not in ["upcoming", "past"]:
+            query = query.order_by(Event.start_datetime.desc())
         
         # Get total count
         total_events = query.count()
@@ -364,8 +331,11 @@ async def get_my_past_events(
             limit=limit,
             offset=offset
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise http_400_bad_request(f"Failed to retrieve past events: {str(e)}")
+        raise http_400_bad_request(f"Failed to retrieve user events: {str(e)}")
+
 
 @events_router.get("/{event_id}", response_model=EventResponse)
 async def get_event(
