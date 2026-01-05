@@ -263,6 +263,119 @@ def test_create_event():
         print_error(f"Event creation error: {str(e)}")
         return False
 
+def test_get_my_events_upcoming():
+    """Test getting upcoming events with category filter"""
+    print("\n" + "="*50)
+    print("Testing Get My Events - Upcoming Category")
+    print("="*50)
+    
+    try:
+        response = requests.get(
+            f"{API_V1}/events/my?category=upcoming",
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            data = response.json()
+            events = data.get('events', [])
+            print_success("Retrieved upcoming events")
+            print_info(f"Found {len(events)} upcoming event(s)")
+            if events:
+                for event in events[:3]:  # Show first 3
+                    print_info(f"  - {event.get('title')} on {event.get('start_datetime')}")
+            return True
+        else:
+            print_error(f"Get upcoming events failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Get upcoming events error: {str(e)}")
+        return False
+
+def test_get_my_events_drafts():
+    """Test getting draft events with category filter"""
+    print("\n" + "="*50)
+    print("Testing Get My Events - Drafts Category")
+    print("="*50)
+    
+    try:
+        response = requests.get(
+            f"{API_V1}/events/my?category=drafts",
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            data = response.json()
+            events = data.get('events', [])
+            print_success("Retrieved draft events")
+            print_info(f"Found {len(events)} draft event(s)")
+            if events:
+                for event in events[:3]:  # Show first 3
+                    print_info(f"  - {event.get('title')} (status: {event.get('status')})")
+            return True
+        else:
+            print_error(f"Get draft events failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Get draft events error: {str(e)}")
+        return False
+
+def test_get_my_events_hosting():
+    """Test getting events user is hosting"""
+    print("\n" + "="*50)
+    print("Testing Get My Events - Hosting Category")
+    print("="*50)
+    
+    try:
+        response = requests.get(
+            f"{API_V1}/events/my?category=hosting",
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            data = response.json()
+            events = data.get('events', [])
+            print_success("Retrieved hosting events")
+            print_info(f"Found {len(events)} event(s) you're hosting")
+            if events:
+                for event in events[:3]:  # Show first 3
+                    print_info(f"  - {event.get('title')}")
+            return True
+        else:
+            print_error(f"Get hosting events failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Get hosting events error: {str(e)}")
+        return False
+
+def test_get_my_events_all():
+    """Test getting all user's events without category filter"""
+    print("\n" + "="*50)
+    print("Testing Get My Events - All Events")
+    print("="*50)
+    
+    try:
+        response = requests.get(
+            f"{API_V1}/events/my",
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            data = response.json()
+            events = data.get('events', [])
+            total = data.get('total', 0)
+            print_success("Retrieved all events")
+            print_info(f"Found {len(events)} event(s) | Total: {total}")
+            if events:
+                for event in events[:3]:  # Show first 3
+                    print_info(f"  - {event.get('title')} ({event.get('status')})")
+            return True
+        else:
+            print_error(f"Get all events failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Get all events error: {str(e)}")
+        return False
+
 # ============================================================================
 # NOTIFICATION TESTS
 # ============================================================================
@@ -2765,6 +2878,35 @@ def run_all_tests():
     
     # Test 3: Create event
     if test_create_event():
+        results["passed"] += 1
+    else:
+        results["failed"] += 1
+    
+    # EVENT FILTERING TESTS
+    print("\n" + "="*60)
+    print("EVENT CATEGORY FILTER TESTS")
+    print("="*60)
+    
+    # Test 3a: Get upcoming events
+    if test_get_my_events_upcoming():
+        results["passed"] += 1
+    else:
+        results["failed"] += 1
+    
+    # Test 3b: Get draft events
+    if test_get_my_events_drafts():
+        results["passed"] += 1
+    else:
+        results["failed"] += 1
+    
+    # Test 3c: Get hosting events
+    if test_get_my_events_hosting():
+        results["passed"] += 1
+    else:
+        results["failed"] += 1
+    
+    # Test 3d: Get all events
+    if test_get_my_events_all():
         results["passed"] += 1
     else:
         results["failed"] += 1

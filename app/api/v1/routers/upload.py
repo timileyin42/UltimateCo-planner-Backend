@@ -69,7 +69,7 @@ async def upload_image(
         
         return UploadResponse(
             file_url=upload_result["file_url"],
-            file_name=upload_result["file_name"],
+            file_name=upload_result["filename"],
             file_size=file_size,
             content_type=file.content_type
         )

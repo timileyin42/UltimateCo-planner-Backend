@@ -246,7 +246,6 @@ async def search_events(
 async def get_my_events(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    status: Optional[EventStatus] = Query(None, description="Filter by event status: draft, planning, confirmed, in_progress, completed, cancelled"),
     category: Optional[str] = Query(None, description="Filter by category: upcoming, past, drafts, hosting, attending"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -261,7 +260,6 @@ async def get_my_events(
         - drafts: Events with draft status
         - hosting: Events created by current user
         - attending: Events user is invited to (not creator)
-    - status: Filter by specific event status (draft, planning, confirmed, etc.)
     """
     try:
         event_repo = EventRepository(db)
@@ -308,10 +306,6 @@ async def get_my_events(
                 Event.invitations.any(EventInvitation.user_id == current_user.id)
             )
             query = query.filter(access_filter)
-        
-        # Apply status filter if provided
-        if status:
-            query = query.filter(Event.status == status)
         
         # Default ordering if not set by category
         if not category or category not in ["upcoming", "past"]:
