@@ -15,6 +15,7 @@ from app.api.v1.routers.notifications import notifications_router
 from app.api.v1.routers.subscription import subscription_router
 from app.api.v1.paystack import router as paystack_router
 from app.api.v1.routers.timeline import timeline_router
+from app.api.v1.routers.upload import upload_router
 from app.api.v1.routers.users import users_router
 from app.api.v1.routers.vendors import vendors_router
 from app.api.v1.routers.websocket import websocket_router
@@ -118,6 +119,12 @@ api_router.include_router(
 )
 
 api_router.include_router(
+    upload_router,
+    prefix="/upload",
+    tags=["upload"]
+)
+
+api_router.include_router(
     users_router,
     prefix="/users",
     tags=["users"]
@@ -166,6 +173,7 @@ async def api_info():
             "notifications": "/notifications",
             "subscription": "/subscription",
             "timeline": "/timeline",
+            "upload": "/upload",
             "users": "/users",
             "vendors": "/vendors",
             "webhooks": "/webhooks",

@@ -180,6 +180,77 @@ class GCPStorageService:
             logger.error(f"Failed to delete file {blob_path}: {str(e)}")
             return False
     
+    async def generate_upload_signed_url(
+        self,
+        filename: str,
+        content_type: str,
+        folder: str = "uploads/videos",
+        user_id: Optional[int] = None,
+        expiration_minutes: int = 60
+    ) -> Dict[str, Any]:
+        """
+        Generate a signed URL for direct upload to GCS (for large files like videos).
+        
+        Args:
+            filename: Original filename
+            content_type: MIME type of the file
+            folder: Folder/prefix in the bucket
+            user_id: Optional user ID for organizing files
+            expiration_minutes: URL expiration time in minutes (default 60)
+            
+        Returns:
+            Dict containing upload URL, blob path, and expiration info
+        """
+        try:
+            # Generate unique blob path
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            unique_id = str(uuid.uuid4())[:8]
+            sanitized_filename = os.path.basename(filename)
+            
+            if user_id:
+                blob_path = f"{folder}/user_{user_id}/{timestamp}_{unique_id}_{sanitized_filename}"
+            else:
+                blob_path = f"{folder}/{timestamp}_{unique_id}_{sanitized_filename}"
+            
+            if self.client and self.bucket:
+                blob = self.bucket.blob(blob_path)
+                
+                # Generate signed URL for upload (PUT method)
+                upload_url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(minutes=expiration_minutes),
+                    method="PUT",
+                    content_type=content_type
+                )
+                
+                # Generate download URL (will be available after upload)
+                download_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
+                
+                logger.info(f"Generated upload signed URL for: {blob_path}")
+                
+                return {
+                    "upload_url": upload_url,
+                    "download_url": download_url,
+                    "blob_path": blob_path,
+                    "expires_at": (datetime.utcnow() + timedelta(minutes=expiration_minutes)).isoformat(),
+                    "content_type": content_type,
+                    "method": "PUT"
+                }
+            else:
+                # Local development fallback
+                return {
+                    "upload_url": f"http://localhost:8000/uploads/{blob_path}",
+                    "download_url": f"/uploads/{blob_path}",
+                    "blob_path": blob_path,
+                    "expires_at": (datetime.utcnow() + timedelta(minutes=expiration_minutes)).isoformat(),
+                    "content_type": content_type,
+                    "method": "PUT"
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to generate upload signed URL: {str(e)}")
+            raise
+    
     async def get_file_url(self, blob_path: str, expiration_minutes: int = 60) -> Optional[str]:
         """
         Get a signed URL for a file (for private files).
