@@ -6,15 +6,17 @@ import hashlib
 import hmac
 import httpx
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.subscription_models import (
     SubscriptionPlan, UserSubscription, SubscriptionPayment, PaystackEventLog,
-    SubscriptionStatus, PaymentStatus, BillingInterval
+    SubscriptionStatus, PaymentStatus, BillingInterval, PaymentIdempotencyKey
 )
 from app.core.errors import PaymentError
 import logging
+import uuid
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +34,99 @@ class PaystackService:
         if not self.secret_key:
             raise ValueError("PAYSTACK_SECRET_KEY is not configured")
     
-    def _get_headers(self) -> Dict[str, str]:
-        """Get headers for Paystack API requests."""
-        return {
+    @staticmethod
+    def _generate_request_hash(request_data: Dict[str, Any]) -> str:
+        """Generate SHA-256 hash of request data for idempotency checking."""
+        sorted_data = json.dumps(request_data, sort_keys=True, default=str)
+        return hashlib.sha256(sorted_data.encode()).hexdigest()
+    
+    def _check_idempotency(
+        self,
+        db: Session,
+        idempotency_key: str,
+        request_data: Dict[str, Any],
+        resource_type: str = "transaction"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if an idempotent request has already been processed.
+        
+        Returns cached response if request was already completed, None otherwise.
+        Raises PaymentError if same key used with different request data.
+        """
+        request_hash = self._generate_request_hash(request_data)
+        
+        existing = db.query(PaymentIdempotencyKey).filter_by(key=idempotency_key).first()
+        
+        if existing:
+            # Check if expired
+            if existing.expires_at < datetime.utcnow():
+                db.delete(existing)
+                db.commit()
+                return None
+            
+            # Check if request data matches
+            if existing.request_hash != request_hash:
+                raise PaymentError(
+                    "Idempotency key mismatch: same key used with different request parameters"
+                )
+            
+            # Return cached result if completed
+            if existing.is_completed and existing.response_data:
+                logger.info(f"Returning cached result for idempotency key: {idempotency_key}")
+                return json.loads(existing.response_data)
+        
+        return None
+    
+    def _store_idempotency_result(
+        self,
+        db: Session,
+        idempotency_key: str,
+        request_data: Dict[str, Any],
+        resource_id: str,
+        response_data: Dict[str, Any],
+        resource_type: str = "transaction"
+    ) -> None:
+        """Store successful payment operation result for idempotency."""
+        request_hash = self._generate_request_hash(request_data)
+        
+        existing = db.query(PaymentIdempotencyKey).filter_by(key=idempotency_key).first()
+        
+        if existing:
+            existing.resource_id = resource_id
+            existing.response_data = json.dumps(response_data, default=str)
+            existing.is_completed = True
+        else:
+            new_key = PaymentIdempotencyKey(
+                key=idempotency_key,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                request_hash=request_hash,
+                response_data=json.dumps(response_data, default=str),
+                is_completed=True,
+                expires_at=datetime.utcnow() + timedelta(hours=24)
+            )
+            db.add(new_key)
+        
+        db.commit()
+        logger.info(f"Stored idempotency result for key: {idempotency_key}")
+    
+    def _get_headers(self, idempotency_key: Optional[str] = None) -> Dict[str, str]:
+        """
+        Get headers for Paystack API requests.
+        
+        Args:
+            idempotency_key: Optional idempotency key for safe retries
+        """
+        headers = {
             "Authorization": f"Bearer {self.secret_key}",
             "Content-Type": "application/json"
         }
+        
+        # Add idempotency key header if provided
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        
+        return headers
     
     async def initialize_transaction(
         self,
@@ -45,10 +134,12 @@ class PaystackService:
         amount: float,
         plan_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        currency: Optional[str] = None
+        currency: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        db: Optional[Session] = None
     ) -> Dict[str, Any]:
         """
-        Initialize a Paystack transaction.
+        Initialize a Paystack transaction with idempotency support.
         
         Args:
             email: Customer email
@@ -56,10 +147,40 @@ class PaystackService:
             plan_id: Optional Paystack plan code for subscriptions
             metadata: Optional metadata to attach to transaction
             currency: Currency code (USD or GBP). Defaults to config setting.
+            idempotency_key: Optional idempotency key to prevent duplicate charges
+            db: Database session for idempotency checking
         
         Returns:
             Dict with authorization_url, access_code, and reference
+            
+        Note:
+            If idempotency_key and db are provided, the same request will return
+            cached results if called multiple times with the same parameters.
         """
+        # Generate idempotency key if not provided
+        if not idempotency_key:
+            idempotency_key = f"txn_{uuid.uuid4().hex}"
+        
+        # Prepare request data for hashing
+        request_data = {
+            "email": email,
+            "amount": amount,
+            "currency": currency or settings.PAYSTACK_CURRENCY,
+            "plan_id": plan_id,
+            "metadata": metadata
+        }
+        
+        # Check idempotency if database session provided
+        if db:
+            cached_result = self._check_idempotency(
+                db=db,
+                idempotency_key=idempotency_key,
+                request_data=request_data,
+                resource_type="transaction"
+            )
+            if cached_result:
+                return cached_result
+        
         try:
             # Validate and set currency
             payment_currency = (currency or settings.PAYSTACK_CURRENCY).upper()
@@ -83,14 +204,28 @@ class PaystackService:
                 response = await client.post(
                     f"{self.BASE_URL}/transaction/initialize",
                     json=payload,
-                    headers=self._get_headers(),
+                    headers=self._get_headers(idempotency_key=idempotency_key),
                     timeout=30.0
                 )
                 response.raise_for_status()
                 
                 data = response.json()
                 if data.get("status"):
-                    return data["data"]
+                    result = data["data"]
+                    
+                    # Save successful result to idempotency cache
+                    if db:
+                        self._store_idempotency_result(
+                            db=db,
+                            idempotency_key=idempotency_key,
+                            request_data=request_data,
+                            resource_id=result.get("reference"),
+                            response_data=result,
+                            resource_type="transaction"
+                        )
+                    
+                    logger.info(f"Transaction initialized: {result.get('reference')} (idempotency: {idempotency_key})")
+                    return result
                 else:
                     raise PaymentError(f"Paystack initialization failed: {data.get('message')}")
         
