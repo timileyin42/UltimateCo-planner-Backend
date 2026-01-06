@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL database (only for local development)
   # For production, use external Postgres and set USE_EXTERNAL_DB=true
