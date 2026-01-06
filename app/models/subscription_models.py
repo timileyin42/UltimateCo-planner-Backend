@@ -247,6 +247,41 @@ class PaystackEventLog(Base, IDMixin, TimestampMixin):
     def __repr__(self):
         return f"<PaystackEventLog(event_id='{self.event_id}', type='{self.event_type}', status='{self.processing_status}')>"
 
+class PaymentIdempotencyKey(Base, TimestampMixin):
+    """Store idempotency keys for payment operations to prevent duplicate charges."""
+    __tablename__ = "payment_idempotency_keys"
+    
+    # Primary key - the idempotency key itself
+    key = Column(String(255), primary_key=True, index=True)
+    
+    # Type of resource (transaction, subscription, etc.)
+    resource_type = Column(String(100), nullable=False)
+    
+    # Paystack reference or subscription code
+    resource_id = Column(String(255), nullable=True)
+    
+    # SHA-256 hash of request parameters for duplicate detection
+    request_hash = Column(String(64), nullable=False)
+    
+    # Cached response data for completed operations (JSON)
+    response_data = Column(Text, nullable=True)
+    
+    # Whether the operation completed successfully
+    is_completed = Column(Boolean, default=False, nullable=False)
+    
+    # When this idempotency key expires (default 24 hours)
+    expires_at = Column(DateTime, nullable=False)
+    
+    # Database indexes
+    __table_args__ = (
+        Index('idx_payment_idempotency_key', 'key'),
+        Index('idx_payment_idempotency_expires', 'expires_at'),
+        Index('idx_payment_idempotency_resource', 'resource_type', 'resource_id'),
+    )
+    
+    def __repr__(self):
+        return f"<PaymentIdempotencyKey(key='{self.key}', resource_type='{self.resource_type}', completed={self.is_completed})>"
+
 class StripeEventLog(Base, IDMixin, TimestampMixin):
     """Log of processed Stripe webhook events for idempotency (Legacy - Deprecated)."""
     __tablename__ = "stripe_event_logs"

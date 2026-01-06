@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.core.deps import get_db, get_current_active_user
@@ -6,6 +6,7 @@ from app.core.errors import http_400_bad_request, http_404_not_found, http_403_f
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.services.subscription_service import SubscriptionService, SubscriptionError
 from app.services.stripe_service import StripeService
+from app.services.paystack_service import PaystackService
 from app.schemas.subscription_schemas import (
     SubscriptionPlan, UserSubscription, SubscriptionPayment, UsageLimit,
     SubscriptionCreate, UpdatePaymentMethodRequest, CancelSubscriptionRequest,
@@ -14,6 +15,7 @@ from app.schemas.subscription_schemas import (
 from app.models.user_models import User
 import stripe
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -243,3 +245,70 @@ async def stripe_webhook(
     except Exception as e:
         logger.error(f"Error handling webhook: {e}")
         raise http_400_bad_request("Webhook handling failed")
+
+
+@subscription_router.post("/paystack/initialize")
+@rate_limit_payment
+async def initialize_paystack_payment(
+    request: Request,
+    subscription_data: SubscriptionCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")
+):
+    """
+    Initialize a Paystack payment with idempotency key support.
+    
+    Headers:
+        Idempotency-Key: Optional unique key to prevent duplicate payments.
+                        If not provided, one will be auto-generated.
+    
+    The idempotency key ensures that:
+    - Retrying a failed request won't create duplicate charges
+    - Network issues don't result in multiple payments
+    - Same request returns cached result within 24 hours
+    
+    Example:
+        Idempotency-Key: user-{user_id}-sub-{timestamp}
+    """
+    try:
+        # Generate idempotency key if not provided
+        if not idempotency_key:
+            idempotency_key = f"pay_{current_user.id}_{uuid.uuid4().hex[:16]}"
+        
+        paystack_service = PaystackService()
+        subscription_service = SubscriptionService(db)
+        
+        # Get subscription plan details
+        plan = subscription_service.get_plan_by_id(subscription_data.plan_id)
+        if not plan:
+            raise http_404_not_found("Subscription plan not found")
+        
+        # Initialize transaction with idempotency support
+        result = await paystack_service.initialize_transaction(
+            email=current_user.email,
+            amount=plan.price,
+            plan_id=plan.paystack_plan_code if hasattr(plan, 'paystack_plan_code') else None,
+            metadata={
+                "user_id": current_user.id,
+                "plan_id": plan.id,
+                "subscription_type": "new" if not current_user.subscription else "upgrade"
+            },
+            idempotency_key=idempotency_key,
+            db=db
+        )
+        
+        logger.info(f"Payment initialized for user {current_user.id} with idempotency key: {idempotency_key}")
+        
+        return {
+            "authorization_url": result["authorization_url"],
+            "access_code": result["access_code"],
+            "reference": result["reference"],
+            "idempotency_key": idempotency_key
+        }
+        
+    except SubscriptionError as e:
+        raise http_400_bad_request(str(e))
+    except Exception as e:
+        logger.error(f"Error initializing payment: {e}")
+        raise http_400_bad_request(f"Failed to initialize payment: {str(e)}")
