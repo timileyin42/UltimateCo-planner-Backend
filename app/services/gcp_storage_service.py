@@ -118,14 +118,14 @@ class GCPStorageService:
                 blob.cache_control = "public, max-age=3600"
                 blob.patch()
                 
-                # With uniform bucket-level access, all objects are public or private based on bucket policy
-                # Generate public URL directly without ACL operations
+                # For public files (profile pictures, event covers), use public URL
+                # For private files, store the blob path for later signed URL generation
                 if make_public:
-                    # Public URL format: https://storage.googleapis.com/bucket_name/blob_path
+                    # Public URL format - works if bucket has public access enabled
                     file_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
                 else:
-                    # For private files, return the blob path - we'll generate signed URLs when needed
-                    file_url = blob_path  # Store path, not URL
+                    # Store blob path - can generate signed URLs later if needed
+                    file_url = blob_path
                 
                 logger.info(f"File uploaded to GCP Storage: {blob_path} (public={make_public})")
                 
@@ -223,7 +223,8 @@ class GCPStorageService:
                     content_type=content_type
                 )
                 
-                # Generate download URL (will be available after upload)
+                # Return public URL for permanent access
+                # If bucket is private, frontend can request signed URLs via separate endpoint
                 download_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
                 
                 logger.info(f"Generated upload signed URL for: {blob_path}")

@@ -9,12 +9,13 @@ upload_router = APIRouter()
 class UploadResponse(BaseModel):
     """Unified response for all uploads"""
     upload_type: str  # "direct" or "presigned"
-    download_url: str  # The URL to access/download the file
+    download_url: str  # Permanent public URL to access/download the file
     filename: str
     content_type: str
+    blob_path: Optional[str] = None  # GCS blob path for reference
     # For presigned uploads only
     upload_url: Optional[str] = None  # URL to PUT the file to (presigned only)
-    expires_at: Optional[str] = None
+    expires_at: Optional[str] = None  # When upload_url expires (download_url is permanent)
     # For direct uploads only
     file_size: Optional[int] = None
 
@@ -70,6 +71,7 @@ async def upload_file(
                 download_url=upload_result["file_url"],
                 filename=upload_result["filename"],
                 content_type=file.content_type,
+                blob_path=upload_result["blob_path"],
                 file_size=file_size
             )
         
@@ -106,6 +108,7 @@ async def upload_file(
                 download_url=result["download_url"],
                 filename=filename,
                 content_type=content_type,
+                blob_path=result["blob_path"],
                 upload_url=result["upload_url"],
                 expires_at=result["expires_at"]
             )
