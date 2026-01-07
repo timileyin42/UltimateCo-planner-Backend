@@ -38,6 +38,8 @@ temp/
 
 # Documentation
 docs/
+GOOGLE_AUTH_AND_UPLOAD.md
+MOBILE_DEV_GUIDE.md
 
 # GCP & Firebase Credentials
 planetdev-475809-914df0ab954b.json
