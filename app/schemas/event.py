@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, FieldValidationInfo
 from app.models.shared_models import EventType, EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.user import UserSummary
 from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, LocationOptimizationResponse
@@ -46,9 +46,14 @@ class EventBase(BaseModel):
 
 class EventCreate(EventBase):
     """Schema for creating a new event"""
+    cover_image_url: Optional[str] = Field(None, description="URL of the event cover image (from upload endpoint)")
     location_input: Optional[str] = Field(None, description="Raw location input for optimization")
     user_coordinates: Optional[dict] = Field(None, description="User's current coordinates for location optimization")
     auto_optimize_location: bool = Field(True, description="Whether to automatically optimize location using Google Maps")
+    task_categories: Optional[List["TaskCategory"]] = Field(
+        default=None,
+        description="Optional task categories to seed tasks during event creation"
+    )
 
 class EventUpdate(BaseModel):
     """Schema for updating event information"""
@@ -56,6 +61,7 @@ class EventUpdate(BaseModel):
     description: Optional[str] = None
     event_type: Optional[EventType] = None
     status: Optional[EventStatus] = None
+    cover_image_url: Optional[str] = Field(None, description="URL of the event cover image")
     
     @field_validator('event_type', 'status', mode='before')
     @classmethod
@@ -111,6 +117,9 @@ class TaskCategory(BaseModel):
     items: List[TaskCategoryItem] = Field(default_factory=list)
     
     model_config = ConfigDict(from_attributes=True)
+
+
+EventCreate.model_rebuild()
 
 class EventResponse(EventBase):
     """Schema for event response"""
@@ -235,26 +244,68 @@ class TaskUpdate(BaseModel):
     
     @field_validator('status', 'priority', mode='before')
     @classmethod
-    def normalize_enums(cls, v):
-        """Normalize enum values to lowercase for case-insensitive matching"""
-        if isinstance(v, str):
-            return v.lower()
-        return v
+    def normalize_enums(cls, v, info: FieldValidationInfo):
+        """Normalize enum values and map common aliases"""
+        if not isinstance(v, str):
+            return v
+
+        normalized = v.strip().lower().replace("-", "_").replace(" ", "_")
+
+        if info.field_name == 'status':
+            status_aliases = {
+                'pending': 'in_progress',
+                'incomplete': 'in_progress',
+                'not_complete': 'in_progress',
+                'resume': 'in_progress',
+                'not_started': 'todo',
+                'todo': 'todo',
+                'inprogress': 'in_progress',
+                'in_progress': 'in_progress',
+                'complete': 'completed',
+                'completed': 'completed',
+                'done': 'completed',
+                'canceled': 'cancelled',
+            }
+            return status_aliases.get(normalized, normalized)
+
+        if info.field_name == 'priority':
+            priority_aliases = {
+                'normal': 'medium',
+            }
+            return priority_aliases.get(normalized, normalized)
+
+        return normalized
 
 class TaskResponse(TaskBase):
     """Schema for task response"""
     id: int
     event_id: int
     creator_id: int
-    assignee_id: Optional[int] = None
+    assignee_id: Optional[int] = Field(default=None, alias="assigned_to_id", serialization_alias="assignee_id")
     status: TaskStatus
-    actual_cost: Optional[float] = None
-    completed_at: Optional[datetime] = None
-    creator: UserSummary
-    assignee: Optional[UserSummary] = None
-    created_at: datetime
-    updated_at: datetime
-    
+    completed: bool = False
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_validator("completed", mode="before")
+    @classmethod
+    def derive_completed(cls, v, values):
+        if v is not None:
+            return v
+        status = values.get("status")
+        if isinstance(status, TaskStatus):
+            return status == TaskStatus.COMPLETED
+        if isinstance(status, str):
+            try:
+                return TaskStatus(status) == TaskStatus.COMPLETED
+            except ValueError:
+                return False
+        return False
+
+class TaskCategoriesResponse(BaseModel):
+    """Schema for tasks grouped by categories"""
+    task_categories: List[TaskCategory] = Field(default_factory=list)
+
     model_config = ConfigDict(from_attributes=True)
 
 # Expense schemas

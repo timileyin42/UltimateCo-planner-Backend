@@ -118,16 +118,11 @@ class GCPStorageService:
                 blob.cache_control = "public, max-age=3600"
                 blob.patch()
                 
-                # For public files (profile pictures, event covers), use public URL
-                # For private files, store the blob path for later signed URL generation
-                if make_public:
-                    # Public URL format - works if bucket has public access enabled
-                    file_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
-                else:
-                    # Store blob path - can generate signed URLs later if needed
-                    file_url = blob_path
+                # Return permanent public URL
+                # Note: Bucket must have public access enabled for this to work
+                file_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
                 
-                logger.info(f"File uploaded to GCP Storage: {blob_path} (public={make_public})")
+                logger.info(f"File uploaded to GCP Storage: {blob_path} (public URL)")
                 
             else:
                 # Fallback to local storage
@@ -215,7 +210,7 @@ class GCPStorageService:
             if self.client and self.bucket:
                 blob = self.bucket.blob(blob_path)
                 
-                # Generate signed URL for upload (PUT method)
+                # Generate signed URL for upload (PUT method) - this one expires
                 upload_url = blob.generate_signed_url(
                     version="v4",
                     expiration=timedelta(minutes=expiration_minutes),
@@ -223,8 +218,8 @@ class GCPStorageService:
                     content_type=content_type
                 )
                 
-                # Return public URL for permanent access
-                # If bucket is private, frontend can request signed URLs via separate endpoint
+                # Return permanent public URL for download
+                # Note: Bucket must have public access enabled for this to work
                 download_url = f"https://storage.googleapis.com/{self.settings.GCP_STORAGE_BUCKET}/{blob_path}"
                 
                 logger.info(f"Generated upload signed URL for: {blob_path}")

@@ -38,13 +38,13 @@ def get_db_connection():
                 password=parsed.password or ""
             )
         else:
-            # Fallback to individual environment variables
+            # Fallback to individual environment variables or defaults for local dev
             conn = psycopg2.connect(
                 host=os.getenv("POSTGRES_HOST", "localhost"),
                 port=os.getenv("POSTGRES_PORT", "5432"),
                 database=os.getenv("POSTGRES_DB", "planetal"),
-                user=os.getenv("POSTGRES_USER", "postgres"),
-                password=os.getenv("POSTGRES_PASSWORD", "")
+                user=os.getenv("POSTGRES_USER", "planetal"),
+                password=os.getenv("POSTGRES_PASSWORD", "planetal123")
             )
         return conn
     except Exception as e:
@@ -240,7 +240,47 @@ def test_create_event():
         "venue_country": "Nigeria",
         "is_public": False,
         "max_attendees": 100,
-        "auto_optimize_location": False
+        "auto_optimize_location": False,
+        "cover_image_url": "https://storage.googleapis.com/planetal-storage/uploads/images/test-cover.jpg",
+        "task_categories": [
+            {
+                "name": "Food & Catering",
+                "items": [
+                    {
+                        "title": "Order birthday cake",
+                        "description": "Chocolate cake for 30 people",
+                        "assignee_id": None
+                    },
+                    {
+                        "title": "Book caterer",
+                        "description": "Nigerian cuisine",
+                        "assignee_id": None
+                    }
+                ]
+            },
+            {
+                "name": "Decorations",
+                "items": [
+                    {
+                        "title": "Buy balloons",
+                        "description": "Red and gold theme"
+                    },
+                    {
+                        "title": "Set up venue",
+                        "description": "Arrange tables and chairs"
+                    }
+                ]
+            },
+            {
+                "name": "Entertainment",
+                "items": [
+                    {
+                        "title": "Hire DJ",
+                        "description": "DJ for 4 hours"
+                    }
+                ]
+            }
+        ]
     }
     
     try:
@@ -254,6 +294,8 @@ def test_create_event():
             test_resources["event_id"] = data.get("id")
             print_success(f"Event created: {data.get('title')}")
             print_info(f"Event ID: {test_resources['event_id']}")
+            print_info(f"Cover Image: {data.get('cover_image_url', 'None')}")
+            print_info(f"Task Categories: {len(data.get('task_categories', []))}")
             return True
         else:
             print_error(f"Event creation failed: {response.status_code}")
@@ -341,12 +383,170 @@ def test_get_my_events_hosting():
             return True
         else:
             print_error(f"Get hosting events failed: {response.status_code}")
-            print_error(f"Response: {response.text}")
             return False
     except Exception as e:
         print_error(f"Get hosting events error: {str(e)}")
         return False
 
+# ============================================================================
+# TASK TESTS
+# ============================================================================
+
+def test_get_event_tasks():
+    """Test getting event tasks grouped by categories"""
+    print("\n" + "="*50)
+    print("Testing Get Event Tasks (Categorized)")
+    print("="*50)
+    
+    event_id = test_resources.get("event_id")
+    if not event_id:
+        print_warning("No event ID available. Create event first.")
+        return None
+    
+    try:
+        response = requests.get(
+            f"{API_V1}/events/{event_id}/tasks",
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            data = response.json()
+            task_categories = data.get('task_categories', [])
+            print_success("Retrieved task categories")
+            print_info(f"Found {len(task_categories)} categor(ies)")
+            
+            total_tasks = 0
+            for category in task_categories:
+                category_name = category.get('name')
+                items = category.get('items', [])
+                total_tasks += len(items)
+                print_info(f"\n  Category: {category_name}")
+                print_info(f"  Tasks: {len(items)}")
+                for item in items[:3]:  # Show first 3 items
+                    completed_icon = "✓" if item.get('completed') else "○"
+                    print_info(f"    {completed_icon} {item.get('title')}")
+                    # Store first task ID for update test
+                    if not test_resources.get("task_id") and item.get('id'):
+                        test_resources["task_id"] = item.get('id')
+            
+            print_info(f"\nTotal tasks: {total_tasks}")
+            return True
+        else:
+            print_error(f"Get event tasks failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Get event tasks error: {str(e)}")
+        return False
+
+def test_get_single_task():
+    """Test getting a single task by ID"""
+    print("\n" + "="*50)
+    print("Testing Get Single Task")
+    print("="*50)
+    
+    task_id = test_resources.get("task_id")
+    if not task_id:
+        print_warning("No task ID available. Get event tasks first.")
+        return None
+    
+    try:
+        response = requests.get(
+            f"{API_V1}/events/tasks/{task_id}",
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            task = response.json()
+            print_success("Retrieved task details")
+            print_info(f"Title: {task.get('title')}")
+            print_info(f"Description: {task.get('description', 'None')}")
+            print_info(f"Category: {task.get('category', 'None')}")
+            print_info(f"Status: {task.get('status')}")
+            print_info(f"Priority: {task.get('priority')}")
+            print_info(f"Assignee ID: {task.get('assignee_id', 'None')}")
+            return True
+        else:
+            print_error(f"Get task failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Get task error: {str(e)}")
+        return False
+
+def test_update_task():
+    """Test updating a task (mark as completed, assign user, etc.)"""
+    print("\n" + "="*50)
+    print("Testing Update Task")
+    print("="*50)
+    
+    task_id = test_resources.get("task_id")
+    if not task_id:
+        print_warning("No task ID available. Get event tasks first.")
+        return None
+    
+    update_data = {
+        "status": "completed",
+        "description": "Updated: Chocolate cake ordered from Sweet Treats Bakery",
+        "priority": "high"
+    }
+    
+    try:
+        response = requests.put(
+            f"{API_V1}/events/tasks/{task_id}",
+            json=update_data,
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            task = response.json()
+            print_success("Task updated successfully")
+            print_info(f"Title: {task.get('title')}")
+            print_info(f"Status: {task.get('status')}")
+            print_info(f"Priority: {task.get('priority')}")
+            print_info(f"Description: {task.get('description')}")
+            return True
+        else:
+            print_error(f"Update task failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Update task error: {str(e)}")
+        return False
+
+def test_update_task_mark_incomplete():
+    """Test marking a task as incomplete"""
+    print("\n" + "="*50)
+    print("Testing Mark Task as Incomplete")
+    print("="*50)
+    
+    task_id = test_resources.get("task_id")
+    if not task_id:
+        print_warning("No task ID available. Get event tasks first.")
+        return None
+    
+    update_data = {
+        "status": "pending"
+    }
+    
+    try:
+        response = requests.put(
+            f"{API_V1}/events/tasks/{task_id}",
+            json=update_data,
+            headers=get_headers()
+        )
+        if response.status_code == 200:
+            task = response.json()
+            print_success("Task marked as incomplete")
+            print_info(f"Status: {task.get('status')}")
+            return True
+        else:
+            print_error(f"Update task failed: {response.status_code}")
+            return False
+    except Exception as e:
+        print_error(f"Update task error: {str(e)}")
+        return False
+
+# ============================================================================
+# NOTIFICATION TESTS
+# ============================================================================
 def test_get_my_events_all():
     """Test getting all user's events without category filter"""
     print("\n" + "="*50)
@@ -2911,32 +3111,77 @@ def run_all_tests():
     else:
         results["failed"] += 1
     
+    # TASK TESTS
+    print("\n" + "="*60)
+    print("TASK MANAGEMENT TESTS")
+    print("="*60)
+    
+    # Test 4: Get event tasks (categorized)
+    result = test_get_event_tasks()
+    if result is True:
+        results["passed"] += 1
+    elif result is False:
+        results["failed"] += 1
+    else:
+        results["skipped"] += 1
+    
+    # Test 5: Get single task
+    result = test_get_single_task()
+    if result is True:
+        results["passed"] += 1
+    elif result is False:
+        results["failed"] += 1
+    else:
+        results["skipped"] += 1
+    
+    # Test 6: Update task (mark completed)
+    result = test_update_task()
+    if result is True:
+        results["passed"] += 1
+    elif result is False:
+        results["failed"] += 1
+    else:
+        results["skipped"] += 1
+    
+    # Test 7: Update task (mark incomplete)
+    result = test_update_task_mark_incomplete()
+    if result is True:
+        results["passed"] += 1
+    elif result is False:
+        results["failed"] += 1
+    else:
+        results["skipped"] += 1
+    
     # NOTIFICATION TESTS
-    # Test 4: Get notifications
+    print("\n" + "="*60)
+    print("NOTIFICATION TESTS")
+    print("="*60)
+    
+    # Test 8: Get notifications
     if test_get_notifications():
         results["passed"] += 1
     else:
         results["failed"] += 1
     
-    # Test 5: Get notification preferences
+    # Test 9: Get notification preferences
     if test_notification_preferences():
         results["passed"] += 1
     else:
         results["failed"] += 1
     
-    # Test 6: Update notification preferences
+    # Test 10: Update notification preferences
     if test_update_notification_preferences():
         results["passed"] += 1
     else:
         results["failed"] += 1
     
-    # Test 7: Get notification channels
+    # Test 11: Get notification channels
     if test_get_notification_channels():
         results["passed"] += 1
     else:
         results["failed"] += 1
 
-    # Test 8: Get notification logs
+    # Test 12: Get notification logs
     if test_get_notification_logs():
         results["passed"] += 1
     else:
