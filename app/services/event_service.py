@@ -87,13 +87,8 @@ class EventService:
         # Handle location optimization if requested
         if event_data.location_input and event_data.auto_optimize_location:
             try:
-                # Convert user_coordinates to Coordinates object if provided
-                user_coords = None
-                if event_data.user_coordinates:
-                    user_coords = Coordinates(
-                        latitude=event_data.user_coordinates.get('latitude'),
-                        longitude=event_data.user_coordinates.get('longitude')
-                    )
+                # user_coordinates is already a Coordinates object from Pydantic
+                user_coords = event_data.user_coordinates
                 
                 # Optimize location using Google Maps
                 optimization_result = asyncio.run(
