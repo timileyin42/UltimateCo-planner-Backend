@@ -57,6 +57,10 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires = Column(DateTime, nullable=True)
     
+    # OAuth integration
+    google_id = Column(String(255), nullable=True, unique=True, index=True)
+    profile_picture_url = Column(String(500), nullable=True)
+    
     # Social features
     is_public_profile = Column(Boolean, default=True, nullable=False)
     

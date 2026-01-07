@@ -47,7 +47,7 @@ class EventBase(BaseModel):
 class EventCreate(EventBase):
     """Schema for creating a new event"""
     cover_image_url: Optional[str] = Field(None, description="URL of the event cover image (from upload endpoint)")
-    location_input: Optional[str] = Field(None, description="Raw location input for optimization (e.g., 'Cafe Bloom - 26 Olaniyi St, Lagos')")
+    location_input: Optional[str] = Field(None, description="Raw location input for optimization. Can be just an address or 'Venue - Address'. Backend will extract venue name if present.")
     user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")
     auto_optimize_location: bool = Field(True, description="Whether to automatically optimize location using Google Maps")
     task_categories: Optional[List["TaskCategory"]] = Field(
@@ -69,6 +69,7 @@ class EventCreate(EventBase):
                 "venue_city": "Lagos",
                 "venue_country": "Nigeria",
                 "is_public": True,
+                "max_attendees": 50,
                 "cover_image_url": "https://storage.googleapis.com/.../event-cover.jpg",
                 "location_input": "Cafe Bloom - 26 Olaniyi St, Lagos",
                 "user_coordinates": {
