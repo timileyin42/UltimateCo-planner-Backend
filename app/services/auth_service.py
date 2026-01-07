@@ -25,6 +25,18 @@ class AuthService:
         self.otp_service = OTPService(db)
         self.settings = settings
     
+    @staticmethod
+    def generate_random_password(length: int = 32) -> str:
+        """Generate a secure random password for OAuth users.
+        
+        This password is used when creating users via Google/OAuth providers.
+        Users won't know this password - they authenticate via OAuth tokens.
+        If they want password access later, they can use 'Forgot Password'.
+        """
+        # Use cryptographically secure random generator
+        alphabet = string.ascii_letters + string.digits + string.punctuation
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
     def register_user(self, user_data: UserRegister) -> User:
         """Register a new user with email or phone number"""
         # Validate passwords match
