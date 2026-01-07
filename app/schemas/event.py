@@ -68,14 +68,14 @@ class EventCreate(EventBase):
                 "venue_address": "26 Olaniyi St, Ikeja",
                 "venue_city": "Lagos",
                 "venue_country": "Nigeria",
-                "is_public": true,
+                "is_public": True,
                 "cover_image_url": "https://storage.googleapis.com/.../event-cover.jpg",
                 "location_input": "Cafe Bloom - 26 Olaniyi St, Lagos",
                 "user_coordinates": {
                     "latitude": 6.5244,
                     "longitude": 3.3792
                 },
-                "auto_optimize_location": true
+                "auto_optimize_location": True
             }
         }
 
