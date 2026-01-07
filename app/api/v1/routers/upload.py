@@ -9,13 +9,13 @@ upload_router = APIRouter()
 class UploadResponse(BaseModel):
     """Unified response for all uploads"""
     upload_type: str  # "direct" or "presigned"
-    download_url: str  # Permanent public URL to access/download the file
+    download_url: str  # PERMANENT public URL - never expires
     filename: str
     content_type: str
     blob_path: Optional[str] = None  # GCS blob path for reference
     # For presigned uploads only
-    upload_url: Optional[str] = None  # URL to PUT the file to (presigned only)
-    expires_at: Optional[str] = None  # When upload_url expires (download_url is permanent)
+    upload_url: Optional[str] = None  # URL to PUT the file to (expires in 60 min)
+    expires_at: Optional[str] = None  # When upload_url expires (download_url never expires)
     # For direct uploads only
     file_size: Optional[int] = None
 

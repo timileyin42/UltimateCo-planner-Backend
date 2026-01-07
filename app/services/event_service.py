@@ -9,7 +9,7 @@ from app.models.user_models import User
 from app.models.shared_models import EventStatus, RSVPStatus, TaskStatus
 from app.schemas.event import (
     EventCreate, EventUpdate, EventInvitationCreate, EventInvitationUpdate,
-    TaskCreate, TaskUpdate, ExpenseCreate, ExpenseUpdate, CommentCreate,
+    TaskCreate, TaskUpdate, TaskCategory, ExpenseCreate, ExpenseUpdate, CommentCreate,
     PollCreate, PollVoteCreate
 )
 from app.schemas.location import Coordinates
@@ -81,7 +81,8 @@ class EventService:
             raise ValidationError("End date must be after start date")
         
         # Prepare event data
-        event_dict = event_data.model_dump()
+        task_categories_input = event_data.task_categories
+        event_dict = event_data.model_dump(exclude={"task_categories"})
         
         # Handle location optimization if requested
         if event_data.location_input and event_data.auto_optimize_location:
@@ -145,8 +146,11 @@ class EventService:
         event.collaborators.append(creator)
         self.db.commit()
         
-        # Generate default task categories based on event type
-        self._generate_default_task_categories(event)
+        # Seed tasks based on provided categories or defaults
+        if task_categories_input is not None:
+            self._create_tasks_from_category_payload(event, task_categories_input, creator_id)
+        else:
+            self._generate_default_task_categories(event)
         
         # Sync with connected calendars
         asyncio.create_task(self._sync_event_to_calendars(event, 'create'))
@@ -539,6 +543,15 @@ class EventService:
         
         # Update task fields
         update_data = task_data.model_dump(exclude_unset=True)
+
+        if "assignee_id" in update_data:
+            new_assignee_id = update_data.pop("assignee_id")
+            if new_assignee_id:
+                assignee = self.user_service.get_user_by_id(new_assignee_id)
+                if not assignee:
+                    raise NotFoundError("Assignee not found")
+            task.assigned_to_id = new_assignee_id
+
         for field, value in update_data.items():
             if hasattr(task, field):
                 setattr(task, field, value)
@@ -1135,6 +1148,61 @@ class EventService:
             logger.error(f"Manual calendar sync failed for user {user_id}: {str(e)}")
             raise
     
+    def _create_tasks_from_category_payload(
+        self,
+        event: Event,
+        categories: List[TaskCategory],
+        creator_id: int
+    ) -> None:
+        """Create event tasks from provided category payload."""
+        if not categories:
+            return
+
+        if not self._can_edit_event(event, creator_id):
+            raise AuthorizationError("Permission denied to create tasks")
+
+        tasks_created = False
+
+        for category in categories:
+            category_name = (category.name or "").strip() or "Uncategorized"
+
+            for item in category.items:
+                title = (item.title or "").strip()
+                if not title:
+                    continue
+
+                assignee_id = item.assignee_id
+                if assignee_id:
+                    assignee = self.user_service.get_user_by_id(assignee_id)
+                    if not assignee:
+                        logger.warning(
+                            "Skipping task '%s' for event %s: assignee %s not found",
+                            title,
+                            event.id,
+                            assignee_id
+                        )
+                        assignee_id = None
+
+                task = Task(
+                    title=title,
+                    description=item.description,
+                    category=category_name,
+                    event_id=event.id,
+                    creator_id=creator_id,
+                    assigned_to_id=assignee_id,
+                    status=TaskStatus.COMPLETED if item.completed else TaskStatus.TODO
+                )
+
+                if item.completed:
+                    task.completed_at = datetime.utcnow()
+
+                self.db.add(task)
+                tasks_created = True
+
+        if tasks_created:
+            self.db.commit()
+            self.db.refresh(event)
+
     def _generate_default_task_categories(self, event: Event) -> None:
         """Generate default task category templates based on event type"""
         from app.models.event_models import Task

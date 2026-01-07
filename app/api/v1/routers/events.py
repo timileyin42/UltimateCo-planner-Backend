@@ -12,7 +12,8 @@ from app.services.subscription_service import SubscriptionService, UsageLimitExc
 from app.schemas.event import (
     EventCreate, EventUpdate, EventResponse, EventSummary, EventListResponse,
     EventInvitationCreate, EventInvitationUpdate, EventInvitationResponse,
-    TaskCreate, TaskUpdate, TaskResponse, ExpenseCreate, ExpenseUpdate, ExpenseResponse,
+    TaskCreate, TaskUpdate, TaskResponse, TaskCategoriesResponse, TaskCategory, TaskCategoryItem, TaskStatus,
+    ExpenseCreate, ExpenseUpdate, ExpenseResponse,
     CommentCreate, CommentResponse, PollCreate, PollResponse, PollVoteCreate,
     EventSearchQuery, EventStatsResponse, EventLocationOptimizationRequest, EventLocationOptimizationResponse,
     EventDuplicateRequest, CollaboratorAddRequest
@@ -708,37 +709,48 @@ async def add_event_collaborators(
         raise http_400_bad_request("Failed to add collaborators")
 
 # Task management endpoints
-@events_router.post("/{event_id}/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-async def create_task(
-    event_id: int,
-    task_data: TaskCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Create a task for an event"""
-    try:
-        event_service = EventService(db)
-        task = event_service.create_task(event_id, task_data, current_user.id)
-        return task
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise http_404_not_found("Event or assignee not found")
-        elif "permission denied" in str(e).lower():
-            raise http_403_forbidden("Permission denied to create tasks")
-        else:
-            raise http_400_bad_request("Failed to create task")
-
-@events_router.get("/{event_id}/tasks", response_model=List[TaskResponse])
+@events_router.get("/{event_id}/tasks", response_model=TaskCategoriesResponse)
 async def get_event_tasks(
     event_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get all tasks for an event"""
+    """
+    Get all tasks for an event, grouped by categories.
+    Tasks are created as part of event creation in task_categories.
+    
+    Returns tasks organized by categories like:
+    - Food & Catering
+    - Decorations
+    - Entertainment
+    - Logistics
+    - etc.
+    """
     try:
         event_service = EventService(db)
         tasks = event_service.get_event_tasks(event_id, current_user.id)
-        return tasks
+        
+        # Group tasks by category
+        from collections import defaultdict
+        categories_dict = defaultdict(list)
+        
+        for task in tasks:
+            category_name = task.category or "Uncategorized"
+            categories_dict[category_name].append(TaskCategoryItem(
+                id=task.id,
+                title=task.title,
+                description=task.description,
+                completed=(task.status == TaskStatus.COMPLETED),
+                assignee_id=task.assigned_to_id
+            ))
+        
+        # Convert to list of TaskCategory objects
+        task_categories = [
+            TaskCategory(name=name, items=items)
+            for name, items in sorted(categories_dict.items(), key=lambda entry: entry[0].lower())
+        ]
+        
+        return TaskCategoriesResponse(task_categories=task_categories)
     except Exception as e:
         if "not found" in str(e).lower():
             raise http_404_not_found("Event not found")
@@ -754,7 +766,15 @@ async def update_task(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Update a task"""
+    """
+    Update a task (title, description, status, assignee, etc.)
+    
+    Use this to:
+    - Mark tasks as completed/pending
+    - Assign tasks to users
+    - Update task details
+    - Change category or priority
+    """
     try:
         event_service = EventService(db)
         task = event_service.update_task(task_id, task_data, current_user.id)
@@ -773,7 +793,16 @@ async def get_task(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get a single task"""
+    """
+    Get details of a single task by ID.
+    
+    Returns full task information including:
+    - Title, description, category
+    - Status (pending/completed)
+    - Assignee information
+    - Due date and priority
+    - Cost estimates
+    """
     try:
         event_service = EventService(db)
         task = event_service.get_task_by_id(task_id, current_user.id)
