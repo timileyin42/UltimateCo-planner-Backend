@@ -112,6 +112,12 @@ class EventService:
                         event_dict['latitude'] = optimization_result.validation.coordinates.latitude
                         event_dict['longitude'] = optimization_result.validation.coordinates.longitude
                     
+                    # Extract venue name from the first autocomplete suggestion if available
+                    # This handles cases where user provides just an address or "Venue - Address"
+                    if not event_dict.get('venue_name') and optimization_result.autocomplete_suggestions:
+                        first_suggestion = optimization_result.autocomplete_suggestions[0]
+                        event_dict['venue_name'] = first_suggestion.name
+                    
                     # Store additional location metadata (if Event model supports it)
                     # This would require updating the Event model to include these fields
                     # event_dict['place_id'] = optimization_result.validation.place_id

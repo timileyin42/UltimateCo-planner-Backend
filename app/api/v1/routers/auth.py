@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
+from app.core.config import settings
 from app.core.errors import (
     http_400_bad_request, http_401_unauthorized, http_409_conflict, http_404_not_found
 )
@@ -321,8 +322,6 @@ async def google_mobile_sign_in(
     6. Returns access/refresh tokens
     """
     try:
-        from app.core.config import settings
-        
         # Verify the Google ID token
         try:
             idinfo = id_token.verify_oauth2_token(
@@ -353,27 +352,33 @@ async def google_mobile_sign_in(
         auth_service = AuthService(db)
         
         # Check if user exists
-        user = auth_service.get_user_by_email(email)
+        user = auth_service.user_db.get_user_by_email(email)
         
         if not user:
             # Generate a secure random password for this OAuth user
             # User won't know this password - they authenticate via Google
             random_password = AuthService.generate_random_password()
             
-            # Create new user from Google info
-            user_data = UserRegister(
-                email=email,
-                full_name=name or f"{given_name} {family_name}".strip() or 'Google User',
-                password=random_password,
-                confirm_password=random_password,  # Match password for validation
-            )
-            user = auth_service.register_user(user_data)
-            
-            # Mark as verified since Google verified the email
-            user.is_verified = True
-            user.google_id = google_user_id
-            user.profile_picture_url = picture
-            db.commit()
+            try:
+                # Create new user from Google info
+                user_data = UserRegister(
+                    email=email,
+                    full_name=name or f"{given_name} {family_name}".strip() or 'Google User',
+                    password=random_password,
+                    confirm_password=random_password,  # Match password for validation
+                )
+                # Skip verification OTP for Google users (they're pre-verified by Google)
+                user = auth_service.register_user(user_data, skip_verification=True)
+                
+                # Mark as verified since Google verified the email
+                user.is_verified = True
+                user.google_id = google_user_id
+                user.profile_picture_url = picture
+                db.commit()
+            except Exception as reg_error:
+                db.rollback()
+                print(f"Error creating Google user: {str(reg_error)}")
+                raise http_400_bad_request(f"Failed to create user account: {str(reg_error)}")
         else:
             # Update existing user with Google info if not already linked
             if not user.google_id:
@@ -388,17 +393,24 @@ async def google_mobile_sign_in(
         if not user.is_active:
             raise http_401_unauthorized("Account is deactivated")
         
-        # Generate tokens
+        # Generate tokens and create session
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
         
-        token_response = auth_service.create_session_and_tokens(
+        access_token, refresh_token = auth_service.create_user_session(
             user=user,
             ip_address=ip_address,
             user_agent=user_agent
         )
         
-        return token_response
+        # Return token response
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=user
+        )
         
     except HTTPException:
         raise

@@ -37,8 +37,13 @@ class AuthService:
         alphabet = string.ascii_letters + string.digits + string.punctuation
         return ''.join(secrets.choice(alphabet) for _ in range(length))
     
-    def register_user(self, user_data: UserRegister) -> User:
-        """Register a new user with email or phone number"""
+    def register_user(self, user_data: UserRegister, skip_verification: bool = False) -> User:
+        """Register a new user with email or phone number
+        
+        Args:
+            user_data: User registration data
+            skip_verification: If True, skip sending verification OTP (for OAuth users)
+        """
         # Validate passwords match
         if user_data.password != user_data.confirm_password:
             raise ValidationError("Passwords do not match")
@@ -70,15 +75,16 @@ class AuthService:
         # Create new user using the updated create_user method
         user = self.user_db.create_user(user_data)
         
-        # Send verification OTP based on user's signup method
-        try:
-            # Use the method the user originally signed up with
-            if user.signup_method == "phone":
-                self.otp_service.send_verification_otp(user, "sms")
-            else:
-                self.otp_service.send_verification_otp(user, "email")
-        except Exception as e:
-            print(f"Failed to send verification OTP: {str(e)}")
+        # Send verification OTP based on user's signup method (unless skipped for OAuth)
+        if not skip_verification:
+            try:
+                # Use the method the user originally signed up with
+                if user.signup_method == "phone":
+                    self.otp_service.send_verification_otp(user, "sms")
+                else:
+                    self.otp_service.send_verification_otp(user, "email")
+            except Exception as e:
+                print(f"Failed to send verification OTP: {str(e)}")
         
         return user
     
