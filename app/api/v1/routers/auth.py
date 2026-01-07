@@ -18,6 +18,8 @@ from app.models.user_models import User
 from app.models.user_models import UserSession
 from typing import Optional
 import asyncio
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 # OTP-related models
 class OTPVerification(BaseModel):
@@ -75,6 +77,11 @@ class PasswordResetOTP(BaseModel):
     def identifier(self) -> str:
         """Get the identifier (email or phone)"""
         return self.email if self.email else self.phone_number
+
+class GoogleMobileSignIn(BaseModel):
+    """Google Sign-In from mobile app (Flutter)"""
+    id_token: str = Field(..., description="Google ID token from Flutter google_sign_in package")
+    access_token: Optional[str] = Field(None, description="Optional: Google access token for additional scopes")
 
 auth_router = APIRouter()
 security = HTTPBearer()
@@ -293,96 +300,113 @@ async def terminate_session(
             raise http_400_bad_request("Failed to terminate session")
 
 # Google OAuth endpoints
-@auth_router.get("/google/url")
-async def get_google_auth_url(
-    db: Session = Depends(get_db)
-):
-    """Get Google OAuth authorization URL"""
-    try:
-        google_oauth = GoogleOAuthService(db)
-        auth_url = google_oauth.get_authorization_url()
-        
-        return {
-            "authorization_url": auth_url,
-            "message": "Redirect user to this URL for Google authentication"
-        }
-    except Exception:
-        raise http_400_bad_request("Failed to generate Google OAuth URL")
-
-@auth_router.post("/google/callback", response_model=TokenResponse)
-async def google_oauth_callback(
-    code: str,
-    state: str,
+@auth_router.post("/google/mobile", response_model=TokenResponse)
+@rate_limit_login
+async def google_mobile_sign_in(
     request: Request,
+    google_data: GoogleMobileSignIn,
     db: Session = Depends(get_db)
 ):
-    """Handle Google OAuth callback and authenticate user"""
+    """Mobile-first Google Sign-In endpoint for Flutter apps.
+    
+    This endpoint accepts a Google ID token obtained from the Flutter google_sign_in package.
+    The mobile app handles the OAuth flow natively, and sends the ID token to this endpoint.
+    
+    Flow:
+    1. Mobile app uses google_sign_in Flutter package
+    2. User signs in with Google (in-app)
+    3. App receives ID token from Google
+    4. App sends ID token to this endpoint
+    5. Backend verifies token and creates/logs in user
+    6. Returns access/refresh tokens
+    """
     try:
-        google_oauth = GoogleOAuthService(db)
+        from app.core.config import settings
         
-        # Extract session information
+        # Verify the Google ID token
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                google_data.id_token,
+                google_requests.Request(),
+                settings.GOOGLE_CLIENT_ID
+            )
+        except ValueError as e:
+            raise http_401_unauthorized(f"Invalid Google ID token: {str(e)}")
+        
+        # Extract user information from the verified token
+        google_user_id = idinfo.get('sub')
+        email = idinfo.get('email')
+        email_verified = idinfo.get('email_verified', False)
+        name = idinfo.get('name', '')
+        given_name = idinfo.get('given_name', '')
+        family_name = idinfo.get('family_name', '')
+        picture = idinfo.get('picture')
+        
+        if not email:
+            raise http_400_bad_request("No email found in Google token")
+        
+        if not email_verified:
+            raise http_400_bad_request("Google email is not verified")
+        
+        # Use GoogleOAuthService to handle user creation/authentication
+        google_oauth = GoogleOAuthService(db)
+        auth_service = AuthService(db)
+        
+        # Check if user exists
+        user = auth_service.get_user_by_email(email)
+        
+        if not user:
+            # Generate a secure random password for this OAuth user
+            # User won't know this password - they authenticate via Google
+            random_password = AuthService.generate_random_password()
+            
+            # Create new user from Google info
+            user_data = UserRegister(
+                email=email,
+                full_name=name or f"{given_name} {family_name}".strip() or 'Google User',
+                password=random_password,
+                confirm_password=random_password,  # Match password for validation
+            )
+            user = auth_service.register_user(user_data)
+            
+            # Mark as verified since Google verified the email
+            user.is_verified = True
+            user.google_id = google_user_id
+            user.profile_picture_url = picture
+            db.commit()
+        else:
+            # Update existing user with Google info if not already linked
+            if not user.google_id:
+                user.google_id = google_user_id
+            if not user.profile_picture_url and picture:
+                user.profile_picture_url = picture
+            if not user.is_verified:
+                user.is_verified = True
+            db.commit()
+        
+        # Check if user account is active
+        if not user.is_active:
+            raise http_401_unauthorized("Account is deactivated")
+        
+        # Generate tokens
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
         
-        # Authenticate or create user
-        token_response = await google_oauth.authenticate_or_create_user(
-            code=code,
-            state=state,
+        token_response = auth_service.create_session_and_tokens(
+            user=user,
             ip_address=ip_address,
             user_agent=user_agent
         )
         
         return token_response
         
+    except HTTPException:
+        raise
     except Exception as e:
-        if "deactivated" in str(e).lower():
-            raise http_401_unauthorized("Account is deactivated")
-        elif "failed" in str(e).lower():
-            raise http_401_unauthorized(str(e))
-        else:
-            raise http_400_bad_request("Google OAuth authentication failed")
-
-@auth_router.post("/google/link")
-async def link_google_account(
-    code: str,
-    state: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Link Google account to existing user account"""
-    try:
-        google_oauth = GoogleOAuthService(db)
-        
-        # Exchange code for tokens and get user info
-        tokens = await google_oauth.exchange_code_for_tokens(code, state)
-        access_token = tokens.get("access_token")
-        
-        if not access_token:
-            raise http_400_bad_request("Failed to get access token from Google")
-        
-        google_user = await google_oauth.get_user_info(access_token)
-        google_email = google_user.get("email")
-        
-        if not google_email:
-            raise http_400_bad_request("No email received from Google")
-        
-        # Check if Google email matches current user's email
-        if google_email.lower() != current_user.email.lower():
-            raise http_400_bad_request("Google account email must match your current account email")
-        
-        # Update user with Google info
-        google_oauth._update_user_from_google(current_user, google_user)
-        
-        return {
-            "message": "Google account linked successfully",
-            "google_email": google_email
-        }
-        
-    except Exception as e:
-        if "must match" in str(e).lower():
-            raise http_400_bad_request(str(e))
-        else:
-             raise http_400_bad_request("Failed to link Google account")
+        import traceback
+        print(f"Google mobile sign-in error: {str(e)}")
+        print(traceback.format_exc())
+        raise http_400_bad_request(f"Google sign-in failed: {str(e)}")
 
 # OTP-based verification endpoints
 @auth_router.post("/verify-email-otp")

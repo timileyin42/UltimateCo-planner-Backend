@@ -3,7 +3,7 @@ from typing import Optional, List, Dict
 from pydantic import BaseModel, Field, ConfigDict, field_validator, FieldValidationInfo
 from app.models.shared_models import EventType, EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.user import UserSummary
-from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, LocationOptimizationResponse
+from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, LocationOptimizationResponse, Coordinates
 
 # Base event schemas
 class EventBase(BaseModel):
@@ -47,13 +47,37 @@ class EventBase(BaseModel):
 class EventCreate(EventBase):
     """Schema for creating a new event"""
     cover_image_url: Optional[str] = Field(None, description="URL of the event cover image (from upload endpoint)")
-    location_input: Optional[str] = Field(None, description="Raw location input for optimization")
-    user_coordinates: Optional[dict] = Field(None, description="User's current coordinates for location optimization")
+    location_input: Optional[str] = Field(None, description="Raw location input for optimization (e.g., 'Cafe Bloom - 26 Olaniyi St, Lagos')")
+    user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")
     auto_optimize_location: bool = Field(True, description="Whether to automatically optimize location using Google Maps")
     task_categories: Optional[List["TaskCategory"]] = Field(
         default=None,
         description="Optional task categories to seed tasks during event creation"
     )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Paint and Sip",
+                "description": "Unwind with an evening of painting, wine, and good vibes",
+                "event_type": "party",
+                "start_datetime": "2024-08-18T12:00:00Z",
+                "end_datetime": "2024-08-18T13:00:00Z",
+                "timezone": "Africa/Lagos",
+                "venue_name": "Cafe Bloom",
+                "venue_address": "26 Olaniyi St, Ikeja",
+                "venue_city": "Lagos",
+                "venue_country": "Nigeria",
+                "is_public": true,
+                "cover_image_url": "https://storage.googleapis.com/.../event-cover.jpg",
+                "location_input": "Cafe Bloom - 26 Olaniyi St, Lagos",
+                "user_coordinates": {
+                    "latitude": 6.5244,
+                    "longitude": 3.3792
+                },
+                "auto_optimize_location": true
+            }
+        }
 
 class EventUpdate(BaseModel):
     """Schema for updating event information"""
