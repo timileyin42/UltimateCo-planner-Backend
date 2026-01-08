@@ -2,7 +2,10 @@ from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, desc, asc
 from datetime import datetime, timedelta
-from app.models.event_models import Event, EventInvitation, Task, Expense, Comment, Poll
+from app.models.event_models import (
+    Event, EventInvitation, Task, Expense, ExpenseSplit, 
+    Comment, Poll, PollOption, PollVote
+)
 from app.models.user_models import User
 from app.models.shared_models import EventStatus, EventType, RSVPStatus, TaskStatus
 from app.schemas.pagination import PaginationParams, SortParams
@@ -482,3 +485,238 @@ class EventRepository:
             query = query.order_by(desc(Event.start_datetime))
         
         return query
+    
+    # Task operations
+    def get_event_tasks(self, event_id: int, include_deleted: bool = False) -> List[Task]:
+        """Get all tasks for an event"""
+        query = self.db.query(Task).filter(Task.event_id == event_id)
+        if not include_deleted:
+            query = query.filter(Task.is_deleted == False)
+        return query.order_by(Task.due_datetime).all()
+    
+    def get_task_by_id(self, task_id: int, include_relations: bool = False) -> Optional[Task]:
+        """Get task by ID"""
+        query = self.db.query(Task).filter(Task.id == task_id)
+        if include_relations:
+            query = query.options(
+                joinedload(Task.event),
+                joinedload(Task.assigned_to)
+            )
+        return query.first()
+    
+    def create_task(self, task_data: Dict[str, Any]) -> Task:
+        """Create a new task"""
+        task = Task(**task_data)
+        self.db.add(task)
+        self.db.commit()
+        self.db.refresh(task)
+        return task
+    
+    def update_task(self, task_id: int, update_data: Dict[str, Any]) -> Optional[Task]:
+        """Update task by ID"""
+        task = self.get_task_by_id(task_id)
+        if not task:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(task, field):
+                setattr(task, field, value)
+        
+        self.db.commit()
+        self.db.refresh(task)
+        return task
+    
+    # EventInvitation operations
+    def get_event_invitations(
+        self, 
+        event_id: int, 
+        include_relations: bool = False
+    ) -> List[EventInvitation]:
+        """Get all invitations for an event"""
+        query = self.db.query(EventInvitation).filter(
+            EventInvitation.event_id == event_id,
+            EventInvitation.is_deleted == False
+        )
+        if include_relations:
+            query = query.options(
+                joinedload(EventInvitation.user),
+                joinedload(EventInvitation.event)
+            )
+        return query.all()
+    
+    def get_invitation_by_id(
+        self, 
+        invitation_id: int, 
+        include_relations: bool = False
+    ) -> Optional[EventInvitation]:
+        """Get invitation by ID"""
+        query = self.db.query(EventInvitation).filter(EventInvitation.id == invitation_id)
+        if include_relations:
+            query = query.options(
+                joinedload(EventInvitation.user),
+                joinedload(EventInvitation.event)
+            )
+        return query.first()
+    
+    def get_invitation_by_event_and_user(
+        self, 
+        event_id: int, 
+        user_id: int
+    ) -> Optional[EventInvitation]:
+        """Get invitation by event and user"""
+        return self.db.query(EventInvitation).filter(
+            EventInvitation.event_id == event_id,
+            EventInvitation.user_id == user_id,
+            EventInvitation.is_deleted == False
+        ).first()
+    
+    def create_invitation(self, invitation_data: Dict[str, Any]) -> EventInvitation:
+        """Create a new event invitation"""
+        invitation = EventInvitation(**invitation_data)
+        self.db.add(invitation)
+        self.db.commit()
+        self.db.refresh(invitation)
+        return invitation
+    
+    def update_invitation(
+        self, 
+        invitation_id: int, 
+        update_data: Dict[str, Any]
+    ) -> Optional[EventInvitation]:
+        """Update invitation by ID"""
+        invitation = self.get_invitation_by_id(invitation_id)
+        if not invitation:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(invitation, field):
+                setattr(invitation, field, value)
+        
+        self.db.commit()
+        self.db.refresh(invitation)
+        return invitation
+    
+    # Expense operations
+    def get_event_expenses(
+        self, 
+        event_id: int, 
+        include_relations: bool = False
+    ) -> List[Expense]:
+        """Get all expenses for an event"""
+        query = self.db.query(Expense).filter(Expense.event_id == event_id)
+        if include_relations:
+            query = query.options(
+                joinedload(Expense.paid_by),
+                joinedload(Expense.splits)
+            )
+        return query.order_by(Expense.expense_date.desc()).all()
+    
+    def get_expense_by_id(
+        self, 
+        expense_id: int, 
+        include_relations: bool = False
+    ) -> Optional[Expense]:
+        """Get expense by ID"""
+        query = self.db.query(Expense).filter(Expense.id == expense_id)
+        if include_relations:
+            query = query.options(
+                joinedload(Expense.paid_by),
+                joinedload(Expense.event),
+                joinedload(Expense.splits)
+            )
+        return query.first()
+    
+    def create_expense(self, expense_data: Dict[str, Any]) -> Expense:
+        """Create a new expense"""
+        expense = Expense(**expense_data)
+        self.db.add(expense)
+        self.db.commit()
+        self.db.refresh(expense)
+        return expense
+    
+    def update_expense(
+        self, 
+        expense_id: int, 
+        update_data: Dict[str, Any]
+    ) -> Optional[Expense]:
+        """Update expense by ID"""
+        expense = self.get_expense_by_id(expense_id)
+        if not expense:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(expense, field):
+                setattr(expense, field, value)
+        
+        self.db.commit()
+        self.db.refresh(expense)
+        return expense
+    
+    # Comment operations
+    def get_event_comments(
+        self, 
+        event_id: int, 
+        include_relations: bool = False
+    ) -> List[Comment]:
+        """Get all comments for an event"""
+        query = self.db.query(Comment).filter(Comment.event_id == event_id)
+        if include_relations:
+            query = query.options(
+                joinedload(Comment.user),
+                joinedload(Comment.event)
+            )
+        return query.order_by(Comment.created_at.desc()).all()
+    
+    def get_comment_by_id(
+        self, 
+        comment_id: int, 
+        include_relations: bool = False
+    ) -> Optional[Comment]:
+        """Get comment by ID"""
+        query = self.db.query(Comment).filter(Comment.id == comment_id)
+        if include_relations:
+            query = query.options(
+                joinedload(Comment.user),
+                joinedload(Comment.event)
+            )
+        return query.first()
+    
+    def create_comment(self, comment_data: Dict[str, Any]) -> Comment:
+        """Create a new comment"""
+        comment = Comment(**comment_data)
+        self.db.add(comment)
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment
+    
+    # Poll operations
+    def get_poll_by_id(self, poll_id: int, include_relations: bool = False) -> Optional[Poll]:
+        """Get poll by ID"""
+        query = self.db.query(Poll).filter(Poll.id == poll_id)
+        if include_relations:
+            query = query.options(
+                joinedload(Poll.options),
+                joinedload(Poll.event)
+            )
+        return query.first()
+    
+    def get_poll_option_by_id(self, option_id: int) -> Optional[PollOption]:
+        """Get poll option by ID"""
+        return self.db.query(PollOption).filter(PollOption.id == option_id).first()
+    
+    def delete_poll_votes(self, poll_id: int, user_id: int) -> int:
+        """Delete all votes for a user on a poll"""
+        deleted_count = self.db.query(PollVote).filter(
+            PollVote.poll_id == poll_id,
+            PollVote.user_id == user_id
+        ).delete()
+        self.db.commit()
+        return deleted_count
+    
+    def create_poll_vote(self, vote_data: Dict[str, Any]) -> PollVote:
+        """Create a new poll vote"""
+        vote = PollVote(**vote_data)
+        self.db.add(vote)
+        self.db.commit()
+        self.db.refresh(vote)
+        return vote

@@ -621,13 +621,11 @@ class TimelineService:
             return event
 
         # Fall back to invitation check for invited guests who accepted
-        invitation = self.db.query(EventInvitation).filter(
-            EventInvitation.event_id == event_id,
-            EventInvitation.user_id == user_id,
-            EventInvitation.is_deleted == False
-        ).first()
-
-        if invitation:
+        # Invitations are already loaded with include_relations=True
+        if any(
+            inv.user_id == user_id and not inv.is_deleted 
+            for inv in (event.invitations or [])
+        ):
             return event
 
         raise AuthorizationError("You don't have access to this event")

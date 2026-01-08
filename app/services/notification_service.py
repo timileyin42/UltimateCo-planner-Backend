@@ -5,6 +5,7 @@ import asyncio
 import logging
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.event_repo import EventRepository
+from app.repositories.user_repo import UserRepository
 from app.models.notification_models import (
     NotificationType, NotificationStatus, NotificationChannel, ReminderFrequency
 )
@@ -27,6 +28,7 @@ class NotificationService:
         self.db = db
         self.notification_repo = NotificationRepository(db)
         self.event_repo = EventRepository(db)
+        self.user_repo = UserRepository(db)
         
         # Initialize services for sending notifications
         self.email_service = EmailService()
@@ -483,13 +485,8 @@ class NotificationService:
         
         # Check access (creator, collaborator, or invited)
         if event.creator_id != user_id:
-            # Check if user is collaborator or invited
-            invitation = self.db.query(EventInvitation).filter(
-                EventInvitation.event_id == event_id,
-                EventInvitation.user_id == user_id
-            ).first()
-            
-            if not invitation:
+            # Check if user is collaborator or invited (invitations loaded with include_relations)
+            if not any(inv.user_id == user_id for inv in (event.invitations or [])):
                 raise AuthorizationError("You don't have access to this event")
         
         return event
@@ -680,7 +677,7 @@ class NotificationService:
         """Send email notification."""
         try:
             # Get recipient user
-            user = self.db.query(User).filter(User.id == notification.recipient_id).first()
+            user = self.user_repo.get_by_id(notification.recipient_id)
             
             if not user or not user.email:
                 return False
@@ -703,7 +700,7 @@ class NotificationService:
         """Send SMS notification using Termii SMS service."""
         try:
             # Get recipient user
-            recipient = self.db.query(User).filter(User.id == notification.recipient_id).first()
+            recipient = self.user_repo.get_by_id(notification.recipient_id)
             if not recipient or not recipient.phone_number:
                 return False
             
@@ -729,7 +726,7 @@ class NotificationService:
         """Send push notification using Firebase Cloud Messaging."""
         try:
             # Get user's active devices
-            user_devices = self.db.query(User).filter(User.id == notification.recipient_id).first()
+            user_devices = self.user_repo.get_by_id(notification.recipient_id)
             if not user_devices or not user_devices.devices:
                 return False
             
@@ -789,7 +786,7 @@ class NotificationService:
         """Send in-app notification via WebSocket and store for offline users."""
         try:
             # Get recipient user
-            recipient = self.db.query(User).filter(User.id == notification.recipient_id).first()
+            recipient = self.user_repo.get_by_id(notification.recipient_id)
             if not recipient:
                 return False
             

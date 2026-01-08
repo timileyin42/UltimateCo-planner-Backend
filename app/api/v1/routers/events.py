@@ -286,43 +286,74 @@ async def get_my_events(
             category = category.lower()
             
             if category == "upcoming":
-                # Future events
-                query = query.filter(Event.start_datetime >= datetime.utcnow())
+                # Future events (exclude drafts)
+                query = query.filter(
+                    Event.start_datetime >= datetime.utcnow(),
+                    Event.status != EventStatus.DRAFT
+                )
+                # Filter for user's events
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    Event.collaborators.any(User.id == current_user.id),
+                    Event.invitations.any(EventInvitation.user_id == current_user.id)
+                )
+                query = query.filter(access_filter)
                 query = query.order_by(Event.start_datetime.asc())
                 
             elif category == "past":
-                # Past events
-                query = query.filter(Event.end_datetime < datetime.utcnow())
+                # Past events (exclude drafts)
+                query = query.filter(
+                    Event.end_datetime < datetime.utcnow(),
+                    Event.status != EventStatus.DRAFT
+                )
+                # Filter for user's events
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    Event.collaborators.any(User.id == current_user.id),
+                    Event.invitations.any(EventInvitation.user_id == current_user.id)
+                )
+                query = query.filter(access_filter)
                 query = query.order_by(Event.start_datetime.desc())
                 
             elif category == "drafts":
-                # Draft events only
+                # Draft events only (that user created or has access to)
                 query = query.filter(Event.status == EventStatus.DRAFT)
-                
-            elif category == "hosting":
-                # Events created by user
-                query = query.filter(Event.creator_id == current_user.id)
-                
-            elif category == "attending":
-                # Events user is invited to (not creator)
-                query = query.filter(
-                    Event.creator_id != current_user.id,
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    Event.collaborators.any(User.id == current_user.id),
                     Event.invitations.any(EventInvitation.user_id == current_user.id)
                 )
+                query = query.filter(access_filter)
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif category == "hosting":
+                # Events created by user (all statuses)
+                query = query.filter(Event.creator_id == current_user.id)
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif category == "attending":
+                # Events user is invited to (not creator, exclude drafts)
+                query = query.filter(
+                    Event.creator_id != current_user.id,
+                    Event.invitations.any(EventInvitation.user_id == current_user.id),
+                    Event.status != EventStatus.DRAFT
+                )
+                query = query.order_by(Event.start_datetime.desc())
             else:
                 raise http_400_bad_request(f"Invalid category: {category}. Use: upcoming, past, drafts, hosting, or attending")
-        
-        # Filter for user's events (if no category specified or for hosting/attending)
-        if not category or category in ["drafts", "upcoming", "past"]:
+        else:
+            # No category - return all events user has access to (exclude drafts unless they're the creator)
             access_filter = or_(
                 Event.creator_id == current_user.id,
-                Event.collaborators.any(User.id == current_user.id),
-                Event.invitations.any(EventInvitation.user_id == current_user.id)
+                and_(
+                    Event.status != EventStatus.DRAFT,
+                    or_(
+                        Event.collaborators.any(User.id == current_user.id),
+                        Event.invitations.any(EventInvitation.user_id == current_user.id)
+                    )
+                )
             )
             query = query.filter(access_filter)
-        
-        # Default ordering if not set by category
-        if not category or category not in ["upcoming", "past"]:
             query = query.order_by(Event.start_datetime.desc())
         
         # Get total count
