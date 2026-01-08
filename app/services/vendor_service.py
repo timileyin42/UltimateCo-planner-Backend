@@ -120,7 +120,7 @@ class VendorService:
         service_data: Dict[str, Any]
     ) -> VendorServiceModel:
         """Create a new service for a vendor."""
-        vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        vendor = self.vendor_repo.get_by_id(vendor_id)
         
         if not vendor:
             raise NotFoundError("Vendor not found")
@@ -153,10 +153,7 @@ class VendorService:
     
     def get_vendor_services(self, vendor_id: int) -> List[VendorServiceModel]:
         """Get all services for a vendor."""
-        return self.db.query(VendorServiceModel).filter(
-            VendorServiceModel.vendor_id == vendor_id,
-            VendorServiceModel.is_active == True
-        ).all()
+        return self.vendor_repo.get_vendor_services(vendor_id)
     
     # Booking operations
     def create_booking(
@@ -167,9 +164,7 @@ class VendorService:
         booking_data: Dict[str, Any]
     ) -> VendorBooking:
         """Create a new vendor booking."""
-        service = self.db.query(VendorServiceModel).options(
-            joinedload(VendorServiceModel.vendor)
-        ).filter(VendorServiceModel.id == service_id).first()
+        service = self.vendor_repo.get_service_by_id(service_id)
         
         if not service:
             raise NotFoundError("Service not found")
@@ -224,12 +219,7 @@ class VendorService:
     
     def get_booking(self, booking_id: int, user_id: int) -> Optional[VendorBooking]:
         """Get a booking by ID."""
-        booking = self.db.query(VendorBooking).options(
-            joinedload(VendorBooking.vendor),
-            joinedload(VendorBooking.service),
-            joinedload(VendorBooking.booked_by),
-            joinedload(VendorBooking.payments)
-        ).filter(VendorBooking.id == booking_id).first()
+        booking = self.vendor_repo.get_booking_by_id(booking_id)
         
         if not booking:
             return None
@@ -249,14 +239,14 @@ class VendorService:
         reason: Optional[str] = None
     ) -> VendorBooking:
         """Update booking status."""
-        booking = self.db.query(VendorBooking).filter(VendorBooking.id == booking_id).first()
+        booking = self.vendor_repo.get_booking_by_id(booking_id)
         
         if not booking:
             raise NotFoundError("Booking not found")
         
         # Check permissions (vendor or client can update)
-        vendor = self.db.query(Vendor).filter(Vendor.id == booking.vendor_id).first()
-        if booking.booked_by_id != user_id and vendor.user_id != user_id:
+        # booking.vendor is already loaded by the repository
+        if booking.booked_by_id != user_id and booking.vendor.user_id != user_id:
             raise AuthorizationError("You don't have permission to update this booking")
         
         old_status = booking.status
@@ -283,7 +273,7 @@ class VendorService:
         idempotency_key: Optional[str] = None
     ) -> VendorPayment:
         """Create a payment for a booking."""
-        booking = self.db.query(VendorBooking).filter(VendorBooking.id == booking_id).first()
+        booking = self.vendor_repo.get_booking_by_id(booking_id)
         
         if not booking:
             raise NotFoundError("Booking not found")
@@ -328,7 +318,7 @@ class VendorService:
         idempotency_key: Optional[str] = None
     ) -> VendorPayment:
         """Process a payment (called by payment webhook)."""
-        payment = self.db.query(VendorPayment).filter(VendorPayment.id == payment_id).first()
+        payment = self.vendor_repo.get_payment_by_id(payment_id)
         
         if not payment:
             raise NotFoundError("Payment not found")
@@ -373,7 +363,7 @@ class VendorService:
         review_data: Dict[str, Any]
     ) -> VendorReview:
         """Create a review for a vendor."""
-        vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        vendor = self.vendor_repo.get_by_id(vendor_id)
         
         if not vendor:
             raise NotFoundError("Vendor not found")
@@ -381,21 +371,13 @@ class VendorService:
         # Check if user has a completed booking with this vendor
         booking = None
         if review_data.get('booking_id'):
-            booking = self.db.query(VendorBooking).filter(
-                VendorBooking.id == review_data['booking_id'],
-                VendorBooking.booked_by_id == user_id,
-                VendorBooking.vendor_id == vendor_id,
-                VendorBooking.status == BookingStatus.COMPLETED
-            ).first()
+            booking = self.vendor_repo.get_booking_by_id(review_data['booking_id'])
             
-            if not booking:
+            if not booking or booking.booked_by_id != user_id or booking.vendor_id != vendor_id or booking.status != BookingStatus.COMPLETED:
                 raise ValidationError("You can only review vendors after a completed booking")
         
         # Check if user already reviewed this vendor
-        existing_review = self.db.query(VendorReview).filter(
-            VendorReview.vendor_id == vendor_id,
-            VendorReview.reviewer_id == user_id
-        ).first()
+        existing_review = self.vendor_repo.get_user_review_for_vendor(user_id, vendor_id)
         
         if existing_review:
             raise ValidationError("You have already reviewed this vendor")
@@ -431,21 +413,15 @@ class VendorService:
         per_page: int = 20
     ) -> Tuple[List[VendorReview], int]:
         """Get reviews for a vendor."""
-        query = self.db.query(VendorReview).options(
-            joinedload(VendorReview.reviewer)
-        ).filter(
-            VendorReview.vendor_id == vendor_id,
-            VendorReview.is_approved == True
+        from app.schemas.pagination import PaginationParams
+        pagination = PaginationParams(offset=(page - 1) * per_page, limit=per_page)
+        
+        return self.vendor_repo.get_vendor_reviews(
+            vendor_id=vendor_id,
+            pagination=pagination,
+            verified_only=False,
+            approved_only=True
         )
-        
-        total = query.count()
-        
-        reviews = query.order_by(
-            desc(VendorReview.is_featured),
-            desc(VendorReview.created_at)
-        ).offset((page - 1) * per_page).limit(per_page).all()
-        
-        return reviews, total
     
     # Portfolio operations
     def add_portfolio_item(
@@ -455,7 +431,7 @@ class VendorService:
         portfolio_data: Dict[str, Any]
     ) -> VendorPortfolio:
         """Add a portfolio item to a vendor."""
-        vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        vendor = self.vendor_repo.get_by_id(vendor_id)
         
         if not vendor:
             raise NotFoundError("Vendor not found")
@@ -491,7 +467,7 @@ class VendorService:
         availability_data: List[Dict[str, Any]]
     ) -> List[VendorAvailability]:
         """Set availability for a vendor."""
-        vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        vendor = self.vendor_repo.get_by_id(vendor_id)
         
         if not vendor:
             raise NotFoundError("Vendor not found")
@@ -504,10 +480,7 @@ class VendorService:
         
         for avail_data in availability_data:
             # Check if availability already exists for this date
-            existing = self.db.query(VendorAvailability).filter(
-                VendorAvailability.vendor_id == vendor_id,
-                VendorAvailability.date == avail_data['date']
-            ).first()
+            existing = self.vendor_repo.get_availability_by_date(vendor_id, avail_data['date'])
             
             if existing:
                 # Update existing
@@ -535,16 +508,16 @@ class VendorService:
         end_date: datetime
     ) -> List[VendorAvailability]:
         """Get vendor availability for a date range."""
-        return self.db.query(VendorAvailability).filter(
-            VendorAvailability.vendor_id == vendor_id,
-            VendorAvailability.date >= start_date,
-            VendorAvailability.date <= end_date
-        ).order_by(VendorAvailability.date).all()
+        return self.vendor_repo.get_vendor_availability(
+            vendor_id=vendor_id,
+            start_date=start_date,
+            end_date=end_date
+        )
     
     # Statistics and analytics
     def get_vendor_statistics(self, vendor_id: int, user_id: int) -> Dict[str, Any]:
         """Get statistics for a vendor."""
-        vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        vendor = self.vendor_repo.get_by_id(vendor_id)
         
         if not vendor:
             raise NotFoundError("Vendor not found")
@@ -553,28 +526,11 @@ class VendorService:
         if vendor.user_id != user_id:
             raise AuthorizationError("You don't have permission to view statistics for this vendor")
         
-        # Get booking statistics
-        total_bookings = self.db.query(func.count(VendorBooking.id)).filter(
-            VendorBooking.vendor_id == vendor_id
-        ).scalar() or 0
-        
-        completed_bookings = self.db.query(func.count(VendorBooking.id)).filter(
-            VendorBooking.vendor_id == vendor_id,
-            VendorBooking.status == BookingStatus.COMPLETED
-        ).scalar() or 0
-        
-        cancelled_bookings = self.db.query(func.count(VendorBooking.id)).filter(
-            VendorBooking.vendor_id == vendor_id,
-            VendorBooking.status == BookingStatus.CANCELLED
-        ).scalar() or 0
+        # Get statistics from repository
+        return self.vendor_repo.get_vendor_statistics(vendor_id)
         
         # Get revenue statistics
-        total_revenue = self.db.query(func.sum(VendorPayment.amount)).join(
-            VendorBooking, VendorPayment.booking_id == VendorBooking.id
-        ).filter(
-            VendorBooking.vendor_id == vendor_id,
-            VendorPayment.status == PaymentStatus.PAID
-        ).scalar() or 0
+        total_revenue = self.vendor_repo.get_vendor_total_revenue(vendor_id)
         
         # Calculate rates
         booking_conversion_rate = 0
@@ -596,37 +552,24 @@ class VendorService:
     # Helper methods
     def _get_event_with_access(self, event_id: int, user_id: int) -> Event:
         """Get event and verify user has access."""
-        event = self.db.query(Event).filter(Event.id == event_id).first()
+        from app.repositories.event_repo import EventRepository
+        event_repo = EventRepository(self.db)
+        event = event_repo.get_by_id(event_id, include_relations=True)
         
         if not event:
             raise NotFoundError("Event not found")
         
         # Check access (creator, collaborator, or invited)
         if event.creator_id != user_id:
-            # Check if user is collaborator or invited
-            from app.models.event_models import EventInvitation
-            invitation = self.db.query(EventInvitation).filter(
-                EventInvitation.event_id == event_id,
-                EventInvitation.user_id == user_id
-            ).first()
-            
-            if not invitation:
+            # Check if user is collaborator or invited (invitations loaded with include_relations)
+            if not any(inv.user_id == user_id for inv in (event.invitations or [])):
                 raise AuthorizationError("You don't have access to this event")
         
         return event
     
     def _check_availability(self, vendor_id: int, service_date: datetime) -> bool:
         """Check if vendor is available on a specific date."""
-        availability = self.db.query(VendorAvailability).filter(
-            VendorAvailability.vendor_id == vendor_id,
-            VendorAvailability.date == service_date.date()
-        ).first()
-        
-        if availability:
-            return availability.is_available and not availability.is_blocked
-        
-        # If no specific availability set, assume available
-        return True
+        return self.vendor_repo.check_availability(vendor_id, service_date)
     
     def _calculate_service_price(
         self, 
@@ -656,25 +599,7 @@ class VendorService:
     
     def _update_vendor_rating(self, vendor_id: int):
         """Update vendor's average rating based on reviews."""
-        vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
-        if not vendor:
-            return
-        
-        # Calculate new average rating
-        reviews = self.db.query(VendorReview).filter(
-            VendorReview.vendor_id == vendor_id,
-            VendorReview.is_approved == True
-        ).all()
-        
-        if reviews:
-            total_rating = sum(review.rating for review in reviews)
-            vendor.average_rating = total_rating / len(reviews)
-            vendor.total_reviews = len(reviews)
-        else:
-            vendor.average_rating = 0.0
-            vendor.total_reviews = 0
-        
-        self.db.commit()
+        self.vendor_repo.update_vendor_rating(vendor_id)
     
     # Quote request operations
     def create_quote_request(
@@ -685,9 +610,7 @@ class VendorService:
     ) -> VendorQuote:
         """Create a new quote request from client to vendor."""
         # Get service and vendor
-        service = self.db.query(VendorServiceModel).options(
-            joinedload(VendorServiceModel.vendor)
-        ).filter(VendorServiceModel.id == service_id).first()
+        service = self.vendor_repo.get_service_by_id(service_id)
         
         if not service:
             raise NotFoundError("Service not found")
@@ -737,9 +660,7 @@ class VendorService:
         quote_notes: Optional[str] = None
     ) -> VendorQuote:
         """Vendor responds to a quote request with price and details."""
-        quote = self.db.query(VendorQuote).options(
-            joinedload(VendorQuote.vendor)
-        ).filter(VendorQuote.id == quote_id).first()
+        quote = self.vendor_repo.get_quote_by_id(quote_id, include_relations=True)
         
         if not quote:
             raise NotFoundError("Quote request not found")
@@ -774,7 +695,7 @@ class VendorService:
     
     def accept_quote(self, quote_id: int, user_id: int) -> VendorQuote:
         """Client accepts a quote."""
-        quote = self.db.query(VendorQuote).filter(VendorQuote.id == quote_id).first()
+        quote = self.vendor_repo.get_quote_by_id(quote_id)
         
         if not quote:
             raise NotFoundError("Quote request not found")
@@ -809,9 +730,7 @@ class VendorService:
         decline_reason: Optional[str] = None
     ) -> VendorQuote:
         """Client or vendor declines a quote."""
-        quote = self.db.query(VendorQuote).options(
-            joinedload(VendorQuote.vendor)
-        ).filter(VendorQuote.id == quote_id).first()
+        quote = self.vendor_repo.get_quote_by_id(quote_id, include_relations=True)
         
         if not quote:
             raise NotFoundError("Quote request not found")
@@ -843,19 +762,18 @@ class VendorService:
         per_page: int = 20
     ) -> Tuple[List[VendorQuote], int]:
         """Get quote requests made by a user."""
-        query = self.db.query(VendorQuote).options(
-            joinedload(VendorQuote.vendor),
-            joinedload(VendorQuote.service)
-        ).filter(VendorQuote.requested_by_id == user_id)
+        all_quotes = self.vendor_repo.get_user_quotes(user_id, include_relations=True)
         
+        # Apply status filter if provided
         if status:
-            query = query.filter(VendorQuote.status == status)
+            all_quotes = [q for q in all_quotes if q.status == status]
         
-        total = query.count()
+        total = len(all_quotes)
         
-        quotes = query.order_by(
-            VendorQuote.created_at.desc()
-        ).offset((page - 1) * per_page).limit(per_page).all()
+        # Apply pagination
+        start = (page - 1) * per_page
+        end = start + per_page
+        quotes = all_quotes[start:end]
         
         return quotes, total
     
@@ -868,24 +786,23 @@ class VendorService:
     ) -> Tuple[List[VendorQuote], int]:
         """Get quote requests received by a vendor."""
         # Get vendor profile
-        vendor = self.db.query(Vendor).filter(Vendor.user_id == vendor_user_id).first()
+        vendor = self.vendor_repo.get_by_user_id(vendor_user_id)
         
         if not vendor:
             raise NotFoundError("Vendor profile not found")
         
-        query = self.db.query(VendorQuote).options(
-            joinedload(VendorQuote.requested_by),
-            joinedload(VendorQuote.service)
-        ).filter(VendorQuote.vendor_id == vendor.id)
+        all_quotes = self.vendor_repo.get_vendor_quotes(vendor.id, include_relations=True)
         
+        # Apply status filter if provided
         if status:
-            query = query.filter(VendorQuote.status == status)
+            all_quotes = [q for q in all_quotes if q.status == status]
         
-        total = query.count()
+        total = len(all_quotes)
         
-        quotes = query.order_by(
-            VendorQuote.created_at.desc()
-        ).offset((page - 1) * per_page).limit(per_page).all()
+        # Apply pagination
+        start = (page - 1) * per_page
+        end = start + per_page
+        quotes = all_quotes[start:end]
         
         return quotes, total
 

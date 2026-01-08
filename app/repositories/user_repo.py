@@ -415,3 +415,30 @@ class UserRepository:
             query = query.order_by(desc(User.created_at))
         
         return query
+    
+    # UserProfile operations
+    def get_user_profile(self, user_id: int) -> Optional[UserProfile]:
+        """Get user profile by user ID"""
+        return self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    
+    def create_user_profile(self, profile_data: Dict[str, Any]) -> UserProfile:
+        """Create a new user profile"""
+        profile = UserProfile(**profile_data)
+        self.db.add(profile)
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile
+    
+    def update_user_profile(self, user_id: int, update_data: Dict[str, Any]) -> Optional[UserProfile]:
+        """Update user profile"""
+        profile = self.get_user_profile(user_id)
+        if not profile:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(profile, field):
+                setattr(profile, field, value)
+        
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile

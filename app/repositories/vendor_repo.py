@@ -4,7 +4,7 @@ from sqlalchemy import and_, or_, func, desc, asc
 from datetime import datetime, timedelta
 from app.models.vendor_models import (
     Vendor, VendorService, VendorBooking, VendorPayment, VendorReview,
-    VendorPortfolio, VendorAvailability, VendorContract,
+    VendorPortfolio, VendorAvailability, VendorContract, VendorQuote,
     VendorCategory, VendorStatus, BookingStatus, PaymentStatus
 )
 from app.models.user_models import User
@@ -471,3 +471,135 @@ class VendorRepository:
                 query = query.filter(Vendor.category == filters['category'])
         
         return query.count()
+    
+    # VendorQuote operations
+    def get_quote_by_id(self, quote_id: int, include_relations: bool = False) -> Optional[VendorQuote]:
+        """Get quote by ID"""
+        query = self.db.query(VendorQuote).filter(VendorQuote.id == quote_id)
+        if include_relations:
+            query = query.options(
+                joinedload(VendorQuote.vendor),
+                joinedload(VendorQuote.user),
+                joinedload(VendorQuote.event)
+            )
+        return query.first()
+    
+    def get_vendor_quotes(
+        self, 
+        vendor_id: int, 
+        include_relations: bool = False
+    ) -> List[VendorQuote]:
+        """Get all quotes for a vendor"""
+        query = self.db.query(VendorQuote).filter(VendorQuote.vendor_id == vendor_id)
+        if include_relations:
+            query = query.options(
+                joinedload(VendorQuote.user),
+                joinedload(VendorQuote.event)
+            )
+        return query.order_by(VendorQuote.created_at.desc()).all()
+    
+    def get_user_quotes(
+        self, 
+        user_id: int, 
+        include_relations: bool = False
+    ) -> List[VendorQuote]:
+        """Get all quotes for a user"""
+        query = self.db.query(VendorQuote).filter(VendorQuote.user_id == user_id)
+        if include_relations:
+            query = query.options(
+                joinedload(VendorQuote.vendor),
+                joinedload(VendorQuote.event)
+            )
+        return query.order_by(VendorQuote.created_at.desc()).all()
+    
+    def create_quote(self, quote_data: Dict[str, Any]) -> VendorQuote:
+        """Create a new quote"""
+        quote = VendorQuote(**quote_data)
+        self.db.add(quote)
+        self.db.commit()
+        self.db.refresh(quote)
+        return quote
+    
+    def update_quote(self, quote_id: int, update_data: Dict[str, Any]) -> Optional[VendorQuote]:
+        """Update quote"""
+        quote = self.get_quote_by_id(quote_id)
+        if not quote:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(quote, field):
+                setattr(quote, field, value)
+        
+        self.db.commit()
+        self.db.refresh(quote)
+        return quote
+    
+    # VendorAvailability operations
+    def get_vendor_availability(
+        self,
+        vendor_id: int,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[VendorAvailability]:
+        """Get vendor availability for date range"""
+        query = self.db.query(VendorAvailability).filter(
+            VendorAvailability.vendor_id == vendor_id
+        )
+        
+        if start_date:
+            query = query.filter(VendorAvailability.date >= start_date)
+        if end_date:
+            query = query.filter(VendorAvailability.date <= end_date)
+        
+        return query.order_by(VendorAvailability.date).all()
+    
+    def get_availability_by_date(
+        self,
+        vendor_id: int,
+        date: datetime
+    ) -> Optional[VendorAvailability]:
+        """Get vendor availability for specific date"""
+        return self.db.query(VendorAvailability).filter(
+            VendorAvailability.vendor_id == vendor_id,
+            VendorAvailability.date == date
+        ).first()
+    
+    def create_availability(self, availability_data: Dict[str, Any]) -> VendorAvailability:
+        """Create availability slot"""
+        availability = VendorAvailability(**availability_data)
+        self.db.add(availability)
+        self.db.commit()
+        self.db.refresh(availability)
+        return availability
+    
+    def update_availability(
+        self,
+        availability_id: int,
+        update_data: Dict[str, Any]
+    ) -> Optional[VendorAvailability]:
+        """Update availability slot"""
+        availability = self.db.query(VendorAvailability).filter(
+            VendorAvailability.id == availability_id
+        ).first()
+        
+        if not availability:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(availability, field):
+                setattr(availability, field, value)
+        
+        self.db.commit()
+        self.db.refresh(availability)
+        return availability
+    
+    # Additional helper methods
+    def get_vendor_total_revenue(self, vendor_id: int) -> float:
+        """Get total revenue for a vendor"""
+        total = self.db.query(func.sum(VendorPayment.amount)).join(
+            VendorBooking
+        ).filter(
+            VendorBooking.vendor_id == vendor_id,
+            VendorPayment.status == PaymentStatus.COMPLETED
+        ).scalar()
+        return float(total) if total else 0.0

@@ -6,8 +6,10 @@ from app.models.user_models import User, UserProfile
 from app.schemas.user import (
     UserCreate, UserUpdate, UserPasswordUpdate, UserProfileCreate, UserProfileUpdate
 )
+from app.schemas.pagination import PaginationParams
 from app.core.errors import NotFoundError, ValidationError, ConflictError
 from app.core.security import verify_password, get_password_hash
+from app.repositories.user_repo import UserRepository
 
 class UserService:
     """Service for user-related business logic"""
@@ -15,6 +17,7 @@ class UserService:
     def __init__(self, db: Session):
         self.db = db
         self.user_db = UserDatabase(db)
+        self.user_repo = UserRepository(db)
     
     def get_user_by_id(self, user_id: int) -> Optional[User]:
         """Get user by ID"""
@@ -31,12 +34,19 @@ class UserService:
         active_only: bool = True
     ) -> List[User]:
         """Get list of users with pagination"""
-        query = self.db.query(User)
+        pagination = PaginationParams(offset=skip, limit=limit)
+        filters = {'is_active': True} if active_only else None
         
-        if active_only:
-            query = query.filter(User.is_active == True)
+        from app.schemas.pagination import SortParams
+        sort = SortParams(sort_by='created_at', sort_order='desc')
         
-        return query.offset(skip).limit(limit).all()
+        users, _ = self.user_repo.get_all(
+            pagination=pagination,
+            sort=sort,
+            filters=filters
+        )
+        
+        return users
     
     def create_user(self, user_data: UserCreate) -> User:
         """Create a new user"""
@@ -51,10 +61,7 @@ class UserService:
         
         # Check if username is taken (if provided)
         if user_data.username:
-            existing_username = self.db.query(User).filter(
-                User.username == user_data.username
-            ).first()
-            if existing_username:
+            if self.user_repo.exists_by_username(user_data.username):
                 raise ConflictError("Username is already taken")
         
         # Create user
@@ -79,13 +86,7 @@ class UserService:
         
         # Check if username is taken (if being updated)
         if user_data.username and user_data.username != user.username:
-            existing_username = self.db.query(User).filter(
-                and_(
-                    User.username == user_data.username,
-                    User.id != user_id
-                )
-            ).first()
-            if existing_username:
+            if self.user_repo.exists_by_username(user_data.username, exclude_user_id=user_id):
                 raise ConflictError("Username is already taken")
         
         # Update user fields
@@ -187,9 +188,7 @@ class UserService:
     # User Profile methods
     def get_user_profile(self, user_id: int) -> Optional[UserProfile]:
         """Get user profile"""
-        return self.db.query(UserProfile).filter(
-            UserProfile.user_id == user_id
-        ).first()
+        return self.user_repo.get_user_profile(user_id)
     
     def create_user_profile(self, user_id: int, profile_data: UserProfileCreate) -> UserProfile:
         """Create user profile"""
@@ -307,10 +306,11 @@ class UserService:
         
         mutual_friend_ids = user_friend_ids.intersection(other_friend_ids)
         
-        # Get mutual friends
-        mutual_friends = self.db.query(User).filter(
-            User.id.in_(mutual_friend_ids)
-        ).all()
+        # Get mutual friends using repository
+        if mutual_friend_ids:
+            mutual_friends = self.user_repo.get_multiple(list(mutual_friend_ids))
+        else:
+            mutual_friends = []
         
         return mutual_friends
     
@@ -321,91 +321,26 @@ class UserService:
         name_query: Optional[str] = None,
         city: Optional[str] = None,
     ) -> List[User]:
-        """Suggest potential friends.
-
-        Default behavior: friend-of-friend suggestions (mutual connections).
-        If filters are provided (name or city), they are applied to narrow results.
-        If the user has no friends and filters are provided, fall back to a
-        global search of active users with those filters (excluding self and existing friends).
-        """
-        user = self.get_user_by_id(user_id)
-        if not user:
-            raise NotFoundError("User not found")
-        
-        # If the user has no friends yet, optionally fall back to filter-based search
-        if not user.friends:
-            # Fallback: allow location/name based discovery excluding self if filters provided
-            if name_query or city:
-                exclude_ids = {user_id}
-                # Exclude any existing friends even if list is empty now for completeness
-                for f in user.friends:
-                    exclude_ids.add(f.id)
-
-                q = self.db.query(User).filter(
-                    User.is_active == True,
-                    ~User.id.in_(exclude_ids)
-                )
-                if name_query:
-                    like = f"%{name_query}%"
-                    from sqlalchemy import or_
-                    q = q.filter(or_(User.full_name.ilike(like), User.username.ilike(like)))
-                if city:
-                    q = q.filter(User.city.ilike(f"%{city}%"))
-                return q.limit(limit).all()
-            return []
-
-        # Get friends of friends who are not already friends
-        current_friend_ids = {friend.id for friend in user.friends}
-        current_friend_ids.add(user_id)  # Exclude self
-
-        friend_ids = [friend.id for friend in user.friends]
-
-        # Build OR conditions for friends-of-friends to avoid IN() issues
-        from sqlalchemy import or_
-        fof_condition = or_(*[User.friends.any(User.id == fid) for fid in friend_ids])
-
-        # Find users who are friends with current user's friends
-        q = (
-            self.db.query(User)
-            .filter(
-                fof_condition,
-                ~User.id.in_(current_friend_ids),
-                User.is_active == True,
-            )
-            .distinct()
+        """Suggest potential friends based on mutual connections with optional filters"""
+        return self.user_repo.get_friend_suggestions(
+            user_id=user_id,
+            limit=limit,
+            name_query=name_query,
+            city=city
         )
-
-        # Apply optional filters
-        if name_query:
-            like = f"%{name_query}%"
-            from sqlalchemy import or_
-            q = q.filter(or_(User.full_name.ilike(like), User.username.ilike(like)))
-        if city:
-            q = q.filter(User.city.ilike(f"%{city}%"))
-
-        suggested_users = q.limit(limit).all()
-
-        # If filters were provided but yielded no mutual suggestions, try fallback global search
-        if (name_query or city) and not suggested_users:
-            q2 = self.db.query(User).filter(
-                User.is_active == True,
-                ~User.id.in_(current_friend_ids)
-            )
-            if name_query:
-                like = f"%{name_query}%"
-                from sqlalchemy import or_
-                q2 = q2.filter(or_(User.full_name.ilike(like), User.username.ilike(like)))
-            if city:
-                q2 = q2.filter(User.city.ilike(f"%{city}%"))
-            suggested_users = q2.limit(limit).all()
-        
-        return suggested_users
     
     def get_users_count(self, active_only: bool = True) -> int:
         """Get total count of users"""
-        query = self.db.query(User)
+        filters = {'is_active': True} if active_only else None
+        pagination = PaginationParams(offset=0, limit=1)
         
-        if active_only:
-            query = query.filter(User.is_active == True)
+        from app.schemas.pagination import SortParams
+        sort = SortParams(sort_by='id', sort_order='asc')
         
-        return query.count()
+        _, total = self.user_repo.get_all(
+            pagination=pagination,
+            sort=sort,
+            filters=filters
+        )
+        
+        return total

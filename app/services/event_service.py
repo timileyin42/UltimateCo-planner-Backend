@@ -20,6 +20,8 @@ from app.services.google_maps_service import google_maps_service
 from app.services.calendar_service import CalendarServiceFactory, CalendarProvider, SyncStatus
 from app.models.calendar_models import CalendarConnection, CalendarEvent
 from app.repositories.event_repo import EventRepository
+from app.repositories.user_repo import UserRepository
+from app.repositories.calendar_repo import CalendarConnectionRepository
 import asyncio
 import logging
 
@@ -32,6 +34,8 @@ class EventService:
         self.db = db
         self.user_service = UserService(db)
         self.event_repo = EventRepository(db)
+        self.user_repo = UserRepository(db)
+        self.calendar_repo = CalendarConnectionRepository(db)
     
     # Event CRUD operations
     def get_event_by_id(self, event_id: int, user_id: Optional[int] = None) -> Optional[Event]:
@@ -213,15 +217,12 @@ class EventService:
         self.db.refresh(duplicate_event)
         
         # Add creator as collaborator
-        creator = self.db.query(User).filter(User.id == user_id).first()
+        creator = self.user_repo.get_by_id(user_id)
         if creator:
             duplicate_event.collaborators.append(creator)
         
         # Copy tasks from original event
-        original_tasks = self.db.query(Task).filter(
-            Task.event_id == event_id,
-            Task.is_deleted == False
-        ).all()
+        original_tasks = self.event_repo.get_event_tasks(event_id)
         
         for task in original_tasks:
             new_task = Task(
@@ -301,10 +302,7 @@ class EventService:
                 continue
             
             # Check if already invited
-            existing_invitation = self.db.query(EventInvitation).filter(
-                EventInvitation.event_id == event_id,
-                EventInvitation.user_id == user_id
-            ).first()
+            existing_invitation = self.event_repo.get_invitation_by_event_and_user(event_id, user_id)
             
             if existing_invitation:
                 continue
@@ -335,12 +333,9 @@ class EventService:
     
     def respond_to_invitation(self, invitation_id: int, response_data: EventInvitationUpdate, user_id: int) -> EventInvitation:
         """Respond to event invitation"""
-        invitation = self.db.query(EventInvitation).filter(
-            EventInvitation.id == invitation_id,
-            EventInvitation.user_id == user_id
-        ).first()
+        invitation = self.event_repo.get_invitation_by_id(invitation_id)
         
-        if not invitation:
+        if not invitation or invitation.user_id != user_id:
             raise NotFoundError("Invitation not found")
         
         # Update invitation
@@ -382,12 +377,7 @@ class EventService:
         if not event:
             raise NotFoundError("Event not found")
 
-        invitations = self.db.query(EventInvitation).options(
-            joinedload(EventInvitation.user)
-        ).filter(
-            EventInvitation.event_id == event_id,
-            EventInvitation.is_deleted == False
-        ).order_by(EventInvitation.created_at.asc()).all()
+        invitations = self.event_repo.get_event_invitations(event_id, include_relations=True)
 
         return invitations
 
@@ -424,7 +414,7 @@ class EventService:
         if not ids_to_add:
             return list(event.collaborators)
 
-        users = self.db.query(User).filter(User.id.in_(ids_to_add)).all()
+        users = self.user_repo.get_by_ids(ids_to_add)
         found_ids = {user.id for user in users}
         missing_ids = set(ids_to_add) - found_ids
         if missing_ids:
@@ -485,7 +475,7 @@ class EventService:
     
     def update_task(self, task_id: int, task_data: TaskUpdate, user_id: int) -> Task:
         """Update a task"""
-        task = self.db.query(Task).filter(Task.id == task_id).first()
+        task = self.event_repo.get_task_by_id(task_id)
         if not task:
             raise NotFoundError("Task not found")
         
@@ -526,14 +516,7 @@ class EventService:
 
     def get_task_by_id(self, task_id: int, user_id: int) -> Task:
         """Get a single task by ID"""
-        task = self.db.query(Task).options(
-            joinedload(Task.event),
-            joinedload(Task.creator),
-            joinedload(Task.assigned_to)
-        ).filter(
-            Task.id == task_id,
-            Task.is_deleted == False
-        ).first()
+        task = self.event_repo.get_task_by_id(task_id, include_relations=True)
 
         if not task:
             raise NotFoundError("Task not found")
@@ -604,22 +587,11 @@ class EventService:
         if not event:
             raise NotFoundError("Event not found")
         
-        return self.db.query(Expense).options(
-            joinedload(Expense.paid_by_user)
-        ).filter(
-            Expense.event_id == event_id,
-            Expense.is_deleted == False
-        ).order_by(Expense.expense_date.desc()).all()
+        return self.event_repo.get_event_expenses(event_id, include_relations=True)
 
     def get_expense_by_id(self, expense_id: int, user_id: int) -> Expense:
         """Get a single expense by ID"""
-        expense = self.db.query(Expense).options(
-            joinedload(Expense.event),
-            joinedload(Expense.paid_by_user)
-        ).filter(
-            Expense.id == expense_id,
-            Expense.is_deleted == False
-        ).first()
+        expense = self.event_repo.get_expense_by_id(expense_id, include_relations=True)
 
         if not expense:
             raise NotFoundError("Expense not found")
@@ -664,25 +636,11 @@ class EventService:
         if not event:
             raise NotFoundError("Event not found")
 
-        return self.db.query(Comment).options(
-            joinedload(Comment.author),
-            joinedload(Comment.replies).joinedload(Comment.author)
-        ).filter(
-            Comment.event_id == event_id,
-            Comment.parent_id.is_(None),
-            Comment.is_deleted == False
-        ).order_by(Comment.created_at.asc()).all()
+        return self.event_repo.get_event_comments(event_id, include_relations=True)
 
     def get_comment_by_id(self, comment_id: int, user_id: int) -> Comment:
         """Get a single comment by ID"""
-        comment = self.db.query(Comment).options(
-            joinedload(Comment.event),
-            joinedload(Comment.author),
-            joinedload(Comment.replies).joinedload(Comment.author)
-        ).filter(
-            Comment.id == comment_id,
-            Comment.is_deleted == False
-        ).first()
+        comment = self.event_repo.get_comment_by_id(comment_id, include_relations=True)
 
         if not comment:
             raise NotFoundError("Comment not found")
@@ -757,7 +715,7 @@ class EventService:
     
     def vote_on_poll(self, poll_id: int, vote_data: PollVoteCreate, user_id: int) -> List[PollVote]:
         """Vote on a poll"""
-        poll = self.db.query(Poll).filter(Poll.id == poll_id).first()
+        poll = self.event_repo.get_poll_by_id(poll_id, include_relations=True)
         if not poll:
             raise NotFoundError("Poll not found")
         
@@ -771,19 +729,13 @@ class EventService:
         
         # Remove existing votes if not multiple choice
         if not poll.multiple_choice:
-            self.db.query(PollVote).filter(
-                PollVote.poll_id == poll_id,
-                PollVote.user_id == user_id
-            ).delete()
+            self.event_repo.delete_poll_votes(poll_id, user_id)
         
         # Create new votes
         votes = []
         for option_id in vote_data.option_ids:
             # Validate option belongs to poll
-            option = self.db.query(PollOption).filter(
-                PollOption.id == option_id,
-                PollOption.poll_id == poll_id
-            ).first()
+            option = self.event_repo.get_poll_option_by_id(option_id)
             
             if not option:
                 continue
@@ -802,14 +754,7 @@ class EventService:
 
     def get_poll(self, poll_id: int, user_id: int) -> Poll:
         """Get poll details"""
-        poll = self.db.query(Poll).options(
-            joinedload(Poll.event),
-            joinedload(Poll.creator),
-            joinedload(Poll.options)
-        ).filter(
-            Poll.id == poll_id,
-            Poll.is_deleted == False
-        ).first()
+        poll = self.event_repo.get_poll_by_id(poll_id, include_relations=True)
 
         if not poll:
             raise NotFoundError("Poll not found")
@@ -920,11 +865,10 @@ class EventService:
         """Sync event to all connected calendars for the user"""
         try:
             # Get user's calendar connections
-            connections = self.db.query(CalendarConnection).filter(
-                CalendarConnection.user_id == event.creator_id,
-                CalendarConnection.sync_enabled == True,
-                CalendarConnection.sync_status != SyncStatus.DISABLED
-            ).all()
+            connections = self.calendar_repo.get_by_user_id(
+                user_id=event.creator_id,
+                active_only=True
+            )
             
             for connection in connections:
                 try:
@@ -1037,9 +981,7 @@ class EventService:
     
     def get_calendar_sync_status(self, user_id: int) -> Dict[str, Any]:
         """Get calendar sync status for a user"""
-        connections = self.db.query(CalendarConnection).filter(
-            CalendarConnection.user_id == user_id
-        ).all()
+        connections = self.calendar_repo.get_by_user_id(user_id)
         
         sync_status = {
             'total_connections': len(connections),
@@ -1069,10 +1011,10 @@ class EventService:
             events = self.get_user_events(user_id)
             
             # Get user's calendar connections
-            connections = self.db.query(CalendarConnection).filter(
-                CalendarConnection.user_id == user_id,
-                CalendarConnection.sync_enabled == True
-            ).all()
+            connections = self.calendar_repo.get_by_user_id(
+                user_id=user_id,
+                active_only=True
+            )
             
             sync_results = {
                 'total_events': len(events),
