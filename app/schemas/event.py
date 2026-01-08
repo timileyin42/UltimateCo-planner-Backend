@@ -50,6 +50,8 @@ class EventCreate(EventBase):
     location_input: Optional[str] = Field(None, description="Raw location input for optimization. Can be just an address or 'Venue - Address'. Backend will extract venue name if present.")
     user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")
     auto_optimize_location: bool = Field(True, description="Whether to automatically optimize location using Google Maps")
+    latitude: Optional[float] = Field(None, ge=-90, le=90, description="Venue latitude coordinate")
+    longitude: Optional[float] = Field(None, ge=-180, le=180, description="Venue longitude coordinate")
     task_categories: Optional[List["TaskCategory"]] = Field(
         default=None,
         description="Optional task categories to seed tasks during event creation"
@@ -68,6 +70,8 @@ class EventCreate(EventBase):
                 "venue_address": "26 Olaniyi St, Ikeja",
                 "venue_city": "Lagos",
                 "venue_country": "Nigeria",
+                "latitude": 6.5959,
+                "longitude": 3.3431,
                 "is_public": True,
                 "max_attendees": 50,
                 "cover_image_url": "https://storage.googleapis.com/.../event-cover.jpg",

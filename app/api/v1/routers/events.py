@@ -57,11 +57,22 @@ async def create_event(
         return event
     except UsageLimitExceededError as e:
         raise http_403_forbidden(str(e))
+    except ValidationError as e:
+        # Log validation errors with details
+        print(f"Event creation validation error for user {current_user.id} ({current_user.email}): {str(e)}")
+        raise http_400_bad_request(str(e))
     except Exception as e:
+        # Log the full error for debugging
+        import traceback
+        print(f"Event creation failed for user {current_user.id} ({current_user.email})")
+        print(f"Error: {str(e)}")
+        print(traceback.format_exc())
+        
         if "after start date" in str(e).lower():
             raise http_400_bad_request("End date must be after start date")
         else:
-            raise http_400_bad_request("Failed to create event")
+            # Return the actual error message instead of generic one
+            raise http_400_bad_request(f"Failed to create event: {str(e)}")
 
 @events_router.post("/{event_id}/cover-image", response_model=EventResponse)
 async def upload_event_cover_image(
