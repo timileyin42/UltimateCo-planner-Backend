@@ -238,7 +238,11 @@ class SubscriptionService:
         
         # If no subscription, user is on free plan
         if not subscription:
-            return await self._check_free_plan_limits(db, user_id)
+            can_create = await self._check_free_plan_limits(db, user_id)
+            if not can_create:
+                current_usage = await self._get_free_plan_usage(db, user_id)
+                logger.warning(f"User {user_id} exceeded free plan limit. Usage: {current_usage}/{settings.FREE_PLAN_EVENT_LIMIT}")
+            return can_create
         
         # Check plan limits
         if subscription.plan.max_events is None:  # Unlimited
@@ -246,8 +250,12 @@ class SubscriptionService:
         
         # Get current usage
         usage = await self._get_or_create_usage_limit(db, user_id, subscription.plan)
+        can_create = usage.events_created < subscription.plan.max_events
         
-        return usage.events_created < subscription.plan.max_events
+        if not can_create:
+            logger.warning(f"User {user_id} exceeded plan limit. Usage: {usage.events_created}/{subscription.plan.max_events}")
+        
+        return can_create
     
     async def increment_event_usage(self, db: Session, user_id: int) -> None:
         """Increment user's event usage counter."""
