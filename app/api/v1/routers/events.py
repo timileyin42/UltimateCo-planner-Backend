@@ -42,17 +42,19 @@ async def create_event(
 ):
     """Create a new event"""
     try:
+        # TODO: Re-enable subscription limits after development
         # Check subscription limits before creating event
-        subscription_service = SubscriptionService()
-        can_create_event = await subscription_service.check_event_creation_limit(db, current_user.id)
-        if not can_create_event:
-            raise http_403_forbidden("Event creation limit reached for current plan")
+        # subscription_service = SubscriptionService()
+        # can_create_event = await subscription_service.check_event_creation_limit(db, current_user.id)
+        # if not can_create_event:
+        #     raise http_403_forbidden("Event creation limit reached for current plan")
         
         event_service = EventService(db)
         event = event_service.create_event(event_data, current_user.id)
         
+        # TODO: Re-enable usage tracking after development
         # Update usage after successful event creation
-        await subscription_service.increment_event_usage(db, current_user.id)
+        # await subscription_service.increment_event_usage(db, current_user.id)
         
         return event
     except UsageLimitExceededError as e:
