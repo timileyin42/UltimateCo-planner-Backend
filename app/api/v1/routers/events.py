@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from typing import Optional, List
 from datetime import datetime,timedelta
 from app.core.deps import get_db, get_current_user, get_current_active_user
@@ -189,43 +190,142 @@ async def delete_event_cover_image(
 async def get_events(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    status: Optional[EventStatus] = Query(None),
+    category: Optional[str] = Query(None, description="Filter by category: upcoming, past, drafts, hosting, attending, public"),
     event_type: Optional[EventType] = Query(None),
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get list of events (public events or user's events)"""
+    """
+    Get list of events.
+    
+    Filter options:
+    - category: 
+        - upcoming: Events happening in the future (requires login)
+        - past: Events that have already ended (requires login)
+        - drafts: Events with draft status (requires login)
+        - hosting: Events created by current user (requires login)
+        - attending: Events user is invited to (requires login)
+        - public: Public events (no login required)
+    """
     try:
-        event_service = EventService(db)
+        event_repo = EventRepository(db)
         
-        if current_user:
-            # Get user's events
-            events = event_service.get_user_events(
-                current_user.id,
-                status=status,
-                skip=offset,
-                limit=limit
-            )
+        # Base query
+        query = db.query(Event).filter(Event.is_deleted == False)
+        
+        # Apply category filters
+        if category:
+            category = category.lower()
+            
+            if category == "public":
+                # Public events - no authentication required
+                query = query.filter(Event.is_public == True, Event.status != EventStatus.DRAFT)
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif not current_user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication required for this category"
+                )
+                
+            elif category == "upcoming":
+                # Future events (exclude drafts)
+                query = query.filter(
+                    Event.start_datetime >= datetime.utcnow(),
+                    Event.status != EventStatus.DRAFT
+                )
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    Event.collaborators.any(User.id == current_user.id),
+                    Event.invitations.any(EventInvitation.user_id == current_user.id)
+                )
+                query = query.filter(access_filter)
+                query = query.order_by(Event.start_datetime.asc())
+                
+            elif category == "past":
+                # Past events (exclude drafts)
+                query = query.filter(
+                    Event.end_datetime < datetime.utcnow(),
+                    Event.status != EventStatus.DRAFT
+                )
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    Event.collaborators.any(User.id == current_user.id),
+                    Event.invitations.any(EventInvitation.user_id == current_user.id)
+                )
+                query = query.filter(access_filter)
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif category == "drafts":
+                # Draft events only
+                query = query.filter(Event.status == EventStatus.DRAFT)
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    Event.collaborators.any(User.id == current_user.id),
+                    Event.invitations.any(EventInvitation.user_id == current_user.id)
+                )
+                query = query.filter(access_filter)
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif category == "hosting":
+                # Events created by user (all statuses)
+                query = query.filter(Event.creator_id == current_user.id)
+                query = query.order_by(Event.start_datetime.desc())
+                
+            elif category == "attending":
+                # Events user is invited to (not creator, exclude drafts)
+                query = query.filter(
+                    Event.creator_id != current_user.id,
+                    Event.invitations.any(EventInvitation.user_id == current_user.id),
+                    Event.status != EventStatus.DRAFT
+                )
+                query = query.order_by(Event.start_datetime.desc())
+            else:
+                raise http_400_bad_request(f"Invalid category: {category}. Use: upcoming, past, drafts, hosting, attending, or public")
+        
         else:
-            # Get public events only
-            events = event_service.search_events(
-                query="",  # Empty query to get all
-                user_id=None,
-                skip=offset,
-                limit=limit
-            )
+            # No category specified
+            if current_user:
+                # Return all events user has access to (exclude drafts unless they're the creator)
+                access_filter = or_(
+                    Event.creator_id == current_user.id,
+                    and_(
+                        Event.status != EventStatus.DRAFT,
+                        or_(
+                            Event.collaborators.any(User.id == current_user.id),
+                            Event.invitations.any(EventInvitation.user_id == current_user.id)
+                        )
+                    )
+                )
+                query = query.filter(access_filter)
+            else:
+                # Return public events only
+                query = query.filter(Event.is_public == True, Event.status != EventStatus.DRAFT)
+            
+            query = query.order_by(Event.start_datetime.desc())
         
-        # Convert to summary format
+        # Apply event_type filter if provided
+        if event_type:
+            query = query.filter(Event.event_type == event_type)
+        
+        # Get total count
+        total_events = query.count()
+        
+        # Apply pagination
+        events = query.offset(offset).limit(limit).all()
+        
         event_summaries = [EventSummary.model_validate(event) for event in events]
         
         return EventListResponse(
             events=event_summaries,
-            total=len(event_summaries),
+            total=total_events,
             limit=limit,
             offset=offset
         )
-    except Exception:
-        raise http_400_bad_request("Failed to retrieve events")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to retrieve events: {str(e)}")
 
 @events_router.get("/search", response_model=EventListResponse)
 async def search_events(
