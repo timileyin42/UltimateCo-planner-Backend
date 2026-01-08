@@ -19,6 +19,7 @@ from app.services.email_service import email_service
 from app.services.google_maps_service import google_maps_service
 from app.services.calendar_service import CalendarServiceFactory, CalendarProvider, SyncStatus
 from app.models.calendar_models import CalendarConnection, CalendarEvent
+from app.repositories.event_repo import EventRepository
 import asyncio
 import logging
 
@@ -30,28 +31,13 @@ class EventService:
     def __init__(self, db: Session):
         self.db = db
         self.user_service = UserService(db)
+        self.event_repo = EventRepository(db)
     
     # Event CRUD operations
     def get_event_by_id(self, event_id: int, user_id: Optional[int] = None) -> Optional[Event]:
-        """Get event by ID with access control using read replicas for better performance"""
-        # Try to get from cache first
-        cache_key = f"event:{event_id}:user:{user_id}"
-        try:
-            from app.core.cache import cache_service
-            cached_event = cache_service.get(cache_key)
-            if cached_event:
-                return cached_event
-        except Exception as e:
-            logger.warning(f"Cache retrieval error: {e}")
-        
-        # Use read replica if available
-        try:
-            from app.core.db_optimizations import get_read_db
-            read_db = get_read_db() or self.db
-            event = read_db.query(Event).filter(Event.id == event_id).first()
-        except Exception as e:
-            logger.warning(f"Read replica error, falling back to primary: {e}")
-            event = self.db.query(Event).filter(Event.id == event_id).first()
+        """Get event by ID with access control"""
+        # Query event from repository
+        event = self.event_repo.get_by_id(event_id)
         
         if not event:
             return None
@@ -59,13 +45,6 @@ class EventService:
         # Check access permissions
         if user_id and not self._can_access_event(event, user_id):
             raise AuthorizationError("Access denied to this event")
-        
-        # Cache the result for future requests
-        try:
-            from app.core.cache import cache_service
-            cache_service.set(cache_key, event, ttl=300)  # Cache for 5 minutes
-        except Exception as e:
-            logger.warning(f"Cache storage error: {e}")
         
         return event
     
@@ -132,16 +111,12 @@ class EventService:
         event_dict.pop('user_coordinates', None)
         event_dict.pop('auto_optimize_location', None)
         
-        # Create event
-        event = Event(
-            **event_dict,
-            creator_id=creator_id,
-            status=EventStatus.DRAFT
-        )
+        # Add creator_id and status
+        event_dict['creator_id'] = creator_id
+        event_dict['status'] = EventStatus.DRAFT
         
-        self.db.add(event)
-        self.db.commit()
-        self.db.refresh(event)
+        # Create event using repository
+        event = self.event_repo.create(event_dict)
         
         # Automatically add creator as collaborator
         event.collaborators.append(creator)
@@ -174,18 +149,13 @@ class EventService:
             if update_data['end_datetime'] and update_data['end_datetime'] <= update_data['start_datetime']:
                 raise ValidationError("End date must be after start date")
         
-        # Update event fields
-        for field, value in update_data.items():
-            if hasattr(event, field):
-                setattr(event, field, value)
-        
-        self.db.commit()
-        self.db.refresh(event)
+        # Update event using repository
+        updated_event = self.event_repo.update(event_id, update_data)
         
         # Sync with connected calendars
-        asyncio.create_task(self._sync_event_to_calendars(event, 'update'))
+        asyncio.create_task(self._sync_event_to_calendars(updated_event, 'update'))
         
-        return event
+        return updated_event
     
     def delete_event(self, event_id: int, user_id: int) -> bool:
         """Delete event (soft delete)"""
@@ -197,13 +167,14 @@ class EventService:
         if event.creator_id != user_id:
             raise AuthorizationError("Only event creator can delete the event")
         
-        event.soft_delete()
-        self.db.commit()
+        # Delete using repository
+        success = self.event_repo.delete(event_id)
         
-        # Sync deletion with connected calendars
-        asyncio.create_task(self._sync_event_to_calendars(event, 'delete'))
+        if success:
+            # Sync deletion with connected calendars
+            asyncio.create_task(self._sync_event_to_calendars(event, 'delete'))
         
-        return True
+        return success
     
     def duplicate_event(self, event_id: int, user_id: int, new_title: Optional[str] = None) -> Event:
         """Duplicate an existing event"""
@@ -278,24 +249,18 @@ class EventService:
         limit: int = 100
     ) -> List[Event]:
         """Get events for a user (created or invited to)"""
-        query = self.db.query(Event).filter(
-            or_(
-                Event.creator_id == user_id,
-                Event.collaborators.any(User.id == user_id),
-                Event.invitations.any(
-                    and_(
-                        EventInvitation.user_id == user_id,
-                        EventInvitation.rsvp_status == RSVPStatus.ACCEPTED
-                    )
-                )
-            ),
-            Event.is_deleted == False
+        from app.schemas.pagination import PaginationParams
+        
+        pagination = PaginationParams(offset=skip, limit=limit)
+        filters = {'status': status} if status else None
+        
+        events, _ = self.event_repo.get_user_events(
+            user_id=user_id,
+            pagination=pagination,
+            filters=filters
         )
         
-        if status:
-            query = query.filter(Event.status == status)
-        
-        return query.offset(skip).limit(limit).all()
+        return events
     
     def search_events(
         self, 
@@ -305,31 +270,17 @@ class EventService:
         limit: int = 100
     ) -> List[Event]:
         """Search public events or user's events"""
-        search_filter = or_(
-            Event.title.ilike(f"%{query}%"),
-            Event.description.ilike(f"%{query}%"),
-            Event.venue_name.ilike(f"%{query}%")
+        from app.schemas.pagination import PaginationParams
+        
+        pagination = PaginationParams(offset=skip, limit=limit)
+        
+        events, _ = self.event_repo.search(
+            search_term=query,
+            pagination=pagination,
+            user_id=user_id
         )
         
-        db_query = self.db.query(Event).filter(
-            search_filter,
-            Event.is_deleted == False
-        )
-        
-        if user_id:
-            # Include user's private events and public events
-            db_query = db_query.filter(
-                or_(
-                    Event.is_public == True,
-                    Event.creator_id == user_id,
-                    Event.collaborators.any(User.id == user_id)
-                )
-            )
-        else:
-            # Only public events for anonymous users
-            db_query = db_query.filter(Event.is_public == True)
-        
-        return db_query.offset(skip).limit(limit).all()
+        return events
     
     # Event invitation methods
     def invite_users(self, event_id: int, invitation_data: EventInvitationCreate, inviter_id: int) -> List[EventInvitation]:
