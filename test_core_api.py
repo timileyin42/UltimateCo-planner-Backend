@@ -135,7 +135,8 @@ test_resources = {
     "profile_picture_url": None,
     "test_moodboard_id": None,
     "moodboard_image_url": None,
-    "vendor_image_url": None
+    "vendor_image_url": None,
+    "task_category_name": None
 }
 
 def get_headers():
@@ -424,9 +425,10 @@ def test_get_event_tasks():
                 for item in items[:3]:  # Show first 3 items
                     completed_icon = "✓" if item.get('completed') else "○"
                     print_info(f"    {completed_icon} {item.get('title')}")
-                    # Store first task ID for update test
+                    # Store first task ID and category for update test
                     if not test_resources.get("task_id") and item.get('id'):
                         test_resources["task_id"] = item.get('id')
+                        test_resources["task_category_name"] = category_name
             
             print_info(f"\nTotal tasks: {total_tasks}")
             return True
@@ -479,14 +481,30 @@ def test_update_task():
     print("="*50)
     
     task_id = test_resources.get("task_id")
+    category_name = test_resources.get("task_category_name")
     if not task_id:
         print_warning("No task ID available. Get event tasks first.")
         return None
+
+    if not category_name:
+        print_warning("No task category available. Using 'Uncategorized'.")
+        category_name = "Uncategorized"
     
     update_data = {
-        "status": "completed",
-        "description": "Updated: Chocolate cake ordered from Sweet Treats Bakery",
-        "priority": "high"
+        "task_categories": [
+            {
+                "name": category_name,
+                "items": [
+                    {
+                        "id": task_id,
+                        "title": "Order birthday cake",
+                        "description": "Updated: Chocolate cake ordered from Sweet Treats Bakery",
+                        "completed": True,
+                        "assignee_id": None
+                    }
+                ]
+            }
+        ]
     }
     
     try:
@@ -518,12 +536,27 @@ def test_update_task_mark_incomplete():
     print("="*50)
     
     task_id = test_resources.get("task_id")
+    category_name = test_resources.get("task_category_name")
     if not task_id:
         print_warning("No task ID available. Get event tasks first.")
         return None
+
+    if not category_name:
+        print_warning("No task category available. Using 'Uncategorized'.")
+        category_name = "Uncategorized"
     
     update_data = {
-        "status": "pending"
+        "task_categories": [
+            {
+                "name": category_name,
+                "items": [
+                    {
+                        "id": task_id,
+                        "completed": False
+                    }
+                ]
+            }
+        ]
     }
     
     try:
