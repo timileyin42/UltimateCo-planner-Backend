@@ -305,6 +305,26 @@ class TaskUpdate(BaseModel):
 
         return normalized
 
+
+class TaskCategoryItemUpdate(BaseModel):
+    """Task item payload used when updating tasks via category structure"""
+    id: int
+    title: Optional[str] = None
+    description: Optional[str] = None
+    completed: Optional[bool] = None
+    assignee_id: Optional[int] = None
+
+
+class TaskCategoryUpdate(BaseModel):
+    """Task category wrapper for update payloads"""
+    name: str
+    items: List[TaskCategoryItemUpdate] = Field(default_factory=list)
+
+
+class TaskCategoriesUpdate(BaseModel):
+    """Update payload for tasks using category+items structure"""
+    task_categories: List[TaskCategoryUpdate]
+
 class TaskResponse(TaskBase):
     """Schema for task response"""
     id: int

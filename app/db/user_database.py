@@ -42,6 +42,7 @@ class UserDatabase:
             email=user_data.email,
             hashed_password=hashed_password,
             full_name=user_data.full_name,
+            avatar_url=getattr(user_data, "avatar_url", None),
             phone_number=user_data.phone_number,
             signup_method=signup_method,
             is_active=True

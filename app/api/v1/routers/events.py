@@ -14,6 +14,7 @@ from app.schemas.event import (
     EventCreate, EventUpdate, EventResponse, EventSummary, EventListResponse,
     EventInvitationCreate, EventInvitationUpdate, EventInvitationResponse,
     TaskCreate, TaskUpdate, TaskResponse, TaskCategoriesResponse, TaskCategory, TaskCategoryItem, TaskStatus,
+    TaskCategoriesUpdate,
     ExpenseCreate, ExpenseUpdate, ExpenseResponse,
     CommentCreate, CommentResponse, PollCreate, PollResponse, PollVoteCreate,
     EventSearchQuery, EventStatsResponse, EventLocationOptimizationRequest, EventLocationOptimizationResponse,
@@ -43,19 +44,17 @@ async def create_event(
 ):
     """Create a new event"""
     try:
-        # TODO: Re-enable subscription limits after development
         # Check subscription limits before creating event
-        # subscription_service = SubscriptionService()
-        # can_create_event = await subscription_service.check_event_creation_limit(db, current_user.id)
-        # if not can_create_event:
-        #     raise http_403_forbidden("Event creation limit reached for current plan")
-        
+        subscription_service = SubscriptionService()
+        can_create_event = await subscription_service.check_event_creation_limit(db, current_user.id)
+        if not can_create_event:
+            raise http_403_forbidden("Event creation limit reached for current plan")
+
         event_service = EventService(db)
         event = event_service.create_event(event_data, current_user.id)
-        
-        # TODO: Re-enable usage tracking after development
+
         # Update usage after successful event creation
-        # await subscription_service.increment_event_usage(db, current_user.id)
+        await subscription_service.increment_event_usage(db, current_user.id)
         
         return event
     except UsageLimitExceededError as e:
@@ -906,22 +905,55 @@ async def get_event_tasks(
 @events_router.put("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: int,
-    task_data: TaskUpdate,
+    task_data: TaskCategoriesUpdate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Update a task (title, description, status, assignee, etc.)
-    
-    Use this to:
-    - Mark tasks as completed/pending
-    - Assign tasks to users
-    - Update task details
-    - Change category or priority
+    Update a task using the category/items structure used across the app.
+    Send the category that contains the task with its updated fields.
     """
     try:
         event_service = EventService(db)
-        task = event_service.update_task(task_id, task_data, current_user.id)
+
+        # Extract the target task payload from category/items list
+        target_item = None
+        target_category = None
+        for category in task_data.task_categories:
+            for item in category.items:
+                if item.id == task_id:
+                    target_item = item
+                    target_category = category.name
+                    break
+            if target_item:
+                break
+
+        if not target_item:
+            raise http_400_bad_request("Task payload must include the task_id being updated")
+
+        # Map payload into the existing TaskUpdate schema
+        mapped_status = None
+        if target_item.completed is True:
+            mapped_status = TaskStatus.COMPLETED
+        elif target_item.completed is False:
+            mapped_status = TaskStatus.TODO
+
+        mapped_update_data = {
+            "category": target_category,
+        }
+
+        if mapped_status is not None:
+            mapped_update_data["status"] = mapped_status
+        if target_item.assignee_id is not None:
+            mapped_update_data["assignee_id"] = target_item.assignee_id
+        if target_item.title is not None:
+            mapped_update_data["title"] = target_item.title
+        if target_item.description is not None:
+            mapped_update_data["description"] = target_item.description
+
+        mapped_update = TaskUpdate(**mapped_update_data)
+
+        task = event_service.update_task(task_id, mapped_update, current_user.id)
         return task
     except Exception as e:
         if "not found" in str(e).lower():
