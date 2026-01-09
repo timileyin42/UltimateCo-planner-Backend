@@ -1,13 +1,11 @@
 services:
-  # PostgreSQL database (only for local development)
-  # For production, use external Postgres and set USE_EXTERNAL_DB=true
   db:
     image: postgres:15-alpine
     container_name: planetal-db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-planetal}
-      POSTGRES_USER: ${POSTGRES_USER:-planetal}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-planetal123}
+      POSTGRES_DB: ${POSTGRES_DB:}
+      POSTGRES_USER: ${POSTGRES_USER:}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
