@@ -124,6 +124,7 @@ class UserRegister(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255)
     username: Optional[str] = Field(None, min_length=3, max_length=100)
     bio: Optional[str] = None
+    avatar_url: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
     timezone: Optional[str] = None
