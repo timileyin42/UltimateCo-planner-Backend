@@ -61,6 +61,7 @@ cryptography==43.0.3
 # SMS Services
 # SMS Service - Termii API (using requests for HTTP calls)
 # requests==2.31.0  # Already included above
+phonenumbers==8.13.47  # International phone number parsing and validation
 
 # Push Notifications
 firebase-admin==6.4.0

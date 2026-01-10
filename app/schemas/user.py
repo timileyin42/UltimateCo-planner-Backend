@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator, model_validator
+import phonenumbers
+from phonenumbers import NumberParseException
 
 # Base user schemas
 class UserBase(BaseModel):
@@ -144,12 +146,21 @@ class UserRegister(BaseModel):
     @field_validator('phone_number')
     @classmethod
     def validate_phone_number(cls, v):
-        """Validate phone number format"""
+        """Validate phone number format using international standards"""
         if v is not None:
-            # Remove any non-digit characters for validation
-            digits_only = ''.join(filter(str.isdigit, v))
-            if len(digits_only) < 10 or len(digits_only) > 15:
-                raise ValueError("Phone number must be between 10 and 15 digits")
+            try:
+                # Parse and validate as international number
+                parsed = phonenumbers.parse(v, None)
+                if not phonenumbers.is_valid_number(parsed):
+                    raise ValueError("Invalid phone number for the detected country")
+                # Return in E.164 format for consistency
+                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            except NumberParseException:
+                # Fallback validation for basic format
+                import re
+                # Allow formats like +447700900123, 07700900123, etc.
+                if not re.match(r'^\+?[\d\s\-\(\)]{10,18}$', v):
+                    raise ValueError("Phone number must be in international format (e.g., +447700900123, +2348012345678)")
         return v
     
     def validate_passwords_match(self):

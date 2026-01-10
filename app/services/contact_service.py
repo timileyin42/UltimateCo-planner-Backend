@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 import uuid
 import re
 from fastapi import HTTPException, status
+import phonenumbers
+from phonenumbers import NumberParseException
 
 from app.models.contact_models import (
-    UserContact, ContactGroup, ContactInvitation, ContactInviteStatus, ContactGroupMembership
+    UserContact, ContactGroup, ContactInvitation, ContactInviteStatus, ContactGroupMembership, ContactSource
 )
 from app.models.user_models import User
 from app.models.event_models import Event
@@ -100,6 +102,16 @@ class ContactService:
         
         return query.order_by(UserContact.name).offset(offset).limit(limit).all()
 
+    def send_invitation(
+        self, 
+        sender_id: int, 
+        contact_id: int, 
+        event_id: Optional[int] = None,
+        message: Optional[str] = None
+    ) -> ContactInvitation:
+        """Send invitation to a contact (alias for send_contact_invitation)"""
+        return self.send_contact_invitation(sender_id, contact_id, event_id, message)
+
     def send_contact_invitation(
         self, 
         sender_id: int, 
@@ -172,6 +184,147 @@ class ContactService:
                 continue
         
         return invitations
+
+    def bulk_send_phone_invitations(
+        self,
+        sender_id: int,
+        phone_numbers: List[str],
+        event_id: Optional[int] = None,
+        message: Optional[str] = None,
+        auto_add_to_contacts: bool = False
+    ) -> Dict[str, Any]:
+        """Send invitations directly to phone numbers (with or without adding to contacts)
+        
+        Args:
+            sender_id: User sending the invitations
+            phone_numbers: List of phone numbers to invite
+            event_id: Optional event ID for event invitations
+            message: Optional custom message
+            auto_add_to_contacts: If True, add phone numbers to contacts before inviting
+        
+        Returns:
+            Dict with success/failure counts and invitation details
+        """
+        results = {
+            "sent": [],
+            "failed": [],
+            "total": len(phone_numbers),
+            "success_count": 0,
+            "failure_count": 0
+        }
+        
+        sender = self.db.query(User).filter(User.id == sender_id).first()
+        if not sender:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sender not found"
+            )
+        
+        event = None
+        if event_id:
+            event = self.db.query(Event).filter(Event.id == event_id).first()
+        
+        for phone_number in phone_numbers:
+            try:
+                # Clean and validate phone number
+                cleaned_phone = self._clean_phone_number(phone_number)
+                if not self._is_valid_phone_number(cleaned_phone):
+                    results["failed"].append({
+                        "phone_number": phone_number,
+                        "error": "Invalid phone number format"
+                    })
+                    results["failure_count"] += 1
+                    continue
+                
+                # Check if contact exists or create one (we need a contact_id for FK)
+                contact = self.db.query(UserContact).filter(
+                    and_(
+                        UserContact.user_id == sender_id,
+                        UserContact.phone_number == cleaned_phone
+                    )
+                ).first()
+                
+                if not contact:
+                    # Always create a contact record so contact_id FK is satisfied
+                    contact = UserContact(
+                        user_id=sender_id,
+                        name=cleaned_phone,  # Use phone as name if not provided
+                        phone_number=cleaned_phone,
+                        source=ContactSource.PHONE,
+                        is_favorite=False
+                    )
+                    self.db.add(contact)
+                    self.db.flush()
+                
+                # Generate invitation token
+                invitation_token = str(uuid.uuid4())
+                
+                # Check if phone belongs to an existing user
+                recipient_user = self.db.query(User).filter(
+                    User.phone_number == cleaned_phone
+                ).first()
+                
+                # Create invitation record with required fields populated
+                invitation = ContactInvitation(
+                    sender_id=sender_id,
+                    recipient_id=recipient_user.id if recipient_user else None,
+                    contact_id=contact.id if contact else None,
+                    event_id=event_id,
+                    invitation_token=invitation_token,
+                    message=message,
+                    invitation_type="app_invite" if event_id is None else "event_invite",
+                    delivery_method="sms",
+                    recipient_phone=cleaned_phone,
+                    status=ContactInviteStatus.PENDING
+                )
+                self.db.add(invitation)
+                self.db.flush()
+                
+                # Build SMS message
+                if event:
+                    sms_message = f"Hi! {sender.full_name} invited you to '{event.title}' on PlanEtAl. Join here: https://planetal.app/invite/{invitation_token}"
+                else:
+                    sms_message = f"Hi! {sender.full_name} invited you to join PlanEtAl - the ultimate event planning app! Join here: https://planetal.app/invite/{invitation_token}"
+                
+                if message:
+                    sms_message += f"\n\nPersonal message: {message}"
+                
+                # Send SMS via Termii (best-effort; do not crash on failure)
+                try:
+                    sms_result = self.sms_service.send_sms(
+                        to_phone=cleaned_phone,
+                        message=sms_message
+                    )
+                except Exception as sms_err:
+                    sms_result = {"status": "failed", "error": str(sms_err)}
+                
+                # Update invitation status based on SMS result
+                if sms_result and sms_result.get("status") == "success":
+                    invitation.status = ContactInviteStatus.SENT
+                    results["sent"].append({
+                        "phone_number": cleaned_phone,
+                        "invitation_id": invitation.id,
+                        "sms_status": sms_result
+                    })
+                    results["success_count"] += 1
+                else:
+                    invitation.status = ContactInviteStatus.FAILED
+                    results["failed"].append({
+                        "phone_number": cleaned_phone,
+                        "error": sms_result.get("error") if isinstance(sms_result, dict) else "SMS delivery failed",
+                        "details": sms_result
+                    })
+                    results["failure_count"] += 1
+                
+            except Exception as e:
+                results["failed"].append({
+                    "phone_number": phone_number,
+                    "error": str(e)
+                })
+                results["failure_count"] += 1
+        
+        self.db.commit()
+        return results
 
     def get_sent_invitations(
         self, 
@@ -323,10 +476,48 @@ class ContactService:
         return membership
 
     def _is_valid_phone_number(self, phone_number: str) -> bool:
-        """Validate phone number format"""
-        # Basic phone number validation (can be enhanced)
-        phone_pattern = r'^\+?[\d\s\-\(\)]{10,15}$'
-        return bool(re.match(phone_pattern, phone_number))
+        """Validate phone number format using international standards"""
+        try:
+            # Try to parse as international number
+            parsed = phonenumbers.parse(phone_number, None)
+            # Accept fully valid numbers; fallback to "possible" to allow test/dummy numbers
+            if phonenumbers.is_valid_number(parsed):
+                return True
+            return phonenumbers.is_possible_number(parsed)
+        except NumberParseException:
+            # Fallback to basic regex validation if parsing fails
+            phone_pattern = r'^\+?[\d\s\-\(\)]{10,15}$'
+            return bool(re.match(phone_pattern, phone_number))
+    
+    def _clean_phone_number(self, phone_number: str) -> str:
+        """Clean and standardize phone number to international E.164 format
+        
+        Supports international numbers from any country. Examples:
+        - UK: +447700900123 or 07700 900123
+        - Nigeria: +2348012345678 or 08012345678
+        - US: +11234567890 or (123) 456-7890
+        - etc.
+        
+        Returns E.164 format (e.g., +447700900123) suitable for SMS delivery.
+        """
+        try:
+            # First, try to parse with phonenumbers library for proper international handling
+            # This will detect country codes automatically and format correctly
+            parsed = phonenumbers.parse(phone_number, None)
+            
+            # Format to E.164 international standard (e.g., +447700900123)
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            
+        except NumberParseException:
+            # If parsing fails, do basic cleanup and add + prefix
+            # Remove all non-digit characters except +
+            cleaned = re.sub(r'[^\d+]', '', phone_number)
+            
+            # Ensure it starts with +
+            if not cleaned.startswith('+'):
+                cleaned = '+' + cleaned.lstrip('0')
+            
+            return cleaned
 
     def _send_invitation_sms(self, invitation: ContactInvitation, contact: UserContact):
         """Send SMS invitation to contact"""

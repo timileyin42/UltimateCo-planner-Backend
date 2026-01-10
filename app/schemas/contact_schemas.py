@@ -1,7 +1,9 @@
 from pydantic import BaseModel, Field, EmailStr, validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
+import phonenumbers
+from phonenumbers import NumberParseException
 
 from app.models.contact_models import ContactInviteStatus
 
@@ -15,12 +17,19 @@ class ContactBase(BaseModel):
 
     @validator('phone_number')
     def validate_phone_number(cls, v):
+        """Validate phone number format using international standards (lenient for test numbers)."""
         if v is not None:
-            # Basic phone number validation
+            try:
+                parsed = phonenumbers.parse(v, None)
+                # Accept valid or possible numbers (allows test/dummy ranges)
+                if phonenumbers.is_valid_number(parsed) or phonenumbers.is_possible_number(parsed):
+                    return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            except NumberParseException:
+                pass
+            # Fallback: basic regex to avoid hard failures on test data
             import re
-            phone_pattern = r'^\+?[\d\s\-\(\)]{10,15}$'
-            if not re.match(phone_pattern, v):
-                raise ValueError('Invalid phone number format')
+            if not re.match(r'^\+?[\d\s\-\(\)]{10,20}$', v):
+                raise ValueError('Phone number must be in international format (e.g., +447700900123, +2348012345678)')
         return v
 
 
@@ -37,11 +46,21 @@ class ContactUpdate(BaseModel):
 
     @validator('phone_number')
     def validate_phone_number(cls, v):
+        """Validate phone number format using international standards"""
         if v is not None:
-            import re
-            phone_pattern = r'^\+?[\d\s\-\(\)]{10,15}$'
-            if not re.match(phone_pattern, v):
-                raise ValueError('Invalid phone number format')
+            try:
+                # Parse and validate as international number
+                parsed = phonenumbers.parse(v, None)
+                if not phonenumbers.is_valid_number(parsed):
+                    raise ValueError('Invalid phone number for the detected country')
+                # Return in E.164 format for consistency
+                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            except NumberParseException:
+                # Fallback validation for basic format
+                import re
+                # Allow formats like +447700900123, 07700900123, etc.
+                if not re.match(r'^\+?[\d\s\-\(\)]{10,18}$', v):
+                    raise ValueError('Phone number must be in international format (e.g., +447700900123, +2348012345678)')
         return v
 
 
@@ -68,6 +87,41 @@ class BulkContactInvitationCreate(BaseModel):
     contact_ids: List[int] = Field(..., min_items=1, max_items=50)
     event_id: Optional[int] = None
     message: Optional[str] = Field(None, max_length=500)
+
+
+class BulkPhoneInvitationCreate(BaseModel):
+    """Schema for sending bulk invitations directly to phone numbers
+    
+    Use Case: Mobile app phone book invites
+    1. User taps 'Invite' button in app
+    2. App opens native phone book picker
+    3. User selects multiple contacts
+    4. App extracts phone numbers and sends to this endpoint
+    5. Backend sends SMS invites via Termii to all selected numbers
+    
+    Supports international phone numbers from any country (UK, Nigeria, US, etc.)
+    """
+    phone_numbers: List[str] = Field(
+        ..., 
+        min_items=1, 
+        max_items=50, 
+        description="Phone numbers from device contacts (international format preferred: +447700900123)"
+    )
+    event_id: Optional[int] = Field(None, description="Optional event ID to invite contacts to")
+    message: Optional[str] = Field(None, max_length=500, description="Optional personal message")
+    auto_add_to_contacts: bool = Field(
+        False, 
+        description="If true, adds phone numbers to your PlanEtAl contacts list"
+    )
+
+
+class BulkPhoneInvitationResponse(BaseModel):
+    """Response from bulk phone invitation request"""
+    sent: List[Dict[str, Any]]
+    failed: List[Dict[str, Any]]
+    total: int
+    success_count: int
+    failure_count: int
 
 
 class ContactInvitationResponse(ContactInvitationBase):

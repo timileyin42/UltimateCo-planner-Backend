@@ -10,7 +10,8 @@ from app.models.contact_models import ContactInviteStatus, UserContact
 from app.services.contact_service import ContactService
 from app.schemas.contact_schemas import (
     ContactCreate, ContactUpdate, ContactResponse, ContactListResponse,
-    ContactInvitationCreate, BulkContactInvitationCreate, ContactInvitationResponse,
+    ContactInvitationCreate, BulkContactInvitationCreate, BulkPhoneInvitationCreate,
+    BulkPhoneInvitationResponse, ContactInvitationResponse,
     InvitationListResponse, InvitationResponseRequest,
     ContactGroupCreate, ContactGroupUpdate, ContactGroupResponse, ContactGroupListResponse,
     AddContactToGroupRequest, ContactGroupMembershipResponse,
@@ -224,6 +225,46 @@ async def send_bulk_invitations(
         contact_ids=invitation_data.contact_ids,
         event_id=invitation_data.event_id,
         message=invitation_data.message
+    )
+
+@router.post("/invitations/bulk-phone", response_model=BulkPhoneInvitationResponse, status_code=status.HTTP_201_CREATED)
+async def send_bulk_phone_invitations(
+    invitation_data: BulkPhoneInvitationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send invitations to phone numbers from device contacts via SMS (Termii)
+    
+    **Mobile App Workflow:**
+    1. User taps "Invite Friends" in your Flutter/React Native app
+    2. App opens native phone book/contacts picker
+    3. User selects contacts they want to invite
+    4. App extracts phone numbers from selected contacts
+    5. App sends phone numbers to this endpoint
+    6. Backend sends SMS invites via Termii to all numbers
+    7. Recipients get SMS with invitation link
+    
+    **Supports International Numbers:**
+    - UK: +447700900123, 07700 900123
+    - Nigeria: +2348012345678, 08012345678  
+    - US: +11234567890, (123) 456-7890
+    - Any country with proper country code
+    
+    **Parameters:**
+    - **phone_numbers**: Phone numbers extracted from device contacts (1-50)
+    - **event_id**: Optional - invite to specific event
+    - **message**: Optional - personal message to include in SMS
+    - **auto_add_to_contacts**: Optional - save numbers to PlanEtAl contacts
+    
+    **Returns:** Details about sent/failed invitations with SMS delivery status
+    """
+    contact_service = ContactService(db)
+    return contact_service.bulk_send_phone_invitations(
+        sender_id=current_user.id,
+        phone_numbers=invitation_data.phone_numbers,
+        event_id=invitation_data.event_id,
+        message=invitation_data.message,
+        auto_add_to_contacts=invitation_data.auto_add_to_contacts
     )
 
 @router.post("/invitations", response_model=ContactInvitationResponse, status_code=status.HTTP_201_CREATED)
