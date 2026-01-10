@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import googlemaps
 from googlemaps.exceptions import ApiError, Timeout, TransportError
 from app.core.config import get_settings
+from app.schemas.location import Coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -341,14 +342,18 @@ class GoogleMapsService:
     async def optimize_location_input(
         self,
         user_input: str,
-        user_location: Optional[Tuple[float, float]] = None
+        user_coordinates: Optional[Coordinates] = None,
+        include_nearby: bool = True,
+        max_suggestions: int = 10
     ) -> Dict[str, Any]:
         """
         Optimize location input by providing suggestions and validation.
         
         Args:
             user_input: The user's location input
-            user_location: User's current location for optimization
+            user_coordinates: User's current coordinates (Coordinates object)
+            include_nearby: Whether to include nearby places
+            max_suggestions: Maximum number of suggestions to return
             
         Returns:
             Dictionary with optimization results
@@ -360,6 +365,11 @@ class GoogleMapsService:
                 'original_input': user_input,
                 'suggestions': []
             }
+        
+        # Convert Coordinates object to tuple for internal methods
+        user_location = None
+        if user_coordinates:
+            user_location = (user_coordinates.latitude, user_coordinates.longitude)
         
         try:
             # First, try to validate the exact input
@@ -373,7 +383,7 @@ class GoogleMapsService:
             
             # If user location is provided, also get nearby relevant places
             nearby_places = []
-            if user_location and len(user_input.strip()) > 2:
+            if user_location and include_nearby and len(user_input.strip()) > 2:
                 nearby_places = await self.find_nearby_places(
                     user_location[0], 
                     user_location[1],
@@ -397,7 +407,7 @@ class GoogleMapsService:
                         'types': s.types,
                         'rating': s.rating
                     }
-                    for s in suggestions[:10]
+                    for s in suggestions[:max_suggestions]
                 ],
                 'nearby_suggestions': [
                     {
