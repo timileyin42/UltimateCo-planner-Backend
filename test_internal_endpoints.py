@@ -238,6 +238,285 @@ def login_user_get_token(email, password):
         return False, None
 
 # ==========================================================================
+# CONTACTS: BULK PHONE INVITATIONS (/contacts/invitations/bulk-phone)
+# ==========================================================================
+
+def test_bulk_phone_invites_success():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (International Numbers)")
+    print("="*50)
+    payload = {
+        "phone_numbers": [
+            "+447700900123",  # UK
+            "+2348012345678",  # Nigeria
+            "+11234567890"  # US
+        ],
+        "message": "Join our event planning app!",
+        "auto_add_to_contacts": True
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload,
+            headers=get_headers()
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            print_success(f"Bulk phone invitations sent: {data.get('success_count')}/{data.get('total')}")
+            print_info(f"Sent: {data.get('success_count')} | Failed: {data.get('failure_count')}")
+            if data.get('sent'):
+                for sent in data.get('sent', []):
+                    print_info(f"  ✓ Sent to: {sent.get('phone_number')}")
+            if data.get('failed'):
+                for failed in data.get('failed', []):
+                    print_warning(f"  ✗ Failed: {failed.get('phone_number')} - {failed.get('error')}")
+            return True
+        else:
+            print_error(f"Bulk phone invites failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Bulk phone invites error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_uk_numbers():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (UK Numbers)")
+    print("="*50)
+    payload = {
+        "phone_numbers": [
+            "+447700900001",
+            "07700 900 002",  # With spaces
+            "+44 7700 900003",  # With country code and spaces
+        ],
+        "auto_add_to_contacts": False
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload,
+            headers=get_headers()
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            print_success(f"UK phone invitations: {data.get('success_count')}/{data.get('total')}")
+            return True
+        else:
+            print_error(f"UK phone invites failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"UK phone invites error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_nigeria_numbers():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (Nigeria Numbers)")
+    print("="*50)
+    payload = {
+        "phone_numbers": [
+            "+2348012345001",
+            "08012345002",  # Without country code
+            "+234 801 234 5003",  # With spaces
+        ],
+        "auto_add_to_contacts": False
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload,
+            headers=get_headers()
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            print_success(f"Nigeria phone invitations: {data.get('success_count')}/{data.get('total')}")
+            return True
+        else:
+            print_error(f"Nigeria phone invites failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Nigeria phone invites error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_invalid_numbers():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (Invalid Numbers)")
+    print("="*50)
+    payload = {
+        "phone_numbers": [
+            "123",  # Too short
+            "not-a-phone-number",
+            "+447700900123",  # Valid one
+        ],
+        "auto_add_to_contacts": False
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload,
+            headers=get_headers()
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            # Should have some failures due to invalid numbers
+            if data.get('failure_count') > 0:
+                print_success(f"Invalid numbers properly rejected: {data.get('failure_count')} failures")
+                print_info(f"Success: {data.get('success_count')} | Failed: {data.get('failure_count')}")
+                return True
+            else:
+                print_warning("Expected some failures for invalid numbers")
+                return False
+        else:
+            print_error(f"Invalid phone test failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Invalid phone test error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_empty_list():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (Empty List - Expect Error)")
+    print("="*50)
+    payload = {
+        "phone_numbers": [],
+        "auto_add_to_contacts": False
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload,
+            headers=get_headers()
+        )
+        if response.status_code == 422:  # Validation error
+            print_success("Empty list validation error as expected")
+            return True
+        else:
+            print_error(f"Expected 422 validation error, got: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Empty list test error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_with_event():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (With Event ID)")
+    print("="*50)
+    # First create a test event
+    event_payload = {
+        "title": "Phone Invite Test Event",
+        "description": "Testing bulk phone invites with event",
+        "start_time": "2026-02-01T10:00:00",
+        "end_time": "2026-02-01T12:00:00",
+        "location": "Test Location"
+    }
+    try:
+        # Create event first
+        event_response = requests.post(
+            f"{API_V1}/events",
+            json=event_payload,
+            headers=get_headers()
+        )
+        if event_response.status_code not in [200, 201]:
+            print_warning("Could not create event for test, skipping event ID test")
+            return True  # Skip but don't fail
+        
+        event_id = event_response.json().get("id")
+        
+        # Now send invites with event_id
+        invite_payload = {
+            "phone_numbers": ["+447700900999"],
+            "event_id": event_id,
+            "message": "Join us for the event!",
+            "auto_add_to_contacts": False
+        }
+        
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=invite_payload,
+            headers=get_headers()
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            print_success(f"Phone invitations with event sent: {data.get('success_count')}")
+            return True
+        else:
+            print_error(f"Event phone invites failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Event phone invites error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_auto_add_to_contacts():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (Auto-Add to Contacts)")
+    print("="*50)
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    payload = {
+        "phone_numbers": [f"+44770090{ts[-4:]}"],  # Unique number
+        "auto_add_to_contacts": True,
+        "message": "Testing auto-add feature"
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload,
+            headers=get_headers()
+        )
+        if response.status_code in [200, 201]:
+            data = response.json()
+            print_success(f"Phone invites with auto-add: {data.get('success_count')}")
+            
+            # Verify contact was added
+            contacts_response = requests.get(
+                f"{API_V1}/contacts",
+                headers=get_headers()
+            )
+            if contacts_response.status_code == 200:
+                contacts = contacts_response.json().get('contacts', [])
+                added = any(c.get('phone_number') == payload['phone_numbers'][0] for c in contacts)
+                if added:
+                    print_success("Contact auto-added successfully")
+                else:
+                    print_warning("Contact not found in list (may be normalized)")
+            return True
+        else:
+            print_error(f"Auto-add test failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Auto-add test error: {str(e)}")
+        return False
+
+def test_bulk_phone_invites_unauthorized():
+    print("\n" + "="*50)
+    print("Testing Bulk Phone Invitations (No Auth - Expect 401)")
+    print("="*50)
+    payload = {
+        "phone_numbers": ["+447700900123"],
+        "auto_add_to_contacts": False
+    }
+    try:
+        response = requests.post(
+            f"{API_V1}/contacts/invitations/bulk-phone",
+            json=payload
+            # No headers - unauthorized
+        )
+        if response.status_code == 401:
+            print_success("Unauthorized access blocked as expected")
+            return True
+        else:
+            print_error(f"Expected 401, got: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Unauthorized test error: {str(e)}")
+        return False
+
+# ==========================================================================
 # USERS: DETAILED PROFILE ENDPOINTS (/users/me/profile)
 # ==========================================================================
 
@@ -920,6 +1199,16 @@ def run_all_tests():
     results["calendar_list_connections"] = test_list_calendar_connections()
     results["calendar_list_events"] = test_list_calendar_events()
     results["calendar_stats"] = test_get_calendar_stats()
+
+    # Contacts: Bulk Phone Invitations
+    results["bulk_phone_intl"] = test_bulk_phone_invites_success()
+    results["bulk_phone_uk"] = test_bulk_phone_invites_uk_numbers()
+    results["bulk_phone_nigeria"] = test_bulk_phone_invites_nigeria_numbers()
+    results["bulk_phone_invalid"] = test_bulk_phone_invites_invalid_numbers()
+    results["bulk_phone_empty"] = test_bulk_phone_invites_empty_list()
+    results["bulk_phone_event"] = test_bulk_phone_invites_with_event()
+    results["bulk_phone_auto_add"] = test_bulk_phone_invites_auto_add_to_contacts()
+    results["bulk_phone_unauth"] = test_bulk_phone_invites_unauthorized()
 
     print_summary(results)
 

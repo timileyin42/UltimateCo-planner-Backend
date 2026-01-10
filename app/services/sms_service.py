@@ -2,6 +2,8 @@ from typing import Optional, Dict, Any
 import requests
 from fastapi import HTTPException, status
 import logging
+import phonenumbers
+from phonenumbers import NumberParseException
 from app.core.config import get_settings
 from app.core.circuit_breaker import sms_circuit_breaker, sms_fallback
 
@@ -38,10 +40,62 @@ class SMSService:
             channel: Route to use - 'dnd' for transactional/OTP, 'generic' for promotional
         """
         if not self.is_configured_flag:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="SMS service is not configured"
+            return {"status": "failed", "error": "SMS not configured"}
+        
+        try:
+            # Clean phone number (remove spaces, dashes, etc.)
+            cleaned_phone = self._clean_phone_number(to_phone)
+            
+            # Prepare Termii API payload
+            payload = {
+                "to": cleaned_phone,
+                "from": self.sender_id,
+                "sms": message,
+                "type": "plain",
+                "api_key": self.api_key,
+                "channel": channel
+            }
+            
+            # Send request to Termii API
+            response = requests.post(
+                f"{self.base_url}/sms/send",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Log successful
+                logger.info(
+                    f"SMS sent successfully | To: {cleaned_phone[:4]}****{cleaned_phone[-4:]} | "
+                    f"Message ID: {result.get('message_id')} | Length: {len(message)} chars"
+                )
+                
+                return {
+                    'message_id': result.get('message_id'),
+                    'status': 'sent',
+                    'to': cleaned_phone,
+                    'from': self.sender_id,
+                    'body': message,
+                    'balance': result.get('balance'),
+                    'user': result.get('user')
+                }
+            else:
+                error_msg = response.json().get('message', 'Unknown error')
+                
+                # Log failure
+                logger.error(
+                    f"SMS send failed | To: {to_phone} | Status: {response.status_code} | "
+                    f"Error: {error_msg}"
+                )
+                
+                return {"status": "failed", "error": f"HTTP {response.status_code}", "response": response.text}
+        except requests.exceptions.RequestException as e:
+            return {"status": "failed", "error": f"network: {str(e)}"}
+        except Exception as e:
+            return {"status": "failed", "error": str(e)}
         
         try:
             # Clean phone number (remove spaces, dashes, etc.)
@@ -247,23 +301,33 @@ class SMSService:
         return self.send_sms(to_phone, message, channel="generic")
 
     def _clean_phone_number(self, phone_number: str) -> str:
-        """Clean and format phone number for Termii API"""
-        # Remove all non-digit characters except +
-        cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
+        """Clean and format phone number to international E.164 format for Termii API
         
-        # If no country code, assume Nigeria (+234) for Termii
-        if not cleaned.startswith('+'):
-            if len(cleaned) == 11 and cleaned.startswith('0'):  # Nigerian number starting with 0
-                cleaned = '+234' + cleaned[1:]  # Replace 0 with +234
-            elif len(cleaned) == 10:  # Nigerian number without leading 0
-                cleaned = '+234' + cleaned
-            elif len(cleaned) == 11 and cleaned.startswith('234'):  # Nigerian with 234 prefix
-                cleaned = '+' + cleaned
-            else:
-                # For other countries, add + if missing
-                cleaned = '+' + cleaned
-        
-        return cleaned
+        Supports international numbers from all countries.
+        Returns E.164 format (e.g., +447700900123, +2348012345678, +11234567890)
+        """
+        try:
+            # Use phonenumbers library for proper international parsing
+            parsed = phonenumbers.parse(phone_number, None)
+            
+            # Validate the number
+            if not phonenumbers.is_valid_number(parsed):
+                logger.warning(f"Invalid phone number detected: {phone_number}")
+            
+            # Format to E.164 international standard
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            
+        except NumberParseException as e:
+            logger.warning(f"Phone number parse error for {phone_number}: {str(e)}")
+            
+            # Fallback: Basic cleanup
+            cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
+            
+            # Ensure it starts with +
+            if not cleaned.startswith('+'):
+                cleaned = '+' + cleaned.lstrip('0')
+            
+            return cleaned
 
     def get_message_status(self, message_id: str) -> Dict[str, Any]:
         """

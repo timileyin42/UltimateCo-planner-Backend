@@ -30,7 +30,7 @@ class UserContact(BaseModel, TimestampMixin):
     
     # Contact info
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    phone_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    phone_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # E.164: max 15 digits + '+'
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     
     # Contact metadata
@@ -78,6 +78,7 @@ class ContactInvitation(BaseModel, TimestampMixin):
     invitation_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'app_invite', 'event_invite'
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     custom_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    invitation_token: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True, unique=True)
     
     # Delivery info
     delivery_method: Mapped[str] = mapped_column(String(20), nullable=False)  # 'sms', 'email'

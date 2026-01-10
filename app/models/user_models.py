@@ -28,7 +28,7 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     # Profile information
     bio = Column(Text, nullable=True)
     avatar_url = Column(String(500), nullable=True)
-    phone_number = Column(String(20), nullable=True)
+    phone_number = Column(String(20), nullable=True)  # E.164 format: max 15 digits + '+'
     date_of_birth = Column(DateTime, nullable=True)
     
     # Location information

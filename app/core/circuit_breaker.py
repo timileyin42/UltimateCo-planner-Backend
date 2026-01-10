@@ -241,8 +241,8 @@ async def sms_fallback(*args, **kwargs):
     """Fallback for SMS operations when circuit is open."""
     logger.warning("SMS service unavailable, message will be queued for retry")
     return {
-        'status': 'queued',
-        'message': 'SMS service temporarily unavailable, will retry automatically'
+        'status': 'failed',
+        'error': 'SMS circuit open'
     }
 
 async def ai_fallback(*args, **kwargs):
