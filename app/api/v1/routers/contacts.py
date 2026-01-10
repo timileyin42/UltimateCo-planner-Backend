@@ -235,14 +235,6 @@ async def send_bulk_phone_invitations(
 ):
     """Send invitations to phone numbers from device contacts via SMS (Termii)
     
-    **Mobile App Workflow:**
-    1. User taps "Invite Friends" in your Flutter/React Native app
-    2. App opens native phone book/contacts picker
-    3. User selects contacts they want to invite
-    4. App extracts phone numbers from selected contacts
-    5. App sends phone numbers to this endpoint
-    6. Backend sends SMS invites via Termii to all numbers
-    7. Recipients get SMS with invitation link
     
     **Supports International Numbers:**
     - UK: +447700900123, 07700 900123
