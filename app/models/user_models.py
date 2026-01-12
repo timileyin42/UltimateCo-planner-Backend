@@ -168,11 +168,8 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     received_contact_invitations = relationship("ContactInvitation", foreign_keys="ContactInvitation.recipient_id", back_populates="recipient")
     contact_groups = relationship("ContactGroup", back_populates="user", cascade="all, delete-orphan")
     
-    # Biometric authentication relationships
+    # Device relationships
     devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")  # For notification devices
-    biometric_devices = relationship("BiometricDevice", back_populates="user", cascade="all, delete-orphan")  # For biometric auth devices
-    biometric_auths = relationship("BiometricAuth", back_populates="user", cascade="all, delete-orphan")
-    biometric_tokens = relationship("BiometricToken", back_populates="user", cascade="all, delete-orphan")
     
     # Calendar relationships
     calendar_connections = relationship("CalendarConnection", back_populates="user", cascade="all, delete-orphan")
