@@ -153,7 +153,6 @@ async def api_info():
             "ai": "/ai",
             "ai-chat": "/ai-chat",
             "authentication": "/auth",
-            "biometric": "/biometric",
             "calendar": "/calendar",
             "contacts": "/contacts",
             "creative": "/creative",

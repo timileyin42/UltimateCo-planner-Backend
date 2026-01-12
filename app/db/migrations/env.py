@@ -22,7 +22,6 @@ from app.models import (
     notification_models,
     message_models,
     contact_models,
-    biometric_models,
     subscription_models,
     ai_chat_models,
     media_models,
