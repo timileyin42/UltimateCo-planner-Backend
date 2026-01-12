@@ -1,7 +1,7 @@
 """
 Core API Testing Script - Internal Services Only
 Tests APIs that don't require external services (no calendar, Google Maps, Stripe, etc.)
-Focuses on: Notifications, Messages, Invites, Timeline advanced features, Biometric, Creative advanced features
+Focuses on: Notifications, Messages, Invites, Timeline advanced features, Creative advanced features
 """
 import requests
 import json
@@ -128,7 +128,6 @@ test_resources = {
     "game_id": None,
     "game_session_id": None,
     "message_id": None,
-    "biometric_device_id": None,
     "vendor_id": None,
     "user_profile_id": None,
     "generated_questions": [],
@@ -2057,71 +2056,6 @@ def test_get_chat_stats():
         return False
 
 # ============================================================================
-# BIOMETRIC TESTS
-# ============================================================================
-
-def test_register_biometric_device():
-    """Test registering a biometric device"""
-    print("\n" + "="*50)
-    print("Testing Register Biometric Device")
-    print("="*50)
-    
-    device_data = {
-        "device_id": "test-device-" + datetime.now().strftime("%Y%m%d%H%M%S"),
-        "device_name": "Test iPhone 15",
-        "device_type": "ios",
-        "biometric_type": "face_id",
-        "public_key": "test-public-key-12345",
-        "device_info": {
-            "os": "iOS",
-            "version": "17.0"
-        }
-    }
-    
-    try:
-        response = requests.post(
-            f"{API_V1}/biometric/devices/register",
-            json=device_data,
-            headers=get_headers()
-        )
-        if response.status_code in [200, 201]:
-            data = response.json()
-            test_resources["biometric_device_id"] = data.get("device_id")
-            print_success(f"Biometric device registered: {data.get('device_name')}")
-            print_info(f"Device ID: {test_resources['biometric_device_id']}")
-            return True
-        else:
-            print_error(f"Register device failed: {response.status_code}")
-            print_error(f"Response: {response.text}")
-            return False
-    except Exception as e:
-        print_error(f"Register device error: {str(e)}")
-        return False
-
-def test_get_biometric_devices():
-    """Test retrieving biometric devices"""
-    print("\n" + "="*50)
-    print("Testing Get Biometric Devices")
-    print("="*50)
-    
-    try:
-        response = requests.get(
-            f"{API_V1}/biometric/devices",
-            headers=get_headers()
-        )
-        if response.status_code == 200:
-            data = response.json()
-            devices = data.get("devices", [])
-            print_success("Retrieved biometric devices")
-            print_info(f"Device count: {len(devices)}")
-            return True
-        else:
-            print_error(f"Get devices failed: {response.status_code}")
-            return False
-    except Exception as e:
-        print_error(f"Get devices error: {str(e)}")
-        return False
-
 # ============================================================================
 # TIMELINE ADVANCED TESTS
 # ============================================================================
@@ -3497,25 +3431,6 @@ def run_all_tests():
     
     # Test 39: Get chat stats
     result = test_get_chat_stats()
-    if result is True:
-        results["passed"] += 1
-    elif result is False:
-        results["failed"] += 1
-    else:
-        results["skipped"] += 1
-    
-    # BIOMETRIC TESTS
-    # Test 40: Register biometric device
-    result = test_register_biometric_device()
-    if result is True:
-        results["passed"] += 1
-    elif result is False:
-        results["failed"] += 1
-    else:
-        results["skipped"] += 1
-    
-    # Test 41: Get biometric devices
-    result = test_get_biometric_devices()
     if result is True:
         results["passed"] += 1
     elif result is False:

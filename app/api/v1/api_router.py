@@ -2,7 +2,6 @@ from fastapi import APIRouter
 from app.api.v1.routers.ai import ai_router
 from app.api.v1.routers.ai_chat import ai_chat_router
 from app.api.v1.routers.auth import auth_router
-from app.api.v1.routers.biometric import router as biometric_router
 from app.api.v1.routers.calendar import router as calendar_router
 from app.api.v1.routers.contacts import router as contacts_router
 from app.api.v1.routers.creative import creative_router
@@ -40,12 +39,6 @@ api_router.include_router(
     auth_router,
     prefix="/auth",
     tags=["authentication"]
-)
-
-api_router.include_router(
-    biometric_router,
-    prefix="/biometric",
-    tags=["biometric"]
 )
 
 api_router.include_router(
