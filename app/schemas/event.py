@@ -261,14 +261,16 @@ class TaskCreate(TaskBase):
 
 class TaskUpdate(BaseModel):
     """Schema for updating task information"""
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    event_id: int = Field(..., description="Event ID that this task belongs to")
+    category: str = Field(..., description="Task category (e.g., 'Catering', 'Decoration')")
+    title: str = Field(..., min_length=1, max_length=255, description="Task title to identify which task to update")
+    new_title: Optional[str] = Field(None, min_length=1, max_length=255, description="New title if changing")
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     due_date: Optional[datetime] = None
     estimated_cost: Optional[float] = Field(None, ge=0)
     actual_cost: Optional[float] = Field(None, ge=0)
-    category: Optional[str] = None
     assignee_id: Optional[int] = None
     
     @field_validator('status', 'priority', mode='before')
