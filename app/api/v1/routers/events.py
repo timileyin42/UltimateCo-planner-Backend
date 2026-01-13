@@ -52,7 +52,7 @@ async def create_event(
             raise http_403_forbidden("Event creation limit reached for current plan")
 
         event_service = EventService(db)
-        event = event_service.create_event(event_data, current_user.id)
+        event = await event_service.create_event(event_data, current_user.id)
 
         # Update usage after successful event creation
         await subscription_service.increment_event_usage(db, current_user.id)
