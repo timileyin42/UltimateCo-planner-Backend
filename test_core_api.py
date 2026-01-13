@@ -445,19 +445,27 @@ def test_get_event_tasks():
         return False
 
 def test_get_single_task():
-    """Test getting a single task by ID"""
+    """Test getting a single task by event_id, category, and title"""
     print("\n" + "="*50)
     print("Testing Get Single Task")
     print("="*50)
     
-    task_id = test_resources.get("task_id")
-    if not task_id:
-        print_warning("No task ID available. Get event tasks first.")
+    event_id = test_resources.get("event_id")
+    category_name = test_resources.get("task_category_name")
+    task_title = test_resources.get("task_title")
+    
+    if not event_id or not category_name or not task_title:
+        print_warning("No event/task info available. Get event tasks first.")
         return None
     
     try:
         response = requests.get(
-            f"{API_V1}/events/tasks/{task_id}",
+            f"{API_V1}/events/tasks/by-title",
+            params={
+                "event_id": event_id,
+                "category": category_name,
+                "title": task_title
+            },
             headers=get_headers()
         )
         if response.status_code == 200:
@@ -572,6 +580,43 @@ def test_update_task_mark_incomplete():
             return False
     except Exception as e:
         print_error(f"Update task error: {str(e)}")
+        return False
+
+def test_delete_task():
+    """Test deleting a task"""
+    print("\n" + "="*50)
+    print("Testing Delete Task")
+    print("="*50)
+    
+    event_id = test_resources.get("event_id")
+    category_name = test_resources.get("task_category_name")
+    task_title = test_resources.get("task_title")
+    
+    if not event_id or not category_name or not task_title:
+        print_warning("No event/task info available. Get event tasks first.")
+        return None
+    
+    try:
+        response = requests.delete(
+            f"{API_V1}/events/tasks/delete",
+            params={
+                "event_id": event_id,
+                "category": category_name,
+                "title": task_title
+            },
+            headers=get_headers()
+        )
+        if response.status_code == 204:
+            print_success("Task deleted successfully")
+            # Clear the stored task info since it's deleted
+            test_resources["task_title"] = None
+            return True
+        else:
+            print_error(f"Delete task failed: {response.status_code}")
+            print_error(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print_error(f"Delete task error: {str(e)}")
         return False
 
 # ============================================================================
@@ -3117,12 +3162,21 @@ def run_all_tests():
     else:
         results["skipped"] += 1
     
+    # Test 8: Delete task
+    result = test_delete_task()
+    if result is True:
+        results["passed"] += 1
+    elif result is False:
+        results["failed"] += 1
+    else:
+        results["skipped"] += 1
+    
     # NOTIFICATION TESTS
     print("\n" + "="*60)
     print("NOTIFICATION TESTS")
     print("="*60)
     
-    # Test 8: Get notifications
+    # Test 9: Get notifications
     if test_get_notifications():
         results["passed"] += 1
     else:

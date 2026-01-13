@@ -981,14 +981,21 @@ async def update_task(
         else:
             raise http_400_bad_request(f"Failed to update task: {str(e)}")
 
-@events_router.get("/tasks/{task_id}", response_model=TaskResponse)
+@events_router.get("/tasks/by-title", response_model=TaskResponse)
 async def get_task(
-    task_id: int,
+    event_id: int = Query(..., description="Event ID"),
+    category: str = Query(..., description="Task category"),
+    title: str = Query(..., description="Task title"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get details of a single task by ID.
+    Get details of a single task by event_id, category, and title.
+    
+    Query parameters:
+    - event_id: Event ID that the task belongs to
+    - category: Task category (e.g., 'Catering', 'Decoration')
+    - title: Task title
     
     Returns full task information including:
     - Title, description, category
@@ -999,32 +1006,86 @@ async def get_task(
     """
     try:
         event_service = EventService(db)
-        task = event_service.get_task_by_id(task_id, current_user.id)
+        
+        # Verify event exists and user has access
+        event = event_service.get_event_by_id(event_id)
+        if not event:
+            raise http_404_not_found("Event not found")
+        
+        # Find the task by event_id, category, and title
+        task = db.query(Task).filter(
+            Task.event_id == event_id,
+            Task.category == category,
+            Task.title == title
+        ).first()
+        
+        if not task:
+            raise http_404_not_found(f"Task '{title}' not found in category '{category}'")
+        
+        # Check permissions
+        if not event_service._can_edit_event(event, current_user.id):
+            raise http_403_forbidden("Access denied to this task")
+        
         return task
-    except NotFoundError:
-        raise http_404_not_found("Task not found")
-    except AuthorizationError:
-        raise http_403_forbidden("Access denied to this task")
-    except Exception:
-        raise http_400_bad_request("Failed to retrieve task")
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission denied" in str(e).lower() or "access denied" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to retrieve task: {str(e)}")
 
-@events_router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@events_router.delete("/tasks/delete", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
-    task_id: int,
+    event_id: int = Query(..., description="Event ID"),
+    category: str = Query(..., description="Task category"),
+    title: str = Query(..., description="Task title"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Delete a task"""
+    """
+    Delete a task by event_id, category, and title.
+    
+    Query parameters:
+    - event_id: Event ID that the task belongs to
+    - category: Task category (e.g., 'Catering', 'Decoration')
+    - title: Task title to delete
+    """
     try:
         event_service = EventService(db)
-        event_service.delete_task(task_id, current_user.id)
+        
+        # Verify event exists and user has access
+        event = event_service.get_event_by_id(event_id)
+        if not event:
+            raise http_404_not_found("Event not found")
+        
+        # Find the task by event_id, category, and title
+        task = db.query(Task).filter(
+            Task.event_id == event_id,
+            Task.category == category,
+            Task.title == title
+        ).first()
+        
+        if not task:
+            raise http_404_not_found(f"Task '{title}' not found in category '{category}'")
+        
+        # Check permissions
+        if not event_service._can_edit_event(event, current_user.id):
+            raise http_403_forbidden("Permission denied to delete this task")
+        
+        # Delete the task
+        db.delete(task)
+        db.commit()
+        
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except NotFoundError:
-        raise http_404_not_found("Task not found")
-    except AuthorizationError:
-        raise http_403_forbidden("Permission denied to delete this task")
-    except Exception:
-        raise http_400_bad_request("Failed to delete task")
+    except Exception as e:
+        db.rollback()
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission denied" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to delete task: {str(e)}")
 
 # Expense management endpoints
 @events_router.post("/{event_id}/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
