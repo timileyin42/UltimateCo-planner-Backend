@@ -27,6 +27,7 @@ from app.schemas.location import (
 from app.services.google_maps_service import google_maps_service
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.models.user_models import User
+from app.models.event_models import Task
 from app.models.shared_models import EventStatus, EventType
 from app.models.event_models import Event, EventInvitation
 from app.models.shared_models import RSVPStatus
@@ -902,66 +903,83 @@ async def get_event_tasks(
         else:
             raise http_400_bad_request("Failed to retrieve tasks")
 
-@events_router.put("/tasks/{task_id}", response_model=TaskResponse)
+@events_router.put("/tasks/update", response_model=TaskResponse)
 async def update_task(
-    task_id: int,
-    task_data: TaskCategoriesUpdate,
+    task_data: TaskUpdate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Update a task using the category/items structure used across the app.
-    Send the category that contains the task with its updated fields.
+    Update a task by event_id, category, and title (no task_id needed).
+    Works like event creation - specify which task by category and title.
+    
+    Request body example:
+    {
+        "event_id": 123,
+        "category": "Catering",
+        "title": "Order cake",
+        "new_title": "Order wedding cake",  // Optional: new title
+        "description": "Contact bakery",
+        "status": "completed",
+        "priority": "high",
+        "due_date": "2026-01-20T10:00:00",
+        "estimated_cost": 100.0,
+        "actual_cost": 95.0,
+        "assignee_id": 789
+    }
     """
     try:
         event_service = EventService(db)
-
-        # Extract the target task payload from category/items list
-        target_item = None
-        target_category = None
-        for category in task_data.task_categories:
-            for item in category.items:
-                if item.id == task_id:
-                    target_item = item
-                    target_category = category.name
-                    break
-            if target_item:
-                break
-
-        if not target_item:
-            raise http_400_bad_request("Task payload must include the task_id being updated")
-
-        # Map payload into the existing TaskUpdate schema
-        mapped_status = None
-        if target_item.completed is True:
-            mapped_status = TaskStatus.COMPLETED
-        elif target_item.completed is False:
-            mapped_status = TaskStatus.TODO
-
-        mapped_update_data = {
-            "category": target_category,
-        }
-
-        if mapped_status is not None:
-            mapped_update_data["status"] = mapped_status
-        if target_item.assignee_id is not None:
-            mapped_update_data["assignee_id"] = target_item.assignee_id
-        if target_item.title is not None:
-            mapped_update_data["title"] = target_item.title
-        if target_item.description is not None:
-            mapped_update_data["description"] = target_item.description
-
-        mapped_update = TaskUpdate(**mapped_update_data)
-
-        task = event_service.update_task(task_id, mapped_update, current_user.id)
+        
+        # Verify event exists and user has access
+        event = event_service.get_event_by_id(task_data.event_id)
+        if not event:
+            raise http_404_not_found("Event not found")
+        
+        # Find the task by event_id, category, and title
+        task = db.query(Task).filter(
+            Task.event_id == task_data.event_id,
+            Task.category == task_data.category,
+            Task.title == task_data.title
+        ).first()
+        
+        if not task:
+            raise http_404_not_found(f"Task '{task_data.title}' not found in category '{task_data.category}'")
+        
+        # Check permissions
+        from app.models.event_models import Event
+        if not event_service._can_edit_event(event, current_user.id):
+            raise http_403_forbidden("Permission denied to edit tasks in this event")
+        
+        # Update task fields directly
+        if task_data.new_title:
+            task.title = task_data.new_title
+        if task_data.description is not None:
+            task.description = task_data.description
+        if task_data.status is not None:
+            task.status = task_data.status
+        if task_data.priority is not None:
+            task.priority = task_data.priority
+        if task_data.due_date is not None:
+            task.due_date = task_data.due_date
+        if task_data.estimated_cost is not None:
+            task.estimated_cost = task_data.estimated_cost
+        if task_data.actual_cost is not None:
+            task.actual_cost = task_data.actual_cost
+        if task_data.assignee_id is not None:
+            task.assigned_to_id = task_data.assignee_id
+        
+        db.commit()
+        db.refresh(task)
         return task
     except Exception as e:
+        db.rollback()
         if "not found" in str(e).lower():
-            raise http_404_not_found("Task not found")
+            raise http_404_not_found(str(e))
         elif "permission denied" in str(e).lower():
             raise http_403_forbidden("Permission denied to edit this task")
         else:
-            raise http_400_bad_request("Failed to update task")
+            raise http_400_bad_request(f"Failed to update task: {str(e)}")
 
 @events_router.get("/tasks/{task_id}", response_model=TaskResponse)
 async def get_task(
