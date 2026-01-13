@@ -52,7 +52,7 @@ class EventService:
         
         return event
     
-    def create_event(self, event_data: EventCreate, creator_id: int) -> Event:
+    async def create_event(self, event_data: EventCreate, creator_id: int) -> Event:
         """Create a new event with location optimization"""
         # Validate creator exists
         creator = self.user_service.get_user_by_id(creator_id)
@@ -74,13 +74,11 @@ class EventService:
                 user_coords = event_data.user_coordinates
                 
                 # Optimize location using Google Maps
-                optimization_result = asyncio.run(
-                    google_maps_service.optimize_location_input(
-                        user_input=event_data.location_input,
-                        user_coordinates=user_coords,
-                        include_nearby=False,
-                        max_suggestions=1
-                    )
+                optimization_result = await google_maps_service.optimize_location_input(
+                    user_input=event_data.location_input,
+                    user_coordinates=user_coords,
+                    include_nearby=False,
+                    max_suggestions=1
                 )
                 
                 if optimization_result.optimized and optimization_result.validation.is_valid:

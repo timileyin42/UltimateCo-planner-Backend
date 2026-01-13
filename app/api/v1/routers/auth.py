@@ -421,23 +421,45 @@ async def google_mobile_sign_in(
         raise http_400_bad_request(f"Google sign-in failed: {str(e)}")
 
 # OTP-based verification endpoints
-@auth_router.post("/verify-email-otp")
+@auth_router.post("/verify-email-otp", response_model=TokenResponse)
 @rate_limit_email_verification
 async def verify_email_with_otp(
     request: Request,
     verification: OTPVerification,
     db: Session = Depends(get_db)
 ):
-    """Verify email address using OTP"""
+    """Verify email address using OTP and return JWT tokens for auto-login"""
     try:
         auth_service = AuthService(db)
         success = auth_service.verify_email_otp(verification.email, verification.otp)
         
         if success:
-            return {
-                "message": "Email verified successfully!",
-                "verified": True
-            }
+            # Get the verified user
+            from app.db.user_database import UserDatabase
+            user_db = UserDatabase(db)
+            user = user_db.get_user_by_email(verification.email)
+            
+            if not user:
+                raise http_404_not_found("User not found")
+            
+            # Extract session information for auto-login
+            ip_address = request.client.host if request.client else None
+            user_agent = request.headers.get("user-agent")
+            
+            # Create session and return tokens (auto-login after verification)
+            access_token, refresh_token = auth_service.create_user_session(
+                user,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            return TokenResponse(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                user=user
+            )
         else:
             raise http_400_bad_request("Email verification failed")
             
