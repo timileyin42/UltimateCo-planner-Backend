@@ -7,9 +7,9 @@ from app.models.user_models import User
 from app.models.event_models import Event, EventInvitation
 import os
 from datetime import datetime
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Initialize Resend
 resend.api_key = settings.RESEND_API_KEY

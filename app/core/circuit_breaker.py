@@ -6,12 +6,12 @@ Provides fault tolerance and graceful degradation for external API calls.
 from typing import Any, Callable, Dict, Optional, Type, Union
 from functools import wraps
 import asyncio
-import logging
 from datetime import datetime, timedelta
 from pybreaker import CircuitBreaker, CircuitBreakerError
 from app.core.config import settings
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class CircuitBreakerConfig:
     """Configuration for different circuit breakers."""

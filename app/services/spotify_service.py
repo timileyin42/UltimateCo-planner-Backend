@@ -2,7 +2,6 @@
 Spotify Web API integration service for playlist and track management.
 """
 import base64
-import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import httpx
@@ -11,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.user_models import User
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SpotifyService:

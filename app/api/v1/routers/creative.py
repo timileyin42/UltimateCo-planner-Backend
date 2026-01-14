@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import logging
 import json
 from app.core.deps import get_db, get_current_active_user
 from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden
 from app.services.creative_service import CreativeService
 from app.services.spotify_service import SpotifyService
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 from app.schemas.creative import (
     # Moodboard schemas
     MoodboardCreate, MoodboardUpdate, MoodboardResponse, MoodboardListResponse,

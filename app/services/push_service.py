@@ -2,7 +2,6 @@
 Firebase Cloud Messaging (FCM) Push Notification Service
 """
 import json
-import logging
 from datetime import datetime
 from threading import Lock
 from typing import List, Dict, Any, Optional
@@ -11,8 +10,9 @@ from firebase_admin.exceptions import FirebaseError
 from app.core.config import settings
 from app.core.circuit_breaker import firebase_circuit_breaker, firebase_fallback
 from app.models.notification_models import DevicePlatform, NotificationType
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class PushNotificationService:
     """Service for sending push notifications via Firebase Cloud Messaging."""

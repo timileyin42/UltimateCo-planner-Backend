@@ -2,13 +2,13 @@
 WebSocket Connection Manager for Real-time Notifications
 """
 import json
-import logging
 from typing import Dict, List, Set, Optional, Any
 from fastapi import WebSocket, WebSocketDisconnect
 from datetime import datetime
 import asyncio
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConnectionManager:

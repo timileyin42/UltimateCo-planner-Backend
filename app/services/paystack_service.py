@@ -14,11 +14,11 @@ from app.models.subscription_models import (
     SubscriptionStatus, PaymentStatus, BillingInterval, PaymentIdempotencyKey
 )
 from app.core.errors import PaymentError
-import logging
 import uuid
 import json
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PaystackService:

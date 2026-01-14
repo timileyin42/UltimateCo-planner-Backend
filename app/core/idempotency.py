@@ -12,10 +12,10 @@ from app.db.base import Base
 import uuid
 import json
 import hashlib
-import logging
 from fastapi import HTTPException, status
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class IdempotencyKey(Base):
     """Model for storing idempotency keys and their results."""

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Header, Backgrou
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 import json
-import logging
 
 from app.core.deps import get_db, get_current_user
 from app.models.user_models import User
@@ -15,8 +14,9 @@ from app.services.subscription_service import SubscriptionService
 from app.tasks.paystack_tasks import process_paystack_event_task
 from app.models.subscription_models import BillingInterval
 from pydantic import BaseModel, EmailStr
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/paystack", tags=["paystack", "payments"])
 

@@ -13,9 +13,9 @@ from app.models.vendor_models import Vendor, VendorBooking, VendorPayment, Vendo
 from app.models.user_models import User
 from app.models.event_models import Event
 from app.core.database_performance import query_performance_tracker, query_timer
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class VendorQueryOptimizer:
     """Optimized queries for vendor-related operations"""

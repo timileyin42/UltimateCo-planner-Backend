@@ -3,7 +3,6 @@ Google Cloud Storage service for file uploads and management.
 Provides secure file upload, download, and management functionality.
 """
 
-import logging
 import os
 import base64
 import json
@@ -14,8 +13,9 @@ from google.cloud import storage
 from google.oauth2 import service_account
 from google.cloud.exceptions import NotFound, GoogleCloudError
 from app.core.config import get_settings
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class GCPStorageService:
     """Service for managing file uploads to Google Cloud Storage."""

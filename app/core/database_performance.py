@@ -6,7 +6,6 @@ including query analysis, connection pool monitoring, and performance metrics.
 """
 
 import time
-import logging
 from functools import wraps
 from typing import Dict, List, Any, Optional, Callable
 from sqlalchemy import event, text
@@ -17,9 +16,10 @@ from contextlib import contextmanager
 import threading
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from app.core.logger import get_perf_logger
 
 # Performance monitoring logger
-perf_logger = logging.getLogger("database.performance")
+perf_logger = get_perf_logger()
 
 class QueryPerformanceMonitor:
     """Monitor and log slow database queries"""

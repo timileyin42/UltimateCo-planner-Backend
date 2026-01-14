@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from functools import wraps
 from typing import Dict, Any, Callable, List, Optional, Union
 import time
-import logging
 import redis
 import json
 import hashlib
@@ -22,9 +21,10 @@ from datetime import timedelta
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.db.session import SessionLocal
+from app.core.logger import get_logger
 
 # Setup logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Redis client for caching
 redis_client = redis.Redis.from_url(
