@@ -3,15 +3,15 @@ Google Maps API service for location optimization and geocoding.
 Provides intelligent location suggestions, validation, and optimization.
 """
 
-import logging
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 import googlemaps
 from googlemaps.exceptions import ApiError, Timeout, TransportError
 from app.core.config import get_settings
 from app.schemas.location import Coordinates
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

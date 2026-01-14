@@ -14,10 +14,10 @@ from app.schemas.subscription_schemas import (
 )
 from app.models.user_models import User
 import stripe
-import logging
 import uuid
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 subscription_router = APIRouter()
 

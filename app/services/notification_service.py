@@ -2,7 +2,6 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, time
 import asyncio
-import logging
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.event_repo import EventRepository
 from app.repositories.user_repo import UserRepository
@@ -17,9 +16,10 @@ from app.services.email_service import EmailService
 from app.services.sms_service import SMSService
 from app.services.push_service import push_service
 from app.services.websocket_manager import websocket_manager
+from app.core.logger import get_logger
 
 # Initialize logger
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class NotificationService:
     """Service for managing smart reminders and notifications."""

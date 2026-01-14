@@ -2,15 +2,15 @@
 Webhook endpoints for external service integrations.
 """
 
-import logging
 from typing import Optional
 from fastapi import APIRouter, Request, Header, HTTPException, Response
 from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.services.stripe_service import StripeService
 from app.tasks.payments import process_stripe_event_task
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 stripe_service = StripeService()

@@ -3,7 +3,6 @@ Background task to clean up expired QR codes from GCP Cloud Storage bucket.
 Deletes QR codes associated with expired invite codes and invite links.
 """
 
-import logging
 from datetime import datetime
 import asyncio
 from sqlalchemy.orm import Session
@@ -11,8 +10,9 @@ from app.core.database import SessionLocal
 from app.models.invite_models import InviteCode, InviteLink
 from app.services.gcp_storage_service import GCPStorageService
 from app.tasks.celery_app import celery_app
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def cleanup_expired_qr_codes():

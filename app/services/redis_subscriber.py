@@ -3,15 +3,15 @@ Redis pub/sub listener for broadcasting real-time updates to WebSocket clients.
 """
 
 import json
-import logging
 import asyncio
 from typing import Dict, Any, Optional
 import redis.asyncio as redis
 from app.core.config import settings
 from app.services.websocket_manager import websocket_manager
 from app.services.push_service import push_service
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RedisSubscriber:

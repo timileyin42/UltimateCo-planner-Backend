@@ -3,7 +3,6 @@ Celery tasks for processing Paystack webhook events.
 """
 
 import json
-import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from celery import Task
@@ -12,8 +11,9 @@ from app.tasks.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.services.paystack_service import paystack_service
 from app.models.subscription_models import PaystackEventLog
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DatabaseTask(Task):

@@ -65,11 +65,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int
     
     # Subscription & Billing Configuration
-    FREE_PLAN_EVENT_LIMIT: int = 30  # Monthly event creation limit for free tier users
+    FREE_PLAN_EVENT_LIMIT: int  # Monthly event creation limit for free tier users
     
     # Rate Limiting Configuration
     REDIS_URL: str
     RATE_LIMIT_ENABLED: bool
+    
+    # Logging Configuration
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     
     # Celery Configuration
     CELERY_BROKER_URL: str

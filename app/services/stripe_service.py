@@ -11,9 +11,9 @@ from app.models.user_models import User
 from app.core.errors import PlanEtalException
 from app.core.circuit_breaker import stripe_circuit_breaker, stripe_fallback
 from app.core.idempotency import IdempotencyManager, idempotent_operation
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class StripeError(PlanEtalException):
     """Stripe-related errors."""

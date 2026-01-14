@@ -23,9 +23,9 @@ from app.repositories.event_repo import EventRepository
 from app.repositories.user_repo import UserRepository
 from app.repositories.calendar_repo import CalendarConnectionRepository
 import asyncio
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class EventService:
     """Service for event-related business logic"""

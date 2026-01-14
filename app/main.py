@@ -4,7 +4,6 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import asyncio
-import logging
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -14,8 +13,9 @@ from app.core.config import settings
 from app.services.redis_subscriber import start_redis_listener, stop_redis_listener
 from app.core.db_optimizations import create_composite_indexes, read_replica_manager
 from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create FastAPI instance
 app = FastAPI(

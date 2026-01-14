@@ -13,9 +13,9 @@ from app.services.paystack_service import paystack_service
 # from app.services.stripe_service import StripeService
 from app.core.errors import PlanEtalException, PaymentError
 from app.core.config import settings
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class SubscriptionError(PlanEtalException):
     """Subscription-related errors."""

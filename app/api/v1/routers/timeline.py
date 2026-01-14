@@ -34,7 +34,7 @@ from app.schemas.timeline import (
 from app.models.user_models import User
 from pydantic import BaseModel
 import asyncio
-import logging
+from app.core.logger import get_logger
 
 # Sharing schema
 class TimelineShareRequest(BaseModel):
@@ -42,7 +42,7 @@ class TimelineShareRequest(BaseModel):
     message: Optional[str] = None
     can_edit: bool = False
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 timeline_router = APIRouter()
 

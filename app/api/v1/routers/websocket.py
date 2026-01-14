@@ -2,7 +2,6 @@
 WebSocket Router for Real-time Notifications
 """
 import json
-import logging
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException, status
 from fastapi.security import HTTPBearer
@@ -11,8 +10,9 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user_websocket, get_current_user
 from app.services.websocket_manager import websocket_manager
 from app.models.user_models import User
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 security = HTTPBearer()
 
 websocket_router = APIRouter()

@@ -11,9 +11,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 import redis.asyncio as redis
 from app.core.config import settings
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Redis connection for rate limiting
 redis_client: Optional[redis.Redis] = None

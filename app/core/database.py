@@ -6,11 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-import logging
 from app.core.config import settings
+from app.core.logger import get_logger
 
 # Setup logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create Base class for models
 Base = declarative_base()

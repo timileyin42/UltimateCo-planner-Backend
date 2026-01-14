@@ -1,13 +1,13 @@
 from typing import Optional, Dict, Any
 import requests
 from fastapi import HTTPException, status
-import logging
 import phonenumbers
 from phonenumbers import NumberParseException
 from app.core.config import get_settings
 from app.core.circuit_breaker import sms_circuit_breaker, sms_fallback
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SMSService:

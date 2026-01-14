@@ -5,7 +5,6 @@ Use paystack_tasks.py for new Paystack payment processing.
 """
 
 import json
-import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 from celery import Task
@@ -19,8 +18,9 @@ from app.models.subscription_models import (
     SubscriptionStatus, PaymentStatus
 )
 from app.core.config import settings
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Initialize Redis client for pub/sub
 redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
