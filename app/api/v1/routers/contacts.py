@@ -358,7 +358,7 @@ async def respond_to_invitation(
     return contact_service.respond_to_invitation(
         invitation_id=invitation_id,
         user_id=current_user.id,
-        accept=response_data.accept
+        rsvp_status=response_data.status
     )
 
 

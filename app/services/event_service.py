@@ -135,7 +135,7 @@ class EventService:
         
         return event
     
-    def update_event(self, event_id: int, event_data: EventUpdate, user_id: int) -> Event:
+    async def update_event(self, event_id: int, event_data: EventUpdate, user_id: int) -> Event:
         """Update event information"""
         event = self.get_event_by_id(event_id, user_id)
         if not event:
@@ -151,8 +151,50 @@ class EventService:
             if update_data['end_datetime'] and update_data['end_datetime'] <= update_data['start_datetime']:
                 raise ValidationError("End date must be after start date")
         
+        # Handle location optimization if requested
+        if event_data.location_input and event_data.auto_optimize_location:
+            try:
+                # Optimize location using Google Maps
+                optimization_result = await google_maps_service.optimize_location_input(
+                    user_input=event_data.location_input,
+                    user_coordinates=event_data.user_coordinates,
+                    include_nearby=False,
+                    max_suggestions=1
+                )
+                
+                if optimization_result.optimized and optimization_result.validation.is_valid:
+                    # Update event data with optimized location
+                    update_data['venue_address'] = optimization_result.validation.formatted_address
+                    if optimization_result.validation.coordinates:
+                        update_data['latitude'] = optimization_result.validation.coordinates.latitude
+                        update_data['longitude'] = optimization_result.validation.coordinates.longitude
+                
+                    # Extract venue name from the first autocomplete suggestion if available
+                    if not update_data.get('venue_name') and optimization_result.autocomplete_suggestions:
+                        first_suggestion = optimization_result.autocomplete_suggestions[0]
+                        update_data['venue_name'] = first_suggestion.name
+            
+            except Exception as e:
+                # Log the error but don't fail event update
+                print(f"Location optimization failed during update: {str(e)}")
+                # Fall back to using the raw location input if provided and venue_address not set
+                if event_data.location_input and 'venue_address' not in update_data:
+                    update_data['venue_address'] = event_data.location_input
+
+        # Remove helper fields from update_data
+        update_data.pop('location_input', None)
+        update_data.pop('user_coordinates', None)
+        update_data.pop('auto_optimize_location', None)
+        
+        # Extract task categories if present
+        task_categories_input = update_data.pop('task_categories', None)
+        
         # Update event using repository
         updated_event = self.event_repo.update(event_id, update_data)
+        
+        # Sync task categories if provided
+        if task_categories_input is not None:
+            self.sync_tasks_from_category_payload(updated_event, task_categories_input, user_id)
         
         # Sync with connected calendars
         asyncio.create_task(self._sync_event_to_calendars(updated_event, 'update'))
@@ -282,6 +324,50 @@ class EventService:
         return events
     
     # Event invitation methods
+    def rsvp_to_event(self, event_id: int, user_id: int, rsvp_data: EventInvitationUpdate) -> EventInvitation:
+        """RSVP to an event (create or update invitation)"""
+        event = self.get_event_by_id(event_id)
+        if not event:
+            raise NotFoundError("Event not found")
+            
+        # Check if user is already invited/participating
+        invitation = self.event_repo.get_invitation_by_event_and_user(event_id, user_id)
+        
+        if invitation:
+            # Update existing invitation
+            invitation.rsvp_status = rsvp_data.rsvp_status
+            invitation.response_message = rsvp_data.response_message
+            invitation.plus_one_name = rsvp_data.plus_one_name
+            invitation.dietary_restrictions = rsvp_data.dietary_restrictions
+            invitation.special_requests = rsvp_data.special_requests
+            invitation.responded_at = datetime.utcnow()
+            
+            self.db.commit()
+            self.db.refresh(invitation)
+        else:
+            # Check if event is public or allows self-invites
+            # For now, we'll allow RSVP if the event is public OR if we treat this as a "self-invite" mechanism
+            # The user mentioned "bulk phone invite", implying they have a link. 
+            # If they have a link, they should be able to RSVP.
+            
+            # Create new invitation with RSVP status
+            invitation = EventInvitation(
+                event_id=event_id,
+                user_id=user_id,
+                rsvp_status=rsvp_data.rsvp_status,
+                response_message=rsvp_data.response_message,
+                plus_one_name=rsvp_data.plus_one_name,
+                dietary_restrictions=rsvp_data.dietary_restrictions,
+                special_requests=rsvp_data.special_requests,
+                responded_at=datetime.utcnow(),
+                invited_at=datetime.utcnow() # Self-invited now
+            )
+            self.db.add(invitation)
+            self.db.commit()
+            self.db.refresh(invitation)
+            
+        return invitation
+
     def invite_users(self, event_id: int, invitation_data: EventInvitationCreate, inviter_id: int) -> List[EventInvitation]:
         """Invite users to an event"""
         event = self.get_event_by_id(event_id, inviter_id)
@@ -1092,6 +1178,78 @@ class EventService:
                 tasks_created = True
 
         if tasks_created:
+            self.db.commit()
+            self.db.refresh(event)
+
+    def sync_tasks_from_category_payload(
+        self,
+        event: Event,
+        categories: List[TaskCategory],
+        user_id: int
+    ) -> None:
+        """Sync event tasks from provided category payload during update."""
+        if not categories:
+            return
+
+        # We need to map existing tasks to update them
+        existing_tasks = {task.id: task for task in event.tasks}
+        tasks_updated = False
+        
+        for category in categories:
+            category_name = (category.name or "").strip() or "Uncategorized"
+            
+            for item in category.items:
+                title = (item.title or "").strip()
+                if not title:
+                    continue
+                
+                # Check if task exists (by ID)
+                if item.id and item.id in existing_tasks:
+                    task = existing_tasks[item.id]
+                    # Update task fields
+                    task.title = title
+                    task.description = item.description
+                    task.category = category_name
+                    
+                    # Update status
+                    if item.completed and task.status != TaskStatus.COMPLETED:
+                        task.status = TaskStatus.COMPLETED
+                        task.completed_at = datetime.utcnow()
+                    elif not item.completed and task.status == TaskStatus.COMPLETED:
+                        task.status = TaskStatus.TODO
+                        task.completed_at = None
+                        
+                    # Update assignee if provided
+                    if item.assignee_id is not None:
+                         task.assigned_to_id = item.assignee_id
+                    
+                    tasks_updated = True
+                    
+                else:
+                    # Create new task
+                    assignee_id = item.assignee_id
+                    # Validate assignee if provided
+                    if assignee_id:
+                        assignee = self.user_service.get_user_by_id(assignee_id)
+                        if not assignee:
+                            assignee_id = None
+                    
+                    new_task = Task(
+                        title=title,
+                        description=item.description,
+                        category=category_name,
+                        event_id=event.id,
+                        creator_id=user_id,
+                        assigned_to_id=assignee_id,
+                        status=TaskStatus.COMPLETED if item.completed else TaskStatus.TODO
+                    )
+                    if item.completed:
+                        new_task.completed_at = datetime.utcnow()
+                        
+                    self.db.add(new_task)
+                    tasks_updated = True
+        
+        if tasks_updated:
             self.db.commit()
             self.db.refresh(event)
 

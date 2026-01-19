@@ -33,7 +33,7 @@ delete_user.py
 # Temporary folders
 tmp/
 temp/
-
+logs/
 .swp
 
 # Documentation
