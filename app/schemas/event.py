@@ -109,6 +109,20 @@ class EventUpdate(BaseModel):
     is_public: Optional[bool] = None
     max_attendees: Optional[int] = Field(None, ge=1)
     requires_approval: Optional[bool] = None
+    
+    # Missing fields added for consistency with EventCreate
+    location_input: Optional[str] = Field(None, description="Raw location input for optimization")
+    user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")
+    auto_optimize_location: Optional[bool] = Field(None, description="Whether to automatically optimize location using Google Maps")
+    latitude: Optional[float] = Field(None, ge=-90, le=90, description="Venue latitude coordinate")
+    longitude: Optional[float] = Field(None, ge=-180, le=180, description="Venue longitude coordinate")
+    
+    # Task categories for nested task updates
+    task_categories: Optional[List["TaskCategory"]] = Field(
+        default=None,
+        description="Optional task categories to update/sync tasks during event update"
+    )
+
 
 class EventDuplicateRequest(BaseModel):
     """Schema for duplicating an event"""
@@ -310,7 +324,7 @@ class TaskUpdate(BaseModel):
 
 class TaskCategoryItemUpdate(BaseModel):
     """Task item payload used when updating tasks via category structure"""
-    id: int
+    id: Optional[int] = None
     title: Optional[str] = None
     description: Optional[str] = None
     completed: Optional[bool] = None

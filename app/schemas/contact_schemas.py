@@ -1,11 +1,12 @@
 from pydantic import BaseModel, Field, EmailStr, validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 import phonenumbers
 from phonenumbers import NumberParseException
 
 from app.models.contact_models import ContactInviteStatus
+from app.models.shared_models import RSVPStatus
 
 
 class ContactBase(BaseModel):
@@ -143,7 +144,7 @@ class ContactInvitationResponse(ContactInvitationBase):
 
 
 class InvitationResponseRequest(BaseModel):
-    accept: bool
+    status: Literal["accepted", "declined"]
 
 
 class ContactGroupBase(BaseModel):

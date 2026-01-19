@@ -12,7 +12,8 @@ from app.models.contact_models import (
     UserContact, ContactGroup, ContactInvitation, ContactInviteStatus, ContactGroupMembership, ContactSource
 )
 from app.models.user_models import User
-from app.models.event_models import Event
+from app.models.event_models import Event, EventInvitation
+from app.models.shared_models import RSVPStatus
 from app.core.database import get_db
 from app.services.sms_service import SMSService
 
@@ -364,7 +365,7 @@ class ContactService:
         self, 
         invitation_id: int, 
         user_id: int, 
-        accept: bool
+        rsvp_status: str
     ) -> ContactInvitation:
         """Accept or decline an invitation"""
         invitation = self.db.query(ContactInvitation).filter(
@@ -381,8 +382,41 @@ class ContactService:
                 detail="Invitation not found or already responded"
             )
         
-        invitation.status = ContactInviteStatus.ACCEPTED if accept else ContactInviteStatus.DECLINED
+        # Map rsvp_status to ContactInviteStatus
+        if rsvp_status == "accepted":
+            invitation.status = ContactInviteStatus.ACCEPTED
+        elif rsvp_status == "declined":
+            invitation.status = ContactInviteStatus.DECLINED
+        
         invitation.responded_at = datetime.utcnow()
+        invitation.recipient_id = user_id  # Ensure recipient is linked
+
+        # If event_id exists, create/update EventInvitation to ensure it appears in upcoming events
+        if invitation.event_id:
+            # Check if EventInvitation already exists
+            event_invite = self.db.query(EventInvitation).filter(
+                and_(
+                    EventInvitation.event_id == invitation.event_id,
+                    EventInvitation.user_id == user_id
+                )
+            ).first()
+            
+            # Map rsvp_status to RSVPStatus (for event invitation)
+            event_rsvp_status = RSVPStatus.ACCEPTED if rsvp_status == "accepted" else RSVPStatus.DECLINED
+            
+            if not event_invite:
+                event_invite = EventInvitation(
+                    event_id=invitation.event_id,
+                    user_id=user_id,
+                    rsvp_status=event_rsvp_status,
+                    invited_at=invitation.created_at,
+                    responded_at=datetime.utcnow()
+                )
+                self.db.add(event_invite)
+            else:
+                # Update existing invitation status
+                event_invite.rsvp_status = event_rsvp_status
+                event_invite.responded_at = datetime.utcnow()
         
         self.db.commit()
         self.db.refresh(invitation)

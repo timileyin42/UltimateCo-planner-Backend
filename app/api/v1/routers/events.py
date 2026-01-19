@@ -772,6 +772,30 @@ async def get_event_invitations(
         else:
             raise http_400_bad_request("Failed to retrieve invitations")
 
+@events_router.post("/{event_id}/rsvp", response_model=EventInvitationResponse)
+async def rsvp_to_event(
+    event_id: int,
+    rsvp_data: EventInvitationUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    RSVP to an event (Create or Update attendance).
+    
+    This endpoint allows a user to RSVP to an event they have a link to (e.g., from bulk invite),
+    even if they don't have a specific invitation record yet.
+    It will create an invitation record if one doesn't exist, or update it if it does.
+    """
+    try:
+        event_service = EventService(db)
+        invitation = event_service.rsvp_to_event(event_id, current_user.id, rsvp_data)
+        return invitation
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found("Event not found")
+        else:
+            raise http_400_bad_request(f"Failed to RSVP: {str(e)}")
+
 @events_router.put("/invitations/{invitation_id}", response_model=EventInvitationResponse)
 async def respond_to_invitation(
     invitation_id: int,
@@ -903,14 +927,53 @@ async def get_event_tasks(
         else:
             raise http_400_bad_request("Failed to retrieve tasks")
 
-@events_router.put("/tasks/update", response_model=TaskResponse)
+@events_router.put("/{event_id}/tasks", response_model=TaskCategoriesResponse)
+async def update_event_tasks(
+    event_id: int,
+    payload: TaskCategoriesUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update tasks for an event using the category structure.
+    This works exactly like event creation/update - pass the full structure of categories and items.
+    
+    - Existing tasks (matched by ID) will be updated.
+    - New tasks (no ID) will be created.
+    - Tasks are organized by category.
+    """
+    try:
+        event_service = EventService(db)
+        event = event_service.get_event_by_id(event_id, current_user.id)
+        if not event:
+            raise http_404_not_found("Event not found")
+            
+        if not event_service._can_edit_event(event, current_user.id):
+            raise http_403_forbidden("Permission denied to edit tasks for this event")
+            
+        event_service.sync_tasks_from_category_payload(event, payload.task_categories, current_user.id)
+        
+        # Return updated structure
+        return await get_event_tasks(event_id, current_user, db)
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission denied" in str(e).lower() or "access denied" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to update tasks: {str(e)}")
+
+@events_router.put("/tasks/update", response_model=TaskResponse, deprecated=True)
 async def update_task(
     task_data: TaskUpdate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Update a task by event_id, category, and title (no task_id needed).
+    [DEPRECATED] Update a task by event_id, category, and title (no task_id needed).
+    Please use PUT /api/v1/events/{event_id}/tasks instead for bulk updates and better structure.
+    
     Works like event creation - specify which task by category and title.
     
     Request body example:
