@@ -475,6 +475,39 @@ class NotificationService:
         
         return self.notification_repo.get_automation_rules(pagination, filters)
     
+    # Device Management
+    def register_device(
+        self, 
+        user_id: int, 
+        device_token: str, 
+        device_type: str,
+        device_name: Optional[str] = None,
+        app_version: Optional[str] = None
+    ):
+        """Register a user device for push notifications."""
+        device_data = {
+            'user_id': user_id,
+            'device_token': device_token,
+            'platform': DevicePlatform(device_type.lower()), # Map string to enum, ensuring lowercase
+            'device_name': device_name,
+            'app_version': app_version,
+            'is_active': True,
+            'last_used_at': datetime.utcnow()
+        }
+        return self.notification_repo.register_device(device_data)
+
+    def get_user_devices(self, user_id: int) -> List:
+        """Get user devices."""
+        return self.notification_repo.get_user_devices(user_id)
+
+    def unregister_device(self, user_id: int, device_token: str) -> bool:
+        """Unregister a user device by token."""
+        return self.notification_repo.unregister_device(user_id, device_token)
+
+    def unregister_device_by_id(self, user_id: int, device_id: int) -> bool:
+        """Unregister a user device by ID."""
+        return self.notification_repo.unregister_device_by_id(user_id, device_id)
+
     # Helper methods
     def _get_event_with_access(self, event_id: int, user_id: int):
         """Get event and verify user has access."""
@@ -725,13 +758,9 @@ class NotificationService:
     async def _send_push_notification(self, notification) -> bool:
         """Send push notification using Firebase Cloud Messaging."""
         try:
-            # Get user's active devices
-            user_devices = self.user_repo.get_by_id(notification.recipient_id)
-            if not user_devices or not user_devices.devices:
-                return False
+            # Get active device tokens using the repository method
+            active_devices = self.notification_repo.get_user_devices(notification.recipient_id, active_only=True)
             
-            # Get active device tokens
-            active_devices = [device for device in user_devices.devices if device.is_active]
             if not active_devices:
                 return False
             
@@ -779,7 +808,7 @@ class NotificationService:
                 
         except Exception as e:
             # Log error but don't raise to avoid breaking notification flow
-            print(f"Error sending push notification: {str(e)}")
+            logger.error(f"Error sending push notification: {str(e)}")
             return False
     
     async def _send_in_app_notification(self, notification) -> bool:
