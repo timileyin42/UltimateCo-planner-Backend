@@ -8,7 +8,12 @@ from dataclasses import dataclass
 import googlemaps
 from googlemaps.exceptions import ApiError, Timeout, TransportError
 from app.core.config import get_settings
-from app.schemas.location import Coordinates
+from app.schemas.location import (
+    Coordinates, 
+    LocationOptimizationResponse, 
+    LocationValidation,
+    LocationSuggestion as LocationSuggestionSchema
+)
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -397,7 +402,7 @@ class GoogleMapsService:
                 original_input=user_input,
                 validation=validation_result,
                 autocomplete_suggestions=[
-                    LocationSuggestion(
+                    LocationSuggestionSchema(
                         place_id=s.place_id,
                         name=s.name,
                         formatted_address=s.formatted_address,
@@ -412,7 +417,7 @@ class GoogleMapsService:
                     for s in suggestions[:max_suggestions]
                 ],
                 nearby_suggestions=[
-                    LocationSuggestion(
+                    LocationSuggestionSchema(
                         place_id=s.place_id,
                         name=s.name,
                         formatted_address=s.formatted_address,
