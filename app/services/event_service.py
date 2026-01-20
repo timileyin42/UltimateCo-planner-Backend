@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ from app.models.user_models import User
 from app.models.shared_models import EventStatus, RSVPStatus, TaskStatus
 from app.schemas.event import (
     EventCreate, EventUpdate, EventInvitationCreate, EventInvitationUpdate,
-    TaskCreate, TaskUpdate, TaskCategory, ExpenseCreate, ExpenseUpdate, CommentCreate,
+    TaskCreate, TaskUpdate, TaskUpdateById, TaskCategory, ExpenseCreate, ExpenseUpdate, CommentCreate,
     PollCreate, PollVoteCreate
 )
 from app.schemas.location import Coordinates
@@ -195,6 +195,16 @@ class EventService:
         # Sync task categories if provided
         if task_categories_input is not None:
             self.sync_tasks_from_category_payload(updated_event, task_categories_input, user_id)
+        
+        # Pre-load tasks and other relationships to avoid lazy loading issues
+        # during response serialization if the session gets closed or busy
+        try:
+            _ = updated_event.tasks
+            _ = updated_event.attendee_count
+            _ = updated_event.total_expenses
+        except Exception as e:
+            print(f"Error pre-loading event relationships: {e}")
+            # Continue anyway, let response serialization fail if it must
         
         # Sync with connected calendars
         asyncio.create_task(self._sync_event_to_calendars(updated_event, 'update'))
@@ -557,7 +567,7 @@ class EventService:
 
         return task
     
-    def update_task(self, task_id: int, task_data: TaskUpdate, user_id: int) -> Task:
+    def update_task(self, task_id: int, task_data: Union[TaskUpdate, TaskUpdateById], user_id: int) -> Task:
         """Update a task"""
         task = self.event_repo.get_task_by_id(task_id)
         if not task:
@@ -1184,7 +1194,7 @@ class EventService:
     def sync_tasks_from_category_payload(
         self,
         event: Event,
-        categories: List[TaskCategory],
+        categories: Union[List[TaskCategory], List[Dict[str, Any]]],
         user_id: int
     ) -> None:
         """Sync event tasks from provided category payload during update."""
@@ -1196,54 +1206,71 @@ class EventService:
         tasks_updated = False
         
         for category in categories:
-            category_name = (category.name or "").strip() or "Uncategorized"
+            if isinstance(category, dict):
+                category_name = (category.get("name") or "").strip() or "Uncategorized"
+                items = category.get("items") or []
+            else:
+                category_name = (category.name or "").strip() or "Uncategorized"
+                items = category.items
             
-            for item in category.items:
-                title = (item.title or "").strip()
+            for item in items:
+                if isinstance(item, dict):
+                    title = (item.get("title") or "").strip()
+                    item_id = item.get("id")
+                    description = item.get("description")
+                    completed = item.get("completed", False)
+                    assignee_id = item.get("assignee_id")
+                else:
+                    title = (item.title or "").strip()
+                    item_id = item.id
+                    description = item.description
+                    completed = item.completed
+                    assignee_id = item.assignee_id
+
                 if not title:
                     continue
                 
                 # Check if task exists (by ID)
-                if item.id and item.id in existing_tasks:
-                    task = existing_tasks[item.id]
+                if item_id and item_id in existing_tasks:
+                    task = existing_tasks[item_id]
                     # Update task fields
                     task.title = title
-                    task.description = item.description
+                    task.description = description
                     task.category = category_name
                     
                     # Update status
-                    if item.completed and task.status != TaskStatus.COMPLETED:
+                    if completed and task.status != TaskStatus.COMPLETED:
                         task.status = TaskStatus.COMPLETED
                         task.completed_at = datetime.utcnow()
-                    elif not item.completed and task.status == TaskStatus.COMPLETED:
+                    elif not completed and task.status == TaskStatus.COMPLETED:
                         task.status = TaskStatus.TODO
                         task.completed_at = None
                         
                     # Update assignee if provided
-                    if item.assignee_id is not None:
-                         task.assigned_to_id = item.assignee_id
+                    if assignee_id is not None:
+                         task.assigned_to_id = assignee_id
                     
                     tasks_updated = True
                     
                 else:
                     # Create new task
-                    assignee_id = item.assignee_id
                     # Validate assignee if provided
-                    if assignee_id:
-                        assignee = self.user_service.get_user_by_id(assignee_id)
+                    current_assignee_id = assignee_id
+                    if current_assignee_id:
+                        assignee = self.user_service.get_user_by_id(current_assignee_id)
                         if not assignee:
-                            assignee_id = None
+                            current_assignee_id = None
                     
                     new_task = Task(
                         title=title,
-                        description=item.description,
+                        description=description,
                         category=category_name,
                         event_id=event.id,
                         creator_id=user_id,
-                        assigned_to_id=assignee_id,
-                        status=TaskStatus.COMPLETED if item.completed else TaskStatus.TODO
+                        assigned_to_id=current_assignee_id,
+                        status=TaskStatus.COMPLETED if completed else TaskStatus.TODO
                     )
-                    if item.completed:
+                    if completed:
                         new_task.completed_at = datetime.utcnow()
                         
                     self.db.add(new_task)

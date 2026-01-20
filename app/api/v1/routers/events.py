@@ -13,7 +13,7 @@ from app.services.subscription_service import SubscriptionService, UsageLimitExc
 from app.schemas.event import (
     EventCreate, EventUpdate, EventResponse, EventSummary, EventListResponse,
     EventInvitationCreate, EventInvitationUpdate, EventInvitationResponse,
-    TaskCreate, TaskUpdate, TaskResponse, TaskCategoriesResponse, TaskCategory, TaskCategoryItem, TaskStatus,
+    TaskCreate, TaskUpdate, TaskUpdateById, TaskResponse, TaskCategoriesResponse, TaskCategory, TaskCategoryItem, TaskStatus,
     TaskCategoriesUpdate,
     ExpenseCreate, ExpenseUpdate, ExpenseResponse,
     CommentCreate, CommentResponse, PollCreate, PollResponse, PollVoteCreate,
@@ -610,7 +610,7 @@ async def update_event_location(
                     longitude=optimization_result.validation.coordinates.longitude if optimization_result.validation.coordinates else None
                 )
                 
-                event = event_service.update_event(event_id, update_data, current_user.id)
+                event = await event_service.update_event(event_id, update_data, current_user.id)
                 
                 # Update additional location fields if the event model supports them
                 # This would require updating the Event model to include place_id, etc.
@@ -621,7 +621,7 @@ async def update_event_location(
         else:
             # Simple location update without verification
             update_data = EventUpdate(venue_address=request.location_input)
-            event = event_service.update_event(event_id, update_data, current_user.id)
+            event = await event_service.update_event(event_id, update_data, current_user.id)
             return event
             
     except Exception as e:
@@ -642,9 +642,12 @@ async def update_event(
     """Update event"""
     try:
         event_service = EventService(db)
-        event = event_service.update_event(event_id, event_data, current_user.id)
+        event = await event_service.update_event(event_id, event_data, current_user.id)
         return event
     except Exception as e:
+        import traceback
+        print(f"Update event error: {str(e)}")
+        print(traceback.format_exc())
         if "not found" in str(e).lower():
             raise http_404_not_found("Event not found")
         elif "permission denied" in str(e).lower():
@@ -652,7 +655,7 @@ async def update_event(
         elif "after start date" in str(e).lower():
             raise http_400_bad_request("End date must be after start date")
         else:
-            raise http_400_bad_request("Failed to update event")
+            raise http_400_bad_request(f"Failed to update event: {str(e)}")
 
 @events_router.delete("/{event_id}")
 async def delete_event(
@@ -963,6 +966,36 @@ async def update_event_tasks(
             raise http_403_forbidden(str(e))
         else:
             raise http_400_bad_request(f"Failed to update tasks: {str(e)}")
+
+@events_router.put("/{event_id}/tasks/{task_id}", response_model=TaskResponse)
+async def update_event_task_by_id(
+    event_id: int,
+    task_id: int,
+    task_data: TaskUpdateById,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update a single task by its ID.
+    This endpoint allows updating specific task fields without re-sending the entire category structure.
+    """
+    try:
+        event_service = EventService(db)
+        
+        # Verify task belongs to the event
+        task = event_service.get_task_by_id(task_id, current_user.id)
+        if task.event_id != event_id:
+            raise http_404_not_found(f"Task with ID {task_id} not found in event {event_id}")
+            
+        return event_service.update_task(task_id, task_data, current_user.id)
+        
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission denied" in str(e).lower() or "access denied" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request(f"Failed to update task: {str(e)}")
 
 @events_router.put("/tasks/update", response_model=TaskResponse, deprecated=True)
 async def update_task(
