@@ -6,7 +6,7 @@ from app.models.event_models import (
     Event, EventInvitation, Task, Expense, ExpenseSplit, Comment, Poll, PollOption, PollVote
 )
 from app.models.user_models import User
-from app.models.shared_models import EventStatus, RSVPStatus, TaskStatus
+from app.models.shared_models import EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.event import (
     EventCreate, EventUpdate, EventInvitationCreate, EventInvitationUpdate,
     TaskCreate, TaskUpdate, TaskUpdateById, TaskCategory, ExpenseCreate, ExpenseUpdate, CommentCreate,
@@ -1220,12 +1220,20 @@ class EventService:
                     description = item.get("description")
                     completed = item.get("completed", False)
                     assignee_id = item.get("assignee_id")
+                    priority = item.get("priority")
+                    due_date = item.get("due_date")
+                    estimated_cost = item.get("estimated_cost")
+                    actual_cost = item.get("actual_cost")
                 else:
                     title = (item.title or "").strip()
                     item_id = item.id
                     description = item.description
                     completed = item.completed
                     assignee_id = item.assignee_id
+                    priority = getattr(item, "priority", None)
+                    due_date = getattr(item, "due_date", None)
+                    estimated_cost = getattr(item, "estimated_cost", None)
+                    actual_cost = getattr(item, "actual_cost", None)
 
                 if not title:
                     continue
@@ -1237,6 +1245,15 @@ class EventService:
                     task.title = title
                     task.description = description
                     task.category = category_name
+                    
+                    if priority:
+                        task.priority = priority
+                    if due_date:
+                        task.due_date = due_date
+                    if estimated_cost is not None:
+                        task.estimated_cost = estimated_cost
+                    if actual_cost is not None:
+                        task.actual_cost = actual_cost
                     
                     # Update status
                     if completed and task.status != TaskStatus.COMPLETED:
@@ -1268,7 +1285,11 @@ class EventService:
                         event_id=event.id,
                         creator_id=user_id,
                         assigned_to_id=current_assignee_id,
-                        status=TaskStatus.COMPLETED if completed else TaskStatus.TODO
+                        status=TaskStatus.COMPLETED if completed else TaskStatus.TODO,
+                        priority=priority or TaskPriority.MEDIUM,
+                        due_date=due_date,
+                        estimated_cost=estimated_cost,
+                        actual_cost=actual_cost
                     )
                     if completed:
                         new_task.completed_at = datetime.utcnow()
