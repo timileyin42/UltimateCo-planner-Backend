@@ -115,7 +115,8 @@ class EventService:
         
         # Add creator_id and status
         event_dict['creator_id'] = creator_id
-        event_dict['status'] = EventStatus.DRAFT
+        if 'status' not in event_dict:
+            event_dict['status'] = EventStatus.CONFIRMED
         
         # Create event using repository
         event = self.event_repo.create(event_dict)

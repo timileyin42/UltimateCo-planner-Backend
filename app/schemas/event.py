@@ -376,20 +376,6 @@ class TaskCategoryItemUpdate(BaseModel):
     description: Optional[str] = None
     completed: Optional[bool] = None
     assignee_id: Optional[int] = None
-    priority: Optional[TaskPriority] = None
-    due_date: Optional[datetime] = None
-    estimated_cost: Optional[float] = Field(None, ge=0)
-    actual_cost: Optional[float] = Field(None, ge=0)
-
-    @field_validator('priority', mode='before')
-    @classmethod
-    def normalize_priority(cls, v):
-        """Normalize priority to lowercase for case-insensitive matching"""
-        if isinstance(v, str):
-            priority_aliases = {'normal': 'medium'}
-            normalized = v.lower().strip()
-            return priority_aliases.get(normalized, normalized)
-        return v
 
 
 class TaskCategoryUpdate(BaseModel):
