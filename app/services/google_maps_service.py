@@ -163,7 +163,7 @@ class GoogleMapsService:
         try:
             # Prepare autocomplete parameters
             params = {
-                'input': input_text,
+                'input_text': input_text,
                 'types': types or ['establishment', 'geocode']
             }
             
@@ -345,7 +345,7 @@ class GoogleMapsService:
         user_coordinates: Optional[Coordinates] = None,
         include_nearby: bool = True,
         max_suggestions: int = 10
-    ) -> Dict[str, Any]:
+    ) -> LocationOptimizationResponse:
         """
         Optimize location input by providing suggestions and validation.
         
@@ -356,15 +356,17 @@ class GoogleMapsService:
             max_suggestions: Maximum number of suggestions to return
             
         Returns:
-            Dictionary with optimization results
+            LocationOptimizationResponse object
         """
         if not self.is_available():
-            return {
-                'optimized': False,
-                'error': 'Location optimization service not available',
-                'original_input': user_input,
-                'suggestions': []
-            }
+            return LocationOptimizationResponse(
+                optimized=False,
+                error='Location optimization service not available',
+                original_input=user_input,
+                validation=LocationValidation(is_valid=False, error='Service unavailable'),
+                autocomplete_suggestions=[],
+                nearby_suggestions=[]
+            )
         
         # Convert Coordinates object to tuple for internal methods
         user_location = None
@@ -390,50 +392,52 @@ class GoogleMapsService:
                     keyword=user_input
                 )
             
-            return {
-                'optimized': True,
-                'original_input': user_input,
-                'validation': validation_result,
-                'autocomplete_suggestions': [
-                    {
-                        'place_id': s.place_id,
-                        'name': s.name,
-                        'formatted_address': s.formatted_address,
-                        'coordinates': {
-                            'latitude': s.latitude,
-                            'longitude': s.longitude
-                        },
-                        'distance_meters': s.distance_meters,
-                        'types': s.types,
-                        'rating': s.rating
-                    }
+            return LocationOptimizationResponse(
+                optimized=True,
+                original_input=user_input,
+                validation=validation_result,
+                autocomplete_suggestions=[
+                    LocationSuggestion(
+                        place_id=s.place_id,
+                        name=s.name,
+                        formatted_address=s.formatted_address,
+                        coordinates=Coordinates(
+                            latitude=s.latitude,
+                            longitude=s.longitude
+                        ),
+                        distance_meters=s.distance_meters,
+                        types=s.types,
+                        rating=s.rating
+                    )
                     for s in suggestions[:max_suggestions]
                 ],
-                'nearby_suggestions': [
-                    {
-                        'place_id': s.place_id,
-                        'name': s.name,
-                        'formatted_address': s.formatted_address,
-                        'coordinates': {
-                            'latitude': s.latitude,
-                            'longitude': s.longitude
-                        },
-                        'distance_meters': s.distance_meters,
-                        'types': s.types,
-                        'rating': s.rating
-                    }
+                nearby_suggestions=[
+                    LocationSuggestion(
+                        place_id=s.place_id,
+                        name=s.name,
+                        formatted_address=s.formatted_address,
+                        coordinates=Coordinates(
+                            latitude=s.latitude,
+                            longitude=s.longitude
+                        ),
+                        distance_meters=s.distance_meters,
+                        types=s.types,
+                        rating=s.rating
+                    )
                     for s in nearby_places[:5]
                 ]
-            }
+            )
             
         except Exception as e:
             logger.error(f"Error optimizing location input: {e}")
-            return {
-                'optimized': False,
-                'error': f'Optimization error: {str(e)}',
-                'original_input': user_input,
-                'suggestions': []
-            }
+            return LocationOptimizationResponse(
+                optimized=False,
+                error=f'Optimization error: {str(e)}',
+                original_input=user_input,
+                validation=LocationValidation(is_valid=False, error=str(e)),
+                autocomplete_suggestions=[],
+                nearby_suggestions=[]
+            )
     
     async def _get_place_details(self, place_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed information about a place."""
