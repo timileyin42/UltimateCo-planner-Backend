@@ -294,7 +294,7 @@ class MarkNotificationReadRequest(BaseModel):
 class DeviceRegistrationRequest(BaseModel):
     """Schema for device registration."""
     device_token: str = Field(..., min_length=1, description="FCM device token")
-    device_type: str = Field(..., description="Device type (ios/android)")
+    platform: str = Field(..., description="Device platform (ios/android/web)")
     device_name: Optional[str] = Field(None, description="Device name")
     app_version: Optional[str] = Field(None, description="App version")
 
@@ -304,11 +304,11 @@ class DeviceResponse(BaseModel):
     
     id: int
     device_token: str
-    device_type: str
+    platform: str
     device_name: Optional[str] = None
     app_version: Optional[str] = None
     is_active: bool
-    last_used: Optional[datetime] = None
+    last_used_at: Optional[datetime] = Field(None, alias="last_used")
     created_at: datetime
 
 # Queue status schema

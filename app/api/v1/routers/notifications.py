@@ -505,7 +505,8 @@ async def get_notification_channels(
         user_devices_count = 0
         if push_available:
             try:
-                devices = push_service.get_user_devices(current_user.id)
+                notification_service = NotificationService(db)
+                devices = notification_service.get_user_devices(current_user.id)
                 user_devices_count = len(devices)
             except:
                 user_devices_count = 0
@@ -682,11 +683,11 @@ async def register_device(
 ):
     """Register a device for push notifications"""
     try:
-        
-        device = push_service.register_device(
+        notification_service = NotificationService(db)
+        device = notification_service.register_device(
             user_id=current_user.id,
             device_token=device_data.device_token,
-            device_type=device_data.device_type,
+            device_type=device_data.platform,
             device_name=device_data.device_name,
             app_version=device_data.app_version
         )
@@ -702,8 +703,9 @@ async def get_user_devices(
     db: Session = Depends(get_db)
 ):
     """Get all registered devices for the current user"""
-    try:        
-        devices = push_service.get_user_devices(current_user.id)
+    try:
+        notification_service = NotificationService(db)
+        devices = notification_service.get_user_devices(current_user.id)
         
         return [DeviceResponse.model_validate(device) for device in devices]
         
@@ -717,20 +719,19 @@ async def unregister_device(
     db: Session = Depends(get_db)
 ):
     """Unregister a device"""
-    try:        
-        success = push_service.unregister_device(device_id, current_user.id)
+    try:
+        notification_service = NotificationService(db)
+        success = notification_service.unregister_device_by_id(current_user.id, device_id)
         
         if not success:
-            raise http_404_not_found("Device not found or not owned by user")
-        
+            raise http_404_not_found("Device not found")
+            
         return {"message": "Device unregistered successfully"}
         
+    except HTTPException:
+        raise
     except Exception as e:
-        if "not found" in str(e).lower():
-            raise http_404_not_found(str(e))
-        else:
-            raise http_400_bad_request(f"Failed to unregister device: {str(e)}")
-
+        raise http_400_bad_request(f"Failed to unregister device: {str(e)}")
 # WebSocket Statistics endpoint
 @notifications_router.get("/websocket/stats", response_model=WebSocketStatsResponse)
 async def get_websocket_stats(

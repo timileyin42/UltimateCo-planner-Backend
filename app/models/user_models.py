@@ -132,7 +132,6 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     notification_preferences = relationship("NotificationPreference", back_populates="user")
     created_reminder_templates = relationship("ReminderTemplate", back_populates="creator")
     created_automation_rules = relationship("AutomationRule", back_populates="creator")
-    
     # Vendor relationships
     vendor_profile = relationship("Vendor", back_populates="user", uselist=False)
     vendor_bookings = relationship("VendorBooking", back_populates="booked_by")

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from app.models.notification_models import (
     SmartReminder, NotificationLog, NotificationPreference, ReminderTemplate,
     AutomationRule, NotificationQueue, NotificationType, NotificationStatus,
-    NotificationChannel, ReminderFrequency
+    NotificationChannel, ReminderFrequency, UserDevice, DevicePlatform
 )
 from app.models.user_models import User
 from app.models.event_models import Event, EventInvitation
@@ -110,17 +110,14 @@ class NotificationRepository:
     
     def update_reminder(self, reminder_id: int, update_data: Dict[str, Any]) -> Optional[SmartReminder]:
         """Update smart reminder by ID"""
-        reminder = self.get_reminder_by_id(reminder_id)
-        if not reminder:
-            return None
+        for field, value in update_data.items():
+            if hasattr(reminder, field):
+                setattr(reminder, field, value)
         
         for field, value in update_data.items():
             if hasattr(reminder, field):
                 setattr(reminder, field, value)
         
-        self.db.commit()
-        self.db.refresh(reminder)
-        return reminder
     
     def delete_reminder(self, reminder_id: int) -> bool:
         """Soft delete smart reminder by ID"""
@@ -235,7 +232,7 @@ class NotificationRepository:
         pagination: PaginationParams,
         filters: Optional[Dict[str, Any]] = None
     ) -> Tuple[List[NotificationLog], int]:
-        """Get notification logs with filters"""
+        """Get notification logs with filtering and pagination"""
         query = self.db.query(NotificationLog).options(
             joinedload(NotificationLog.recipient),
             joinedload(NotificationLog.event)
@@ -248,21 +245,18 @@ class NotificationRepository:
             if filters.get('recipient_id'):
                 query = query.filter(NotificationLog.recipient_id == filters['recipient_id'])
             
-            if filters.get('notification_type'):
-                query = query.filter(NotificationLog.notification_type == filters['notification_type'])
-            
-            if filters.get('channel'):
-                query = query.filter(NotificationLog.channel == filters['channel'])
-            
             if filters.get('status'):
                 query = query.filter(NotificationLog.status == filters['status'])
             
+            if filters.get('channel'):
+                query = query.filter(NotificationLog.channel == filters['channel'])
+                
             if filters.get('start_date'):
                 query = query.filter(NotificationLog.created_at >= filters['start_date'])
             
             if filters.get('end_date'):
                 query = query.filter(NotificationLog.created_at <= filters['end_date'])
-        
+
         total = query.count()
         
         logs = query.order_by(
@@ -288,6 +282,7 @@ class NotificationRepository:
 
         return query.order_by(desc(NotificationLog.created_at)).limit(limit).all()
 
+    
     def count_user_notifications(self, user_id: int) -> int:
         """Count total notifications for a user"""
         return self.db.query(NotificationLog).filter(
@@ -300,8 +295,7 @@ class NotificationRepository:
             NotificationLog.recipient_id == user_id,
             NotificationLog.read_at.is_(None)
         ).count()
-    
-    # Notification Preferences operations
+
     def get_user_preferences(self, user_id: int) -> List[NotificationPreference]:
         """Get notification preferences for a user"""
         return self.db.query(NotificationPreference).filter(
@@ -357,7 +351,7 @@ class NotificationRepository:
         ).first()
     
     def get_reminder_templates(
-        self,
+        status: str, 
         pagination: PaginationParams,
         filters: Optional[Dict[str, Any]] = None
     ) -> Tuple[List[ReminderTemplate], int]:
@@ -502,21 +496,21 @@ class NotificationRepository:
         # Group by type
         by_type = {}
         for log in logs:
-            type_name = log.notification_type.value if log.notification_type else 'unknown'
+            type_name = log.notification_type.value if hasattr(log.notification_type, 'value') else str(log.notification_type)
             by_type[type_name] = by_type.get(type_name, 0) + 1
-        
+            
         # Group by channel
         by_channel = {}
         for log in logs:
-            channel_name = log.channel.value if log.channel else 'unknown'
+            channel_name = log.channel.value if hasattr(log.channel, 'value') else str(log.channel)
             by_channel[channel_name] = by_channel.get(channel_name, 0) + 1
-        
+            
         # Group by status
         by_status = {}
         for log in logs:
-            status_name = log.status.value if log.status else 'unknown'
+            status_name = log.status.value if hasattr(log.status, 'value') else str(log.status)
             by_status[status_name] = by_status.get(status_name, 0) + 1
-        
+            
         return {
             "total_sent": total_sent,
             "delivery_rate": round(delivery_rate, 2),
@@ -547,7 +541,7 @@ class NotificationRepository:
             "active_reminders": len([r for r in reminders if r.is_active]),
             "engagement_rate": 85.0  # This would be calculated based on actual engagement
         }
-    
+
     # Search and filtering operations
     def search_reminders(
         self,
@@ -588,30 +582,94 @@ class NotificationRepository:
     
     def get_reminder_targets(self, reminder: SmartReminder) -> List[User]:
         """Get target users for a reminder based on its configuration"""
+        if not reminder.event_id:
+            return []
+            
         if reminder.target_all_guests:
-            # Get all invited users for the event
+            # Get all invited users
             invitations = self.db.query(EventInvitation).filter(
-                EventInvitation.event_id == reminder.event_id
+                EventInvitation.event_id == reminder.event_id,
+                EventInvitation.status != 'declined'
             ).all()
-            
             user_ids = [inv.user_id for inv in invitations]
-            
-            # Filter by RSVP status if specified
-            if reminder.target_rsvp_status:
-                user_ids = [
-                    inv.user_id for inv in invitations 
-                    if inv.rsvp_status == reminder.target_rsvp_status
-                ]
-            
             return self.db.query(User).filter(User.id.in_(user_ids)).all()
-        
-        elif reminder.target_user_ids:
-            # Get specific users
-            return self.db.query(User).filter(
-                User.id.in_(reminder.target_user_ids)
-            ).all()
-        
+            
         return []
+
+
+    def update_user_preference(self, preference_id: int, update_data: Dict[str, Any]) -> NotificationPreference:
+        """Update notification preference"""
+        preference = self.db.query(NotificationPreference).filter(
+            NotificationPreference.id == preference_id
+        ).first()
+        
+        if not preference:
+            return None
+            
+        for field, value in update_data.items():
+            if hasattr(preference, field):
+                setattr(preference, field, value)
+                
+        self.db.commit()
+        self.db.refresh(preference)
+        return preference
+
+    # Device Management Methods
+    def register_device(self, device_data: Dict[str, Any]) -> UserDevice:
+        """Register or update a user device"""
+        device = self.db.query(UserDevice).filter(
+            UserDevice.user_id == device_data['user_id'],
+            UserDevice.device_token == device_data['device_token']
+        ).first()
+        
+        if device:
+            # Update existing device
+            for field, value in device_data.items():
+                if hasattr(device, field):
+                    setattr(device, field, value)
+            device.last_used_at = datetime.utcnow()
+            device.is_active = True
+        else:
+            # Create new device
+            device = UserDevice(**device_data)
+            self.db.add(device)
+            
+        self.db.commit()
+        self.db.refresh(device)
+        return device
+
+    def get_user_devices(self, user_id: int) -> List[UserDevice]:
+        """Get active devices for a user"""
+        return self.db.query(UserDevice).filter(
+            UserDevice.user_id == user_id,
+            UserDevice.is_active == True
+        ).all()
+
+    def unregister_device(self, user_id: int, device_token: str) -> bool:
+        """Unregister (deactivate) a device by token"""
+        device = self.db.query(UserDevice).filter(
+            UserDevice.user_id == user_id,
+            UserDevice.device_token == device_token
+        ).first()
+        
+        if device:
+            device.is_active = False
+            self.db.commit()
+            return True
+        return False
+
+    def unregister_device_by_id(self, user_id: int, device_id: int) -> bool:
+        """Unregister (deactivate) a device by ID"""
+        device = self.db.query(UserDevice).filter(
+            UserDevice.id == device_id,
+            UserDevice.user_id == user_id
+        ).first()
+        
+        if device:
+            device.is_active = False
+            self.db.commit()
+            return True
+        return False
     
     def count_total(self, filters: Optional[Dict[str, Any]] = None) -> int:
         """Count total reminders with optional filters"""
@@ -625,3 +683,4 @@ class NotificationRepository:
                 query = query.filter(SmartReminder.creator_id == filters['creator_id'])
         
         return query.count()
+
