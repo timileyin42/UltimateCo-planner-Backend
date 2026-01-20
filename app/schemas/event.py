@@ -322,6 +322,53 @@ class TaskUpdate(BaseModel):
         return normalized
 
 
+class TaskUpdateById(BaseModel):
+    """Schema for updating task by ID (new endpoint)"""
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    status: Optional[TaskStatus] = None
+    priority: Optional[TaskPriority] = None
+    due_date: Optional[datetime] = None
+    estimated_cost: Optional[float] = Field(None, ge=0)
+    actual_cost: Optional[float] = Field(None, ge=0)
+    assignee_id: Optional[int] = None
+    category: Optional[str] = None
+
+    @field_validator('status', 'priority', mode='before')
+    @classmethod
+    def normalize_enums(cls, v, info: FieldValidationInfo):
+        """Normalize enum values and map common aliases"""
+        if not isinstance(v, str):
+            return v
+
+        normalized = v.strip().lower().replace("-", "_").replace(" ", "_")
+
+        if info.field_name == 'status':
+            status_aliases = {
+                'pending': 'in_progress',
+                'incomplete': 'in_progress',
+                'not_complete': 'in_progress',
+                'resume': 'in_progress',
+                'not_started': 'todo',
+                'todo': 'todo',
+                'inprogress': 'in_progress',
+                'in_progress': 'in_progress',
+                'complete': 'completed',
+                'completed': 'completed',
+                'done': 'completed',
+                'canceled': 'cancelled',
+            }
+            return status_aliases.get(normalized, normalized)
+
+        if info.field_name == 'priority':
+            priority_aliases = {
+                'normal': 'medium',
+            }
+            return priority_aliases.get(normalized, normalized)
+
+        return normalized
+
+
 class TaskCategoryItemUpdate(BaseModel):
     """Task item payload used when updating tasks via category structure"""
     id: Optional[int] = None
