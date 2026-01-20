@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     
     # Google OAuth Configuration
     GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_MOBILE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: Optional[str] = None  # Web redirect URI
     GOOGLE_MOBILE_REDIRECT_URI: Optional[str] = None  # Mobile deep link

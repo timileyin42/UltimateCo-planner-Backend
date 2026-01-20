@@ -1,5 +1,7 @@
 from typing import Optional, Dict, Any
 import httpx
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 from app.core.config import settings
 from app.core.errors import AuthenticationError, ValidationError
 from app.models.user_models import User
@@ -19,9 +21,32 @@ class GoogleOAuthService:
         self.user_service = UserService(db)
         self.auth_service = AuthService(db)
         self.client_id = settings.GOOGLE_CLIENT_ID
+        self.google_mobile_client_id = settings.GOOGLE_MOBILE_CLIENT_ID
         self.client_secret = settings.GOOGLE_CLIENT_SECRET
         self.redirect_uri = f"{settings.FRONTEND_URL}/auth/google/callback"
     
+    def verify_id_token(self, token: str) -> Dict[str, Any]:
+        """Verify Google ID token from mobile or web."""
+        try:
+            # Verify signature first without checking audience
+            idinfo = id_token.verify_oauth2_token(
+                token, 
+                google_requests.Request()
+            )
+            
+            # Manually check audience
+            aud = idinfo.get('aud')
+            allowed_audiences = [self.client_id, self.google_mobile_client_id]
+            # Filter out None values
+            allowed_audiences = [a for a in allowed_audiences if a]
+            
+            if aud not in allowed_audiences:
+                raise AuthenticationError(f"Token audience {aud} does not match any configured Client ID")
+                
+            return idinfo
+        except ValueError as e:
+            raise AuthenticationError(f"Invalid Google ID token: {str(e)}")
+
     def get_authorization_url(self, state: Optional[str] = None) -> str:
         """Generate Google OAuth authorization URL."""
         if not state:
@@ -29,6 +54,7 @@ class GoogleOAuthService:
         
         params = {
             "client_id": self.client_id,
+            
             "redirect_uri": self.redirect_uri,
             "scope": "openid email profile",
             "response_type": "code",

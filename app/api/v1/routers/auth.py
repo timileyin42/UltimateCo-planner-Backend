@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
 from app.core.config import settings
 from app.core.errors import (
-    http_400_bad_request, http_401_unauthorized, http_409_conflict, http_404_not_found
+    http_400_bad_request, http_401_unauthorized, http_409_conflict, http_404_not_found,
+    AuthenticationError
 )
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.services.auth_service import AuthService
@@ -322,13 +323,15 @@ async def google_mobile_sign_in(
     6. Returns access/refresh tokens
     """
     try:
+        # Use GoogleOAuthService to handle user creation/authentication
+        google_oauth = GoogleOAuthService(db)
+        auth_service = AuthService(db)
+
         # Verify the Google ID token
         try:
-            idinfo = id_token.verify_oauth2_token(
-                google_data.id_token,
-                google_requests.Request(),
-                settings.GOOGLE_CLIENT_ID
-            )
+            idinfo = google_oauth.verify_id_token(google_data.id_token)
+        except AuthenticationError as e:
+            raise http_401_unauthorized(str(e))
         except ValueError as e:
             raise http_401_unauthorized(f"Invalid Google ID token: {str(e)}")
         
@@ -346,10 +349,6 @@ async def google_mobile_sign_in(
         
         if not email_verified:
             raise http_400_bad_request("Google email is not verified")
-        
-        # Use GoogleOAuthService to handle user creation/authentication
-        google_oauth = GoogleOAuthService(db)
-        auth_service = AuthService(db)
         
         # Check if user exists
         user = auth_service.user_db.get_user_by_email(email)
