@@ -46,6 +46,7 @@ class EventBase(BaseModel):
 
 class EventCreate(EventBase):
     """Schema for creating a new event"""
+    status: EventStatus = Field(default=EventStatus.CONFIRMED, description="Event status")
     cover_image_url: Optional[str] = Field(None, description="URL of the event cover image (from upload endpoint)")
     location_input: Optional[str] = Field(None, description="Raw location input for optimization. Can be just an address or 'Venue - Address'. Backend will extract venue name if present.")
     user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")

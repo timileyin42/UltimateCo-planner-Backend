@@ -22,7 +22,7 @@ class Event(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     event_type = Column(String(50), nullable=False, default=EventType.OTHER)
-    status = Column(String(50), nullable=False, default=EventStatus.DRAFT)
+    status = Column(String(50), nullable=False, default=EventStatus.CONFIRMED)
     
     # Date and time
     start_datetime = Column(DateTime, nullable=False)
