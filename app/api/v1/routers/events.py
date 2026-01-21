@@ -386,10 +386,9 @@ async def get_my_events(
             category = category.lower()
             
             if category == "upcoming":
-                # Future events (exclude drafts)
+                # Future events (include drafts for creator/collaborators)
                 query = query.filter(
-                    Event.start_datetime >= datetime.utcnow(),
-                    Event.status != EventStatus.DRAFT
+                    Event.start_datetime >= datetime.utcnow()
                 )
                 # Filter for user's events
                 access_filter = or_(
@@ -401,10 +400,13 @@ async def get_my_events(
                 query = query.order_by(Event.start_datetime.asc())
                 
             elif category == "past":
-                # Past events (exclude drafts)
+                # Past events (include drafts for creator/collaborators)
+                # Handle cases where end_datetime is NULL by checking start_datetime
                 query = query.filter(
-                    Event.end_datetime < datetime.utcnow(),
-                    Event.status != EventStatus.DRAFT
+                    or_(
+                        Event.end_datetime < datetime.utcnow(),
+                        and_(Event.end_datetime.is_(None), Event.start_datetime < datetime.utcnow())
+                    )
                 )
                 # Filter for user's events
                 access_filter = or_(
