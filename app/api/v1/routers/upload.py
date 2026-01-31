@@ -49,12 +49,12 @@ async def upload_file(
                     f"Allowed types: {', '.join(image_types)}"
                 )
             
-            # Validate file size (max 10MB for images)
+            # Validate file size (max 20MB for images)
             file_content = await file.read()
             file_size = len(file_content)
             
-            if file_size > 10 * 1024 * 1024:
-                raise http_400_bad_request("Image size too large. Maximum size is 10MB")
+            if file_size > 50 * 1024 * 1024:
+                raise http_400_bad_request("Image size too large. Maximum size is 20MB")
             
             # Upload to storage
             storage_service = GCPStorageService()

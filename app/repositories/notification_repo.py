@@ -110,13 +110,17 @@ class NotificationRepository:
     
     def update_reminder(self, reminder_id: int, update_data: Dict[str, Any]) -> Optional[SmartReminder]:
         """Update smart reminder by ID"""
+        reminder = self.get_reminder_by_id(reminder_id)
+        if not reminder:
+            return None
+
         for field, value in update_data.items():
             if hasattr(reminder, field):
                 setattr(reminder, field, value)
         
-        for field, value in update_data.items():
-            if hasattr(reminder, field):
-                setattr(reminder, field, value)
+        self.db.commit()
+        self.db.refresh(reminder)
+        return reminder
         
     
     def delete_reminder(self, reminder_id: int) -> bool:
@@ -585,14 +589,36 @@ class NotificationRepository:
         if not reminder.event_id:
             return []
             
+        # Priority 1: Specific users
+        if reminder.target_specific_users:
+            try:
+                import json
+                user_ids = json.loads(reminder.target_specific_users)
+                if user_ids:
+                    return self.db.query(User).filter(User.id.in_(user_ids)).all()
+            except (ValueError, TypeError):
+                pass
+                
+        # Priority 2: RSVP status
+        if reminder.target_rsvp_status:
+            invitations = self.db.query(EventInvitation).filter(
+                EventInvitation.event_id == reminder.event_id,
+                EventInvitation.rsvp_status == reminder.target_rsvp_status
+            ).all()
+            user_ids = [inv.user_id for inv in invitations]
+            if user_ids:
+                return self.db.query(User).filter(User.id.in_(user_ids)).all()
+                
+        # Priority 3: All guests
         if reminder.target_all_guests:
             # Get all invited users
             invitations = self.db.query(EventInvitation).filter(
                 EventInvitation.event_id == reminder.event_id,
-                EventInvitation.status != 'declined'
+                EventInvitation.rsvp_status != 'declined'
             ).all()
             user_ids = [inv.user_id for inv in invitations]
-            return self.db.query(User).filter(User.id.in_(user_ids)).all()
+            if user_ids:
+                return self.db.query(User).filter(User.id.in_(user_ids)).all()
             
         return []
 
