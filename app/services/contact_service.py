@@ -15,6 +15,7 @@ from app.models.user_models import User
 from app.models.event_models import Event, EventInvitation
 from app.models.shared_models import RSVPStatus
 from app.core.database import get_db
+from app.core.config import settings
 from app.services.sms_service import SMSService
 
 
@@ -282,10 +283,11 @@ class ContactService:
                 self.db.flush()
                 
                 # Build SMS message
+                base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL).rstrip("/")
                 if event:
-                    sms_message = f"Hi! {sender.full_name} invited you to '{event.title}' on PlanEtAl. Join here: https://planetal.app/invite/{invitation_token}"
+                    sms_message = f"Hi! {sender.full_name} invited you to '{event.title}' on PlanEtAl. Join here: {base_url}/invite/{invitation_token}"
                 else:
-                    sms_message = f"Hi! {sender.full_name} invited you to join PlanEtAl - the ultimate event planning app! Join here: https://planetal.app/invite/{invitation_token}"
+                    sms_message = f"Hi! {sender.full_name} invited you to join PlanEtAl - the ultimate event planning app! Join here: {base_url}/invite/{invitation_token}"
                 
                 if message:
                     sms_message += f"\n\nPersonal message: {message}"
@@ -558,11 +560,12 @@ class ContactService:
         try:
             sender = self.db.query(User).filter(User.id == invitation.sender_id).first()
             
+            base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL).rstrip("/")
             if invitation.event_id:
                 event = self.db.query(Event).filter(Event.id == invitation.event_id).first()
-                message = f"Hi! {sender.first_name} {sender.last_name} invited you to '{event.title}' on PlanEtAl. Join here: https://planetal.app/invite/{invitation.invitation_token}"
+                message = f"Hi! {sender.first_name} {sender.last_name} invited you to '{event.title}' on PlanEtAl. Join here: {base_url}/invite/{invitation.invitation_token}"
             else:
-                message = f"Hi! {sender.first_name} {sender.last_name} invited you to join PlanEtAl - the ultimate event planning app! Join here: https://planetal.app/invite/{invitation.invitation_token}"
+                message = f"Hi! {sender.first_name} {sender.last_name} invited you to join PlanEtAl - the ultimate event planning app! Join here: {base_url}/invite/{invitation.invitation_token}"
             
             if invitation.message:
                 message += f"\n\nPersonal message: {invitation.message}"

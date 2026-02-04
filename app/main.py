@@ -8,6 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.v1.api_router import api_router
+from app.api.public_routes import router as public_router
 from app.api.health import health_router
 from app.core.config import settings
 from app.services.redis_subscriber import start_redis_listener, stop_redis_listener
@@ -98,6 +99,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["health"])
+app.include_router(public_router)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Root endpoint
