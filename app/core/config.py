@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     # Frontend URL for email links
     FRONTEND_URL: str  # Web frontend URL
     MOBILE_APP_SCHEME: Optional[str] = None  # Mobile app deep link scheme
+    DEEP_LINK_BASE_URL: Optional[str] = None  # Public deep link domain (e.g. https://planetal.app)
+    INVITE_FALLBACK_URL: Optional[str] = None  # Web fallback when invite is invalid
+    ANDROID_PACKAGE_NAME: Optional[str] = None
+    ANDROID_SHA256_CERT_FINGERPRINTS: Union[List[str], str] = []
+    IOS_APP_ID: Optional[str] = None  # e.g. TEAMID.com.planetal.app
+    IOS_APP_PATHS: Union[List[str], str] = ["/invite/*"]
     
     
     # File Upload Configuration
@@ -119,6 +125,32 @@ class Settings(BaseSettings):
         elif isinstance(v, list):
             return v
         return []
+
+    @field_validator("ANDROID_SHA256_CERT_FINGERPRINTS", mode="before")
+    @classmethod
+    def assemble_android_fingerprints(cls, v):
+        if isinstance(v, str) and v:
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",")]
+            else:
+                import json
+                return json.loads(v)
+        elif isinstance(v, list):
+            return v
+        return []
+
+    @field_validator("IOS_APP_PATHS", mode="before")
+    @classmethod
+    def assemble_ios_app_paths(cls, v):
+        if isinstance(v, str) and v:
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",")]
+            else:
+                import json
+                return json.loads(v)
+        elif isinstance(v, list):
+            return v
+        return ["/invite/*"]
     
     # External API Keys
     OPENAI_API_KEY: Optional[str] = None

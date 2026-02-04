@@ -121,7 +121,8 @@ class InviteService:
             )
             
             # Generate QR code for the invite
-            invite_url = f"{settings.FRONTEND_URL}/invite/{invite_code.code}"
+            base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL).rstrip("/")
+            invite_url = f"{base_url}/invite/{invite_code.code}"
             qr_code_path, _ = await self.generate_qr_code(invite_url, style="gradient", user_id=user_id)
             
             # Update invite code with QR code URL
@@ -148,7 +149,8 @@ class InviteService:
             )
             
             # Generate QR code for the invite link
-            invite_url = f"{settings.FRONTEND_URL}/invite/{invite_link.link_id}"
+            base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL).rstrip("/")
+            invite_url = f"{base_url}/invite/{invite_link.link_id}"
             qr_code_path, _ = await self.generate_qr_code(invite_url, style="gradient", user_id=user_id)
             
             # Update invite link with QR code URL
