@@ -63,8 +63,8 @@ class TestUploadEndpoints:
     
     def test_upload_image_too_large(self, client: TestClient):
         """Test uploading file that exceeds size limit."""
-        # Create file larger than 10MB
-        large_content = b'x' * (11 * 1024 * 1024)
+        # Create file larger than 100MB
+        large_content = b'x' * (101 * 1024 * 1024)
         
         files = {
             'file': ('large_image.jpg', BytesIO(large_content), 'image/jpeg')

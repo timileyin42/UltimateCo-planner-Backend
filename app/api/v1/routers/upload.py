@@ -30,7 +30,7 @@ async def upload_file(
     No authentication required. Always returns a download_url.
 
     Supported file types:
-    - Images: jpeg, png, webp, gif (max 10MB) - direct upload
+    - Images: jpeg, png, webp, gif (max 100MB) - direct upload
     - Videos: mp4, mov, avi, webm (max 500MB) - presigned URL
     - Documents: pdf, doc, docx (max 50MB) - presigned URL
     """
@@ -49,12 +49,12 @@ async def upload_file(
                     f"Allowed types: {', '.join(image_types)}"
                 )
             
-            # Validate file size (max 20MB for images)
+            # Validate file size (max 100MB for images)
             file_content = await file.read()
             file_size = len(file_content)
             
-            if file_size > 50 * 1024 * 1024:
-                raise http_400_bad_request("Image size too large. Maximum size is 20MB")
+            if file_size > 100 * 1024 * 1024:
+                raise http_400_bad_request("Image size too large. Maximum size is 100MB")
             
             # Upload to storage
             storage_service = GCPStorageService()

@@ -106,10 +106,10 @@ async def upload_event_cover_image(
         if file.content_type not in allowed_types:
             raise http_400_bad_request("Invalid file type. Only JPEG, PNG, and WebP images are allowed")
         
-        # Validate file size (max 10MB)
+        # Validate file size (max 100MB)
         file_content = await file.read()
-        if len(file_content) > 10 * 1024 * 1024:
-            raise http_400_bad_request("File size too large. Maximum size is 10MB")
+        if len(file_content) > 100 * 1024 * 1024:
+            raise http_400_bad_request("File size too large. Maximum size is 100MB")
         
         # Reset file pointer
         await file.seek(0)
