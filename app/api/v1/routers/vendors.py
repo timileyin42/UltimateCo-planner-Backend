@@ -955,7 +955,7 @@ async def upload_vendor_image(
             file_size=len(file_content),
             content_type=file.content_type,
             allowed_extensions=['jpg', 'jpeg', 'png', 'gif', 'webp'],
-            max_size_mb=10
+            max_size_mb=100
         )
         
         if not validation["is_valid"]:

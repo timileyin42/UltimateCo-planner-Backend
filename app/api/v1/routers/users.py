@@ -55,10 +55,10 @@ async def upload_profile_picture(
         if file.content_type not in allowed_types:
             raise http_400_bad_request("Invalid file type. Only JPEG, PNG, and WebP images are allowed")
         
-        # Validate file size (max 5MB)
+        # Validate file size (max 100MB)
         file_content = await file.read()
-        if len(file_content) > 5 * 1024 * 1024:
-            raise http_400_bad_request("File size too large. Maximum size is 5MB")
+        if len(file_content) > 100 * 1024 * 1024:
+            raise http_400_bad_request("File size too large. Maximum size is 100MB")
         
         # Reset file pointer so the storage client can read it again if needed
         await file.seek(0)
