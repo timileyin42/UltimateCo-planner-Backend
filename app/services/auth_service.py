@@ -194,7 +194,8 @@ class AuthService:
             access_token=new_access_token,
             refresh_token=new_refresh_token,
             token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=user
         )
     
     def logout(self, user_id: int, session_token: Optional[str] = None) -> bool:
