@@ -65,18 +65,15 @@ class EventService:
         
         # Prepare event data
         task_categories_input = event_data.task_categories
-        event_dict = event_data.model_dump(exclude={"task_categories"})
+        event_dict = event_data.model_dump(exclude={"task_categories", "event_type_custom"})
         
         # Handle location optimization if requested
         if event_data.location_input and event_data.auto_optimize_location:
             try:
-                # user_coordinates is already a Coordinates object from Pydantic
-                user_coords = event_data.user_coordinates
-                
                 # Optimize location using Google Maps
                 optimization_result = await google_maps_service.optimize_location_input(
                     user_input=event_data.location_input,
-                    user_coordinates=user_coords,
+                    user_coordinates=None,
                     include_nearby=False,
                     max_suggestions=1
                 )
@@ -110,7 +107,6 @@ class EventService:
         
         # Remove location optimization fields from event data
         event_dict.pop('location_input', None)
-        event_dict.pop('user_coordinates', None)
         event_dict.pop('auto_optimize_location', None)
         
         # Add creator_id and status
@@ -147,7 +143,9 @@ class EventService:
             raise AuthorizationError("Permission denied to edit this event")
         
         # Validate dates if being updated
-        update_data = event_data.model_dump(exclude_unset=True)
+        update_data = event_data.model_dump(exclude_unset=True, exclude={"event_type_custom"})
+        if event_data.event_type_custom:
+            update_data["event_type"] = event_data.event_type_custom.strip()
         if 'end_datetime' in update_data and 'start_datetime' in update_data:
             if update_data['end_datetime'] and update_data['end_datetime'] <= update_data['start_datetime']:
                 raise ValidationError("End date must be after start date")
@@ -158,7 +156,7 @@ class EventService:
                 # Optimize location using Google Maps
                 optimization_result = await google_maps_service.optimize_location_input(
                     user_input=event_data.location_input,
-                    user_coordinates=event_data.user_coordinates,
+                    user_coordinates=None,
                     include_nearby=False,
                     max_suggestions=1
                 )

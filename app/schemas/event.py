@@ -1,24 +1,32 @@
 from datetime import datetime
 from typing import Optional, List, Dict
-from pydantic import BaseModel, Field, ConfigDict, field_validator, FieldValidationInfo
+from pydantic import BaseModel, Field, ConfigDict, field_validator, FieldValidationInfo, model_validator
 from app.models.shared_models import EventType, EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.user import UserSummary
 from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, LocationOptimizationResponse, Coordinates
+
+def _normalize_event_type_value(value):
+    if isinstance(value, EventType):
+        return value.value
+    if isinstance(value, str):
+        stripped = value.strip()
+        lowered = stripped.lower()
+        if lowered in {event_type.value for event_type in EventType}:
+            return lowered
+        return stripped
+    return value
 
 # Base event schemas
 class EventBase(BaseModel):
     """Base event schema with common fields"""
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    event_type: EventType = EventType.OTHER
+    event_type: str = Field(default=EventType.OTHER.value, max_length=50)
     
     @field_validator('event_type', mode='before')
     @classmethod
     def normalize_event_type(cls, v):
-        """Normalize event type to lowercase for case-insensitive matching"""
-        if isinstance(v, str):
-            return v.lower()
-        return v
+        return _normalize_event_type_value(v)
     start_datetime: datetime
     end_datetime: Optional[datetime] = None
     timezone: Optional[str] = None
@@ -48,8 +56,8 @@ class EventCreate(EventBase):
     """Schema for creating a new event"""
     status: EventStatus = Field(default=EventStatus.CONFIRMED, description="Event status")
     cover_image_url: Optional[str] = Field(None, description="URL of the event cover image (from upload endpoint)")
+    event_type_custom: Optional[str] = Field(None, min_length=1, max_length=50)
     location_input: Optional[str] = Field(None, description="Raw location input for optimization. Can be just an address or 'Venue - Address'. Backend will extract venue name if present.")
-    user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")
     auto_optimize_location: bool = Field(True, description="Whether to automatically optimize location using Google Maps")
     latitude: Optional[float] = Field(None, ge=-90, le=90, description="Venue latitude coordinate")
     longitude: Optional[float] = Field(None, ge=-180, le=180, description="Venue longitude coordinate")
@@ -77,29 +85,36 @@ class EventCreate(EventBase):
                 "max_attendees": 50,
                 "cover_image_url": "https://storage.googleapis.com/.../event-cover.jpg",
                 "location_input": "Cafe Bloom - 26 Olaniyi St, Lagos",
-                "user_coordinates": {
-                    "latitude": 6.5244,
-                    "longitude": 3.3792
-                },
                 "auto_optimize_location": True
             }
         }
+
+    @model_validator(mode="after")
+    def apply_event_type_custom(self):
+        if self.event_type_custom:
+            self.event_type = self.event_type_custom.strip()
+        return self
 
 class EventUpdate(BaseModel):
     """Schema for updating event information"""
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
-    event_type: Optional[EventType] = None
+    event_type: Optional[str] = Field(None, max_length=50)
+    event_type_custom: Optional[str] = Field(None, min_length=1, max_length=50)
     status: Optional[EventStatus] = None
     cover_image_url: Optional[str] = Field(None, description="URL of the event cover image")
     
-    @field_validator('event_type', 'status', mode='before')
+    @field_validator('status', mode='before')
     @classmethod
     def normalize_enums(cls, v):
-        """Normalize enum values to lowercase for case-insensitive matching"""
         if isinstance(v, str):
             return v.lower()
         return v
+
+    @field_validator('event_type', mode='before')
+    @classmethod
+    def normalize_event_type(cls, v):
+        return _normalize_event_type_value(v)
     start_datetime: Optional[datetime] = None
     end_datetime: Optional[datetime] = None
     timezone: Optional[str] = None
@@ -113,7 +128,6 @@ class EventUpdate(BaseModel):
     
     # Missing fields added for consistency with EventCreate
     location_input: Optional[str] = Field(None, description="Raw location input for optimization")
-    user_coordinates: Optional[Coordinates] = Field(None, description="User's current coordinates for location optimization")
     auto_optimize_location: Optional[bool] = Field(None, description="Whether to automatically optimize location using Google Maps")
     latitude: Optional[float] = Field(None, ge=-90, le=90, description="Venue latitude coordinate")
     longitude: Optional[float] = Field(None, ge=-180, le=180, description="Venue longitude coordinate")
@@ -123,6 +137,12 @@ class EventUpdate(BaseModel):
         default=None,
         description="Optional task categories to update/sync tasks during event update"
     )
+
+    @model_validator(mode="after")
+    def apply_event_type_custom(self):
+        if self.event_type_custom:
+            self.event_type = self.event_type_custom.strip()
+        return self
 
 
 class EventDuplicateRequest(BaseModel):
@@ -194,7 +214,7 @@ class EventSummary(BaseModel):
     """Schema for event summary (minimal fields)"""
     id: int
     title: str
-    event_type: EventType
+    event_type: str
     status: EventStatus
     start_datetime: datetime
     venue_name: Optional[str] = None
@@ -573,7 +593,7 @@ class PollVoteCreate(BaseModel):
 class EventSearchQuery(BaseModel):
     """Schema for event search query"""
     query: Optional[str] = None
-    event_type: Optional[EventType] = None
+    event_type: Optional[str] = Field(None, max_length=50)
     status: Optional[EventStatus] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
@@ -581,6 +601,11 @@ class EventSearchQuery(BaseModel):
     country: Optional[str] = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+    @field_validator('event_type', mode='before')
+    @classmethod
+    def normalize_event_type(cls, v):
+        return _normalize_event_type_value(v)
 
 class EventListResponse(BaseModel):
     """Schema for event list response"""
@@ -606,7 +631,7 @@ class EventStatsResponse(BaseModel):
 # Location optimization schemas for events
 class EventLocationOptimizationRequest(LocationOptimizationRequest):
     """Request for optimizing event location"""
-    event_type: Optional[EventType] = Field(None, description="Event type for better location suggestions")
+    event_type: Optional[str] = Field(None, description="Event type for better location suggestions", max_length=50)
     
 class EventLocationOptimizationResponse(LocationOptimizationResponse):
     """Response from event location optimization"""
