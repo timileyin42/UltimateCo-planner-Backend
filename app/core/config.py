@@ -155,6 +155,7 @@ class Settings(BaseSettings):
     # External API Keys
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_MAPS_API_KEY: Optional[str] = None
+    GEOAPIFY_API_KEY: Optional[str] = None
     
     # SMS Configuration - Termii
     TERMII_API_KEY: Optional[str] = None

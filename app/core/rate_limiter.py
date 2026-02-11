@@ -89,12 +89,36 @@ def get_identifier(request: Request) -> str:
     return get_remote_address(request)
 
 
+def _get_storage_uri() -> Optional[str]:
+    if not settings.RATE_LIMIT_ENABLED:
+        return None
+    environment = (settings.ENVIRONMENT or "").lower()
+    if environment in {"development", "local", "dev"}:
+        return "memory://"
+    return settings.REDIS_URL
+
 # Create limiter instance with a sane default API-wide limit
 limiter = Limiter(
     key_func=get_identifier,
-    storage_uri=settings.REDIS_URL if settings.RATE_LIMIT_ENABLED else None,
+    storage_uri=_get_storage_uri(),
     default_limits=[RateLimitConfig.API] if settings.RATE_LIMIT_ENABLED else []
 )
+
+def safe_rate_limit_exceeded_handler(request: Request, exc: Exception):
+    detail = getattr(exc, "detail", str(exc))
+    retry_after = getattr(exc, "retry_after", 60)
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS if isinstance(exc, RateLimitExceeded) else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": "Rate limit error" if status_code == status.HTTP_429_TOO_MANY_REQUESTS else "Rate limiter unavailable",
+            "message": detail,
+            "retry_after": retry_after
+        },
+        headers={"Retry-After": str(retry_after)}
+    )
+
+limiter._rate_limit_exceeded_handler = safe_rate_limit_exceeded_handler
 
 
 # Custom rate limit exceeded handler

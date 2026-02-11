@@ -239,9 +239,6 @@ class EventFactory:
         event_create = EventCreate(**event_data)
         return event_service.create_event(event_create, creator_id)
 
-# Pytest configuration
-pytest_plugins = []
-
 # Async test support
 @pytest.fixture(scope="session")
 def anyio_backend():

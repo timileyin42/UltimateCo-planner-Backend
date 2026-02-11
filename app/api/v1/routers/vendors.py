@@ -40,8 +40,11 @@ from app.schemas.vendor import (
     VendorContractCreate, VendorContractResponse,
     
     # Bulk operations
-    BulkVendorServiceCreate
+    BulkVendorServiceCreate,
+    EventVenueSearchParams,
+    EventVenueSearchResponse
 )
+from app.schemas.location import GeoapifyPlaceSearchParams, GeoapifyPlaceSuggestion, EventPlaceSearchParams
 from app.models.user_models import User
 from app.models.vendor_models import VendorCategory, BookingStatus, PaymentStatus
 from datetime import datetime, timedelta
@@ -144,6 +147,76 @@ async def search_vendors(
         
     except Exception as e:
         raise http_400_bad_request("Failed to search vendors")
+
+@vendors_router.get("/places/search", response_model=List[GeoapifyPlaceSuggestion])
+async def search_places_geoapify(
+    search_params: GeoapifyPlaceSearchParams = Depends(),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Search for venues and restaurants via Geoapify"""
+    try:
+        vendor_service = VendorService(db)
+        return await vendor_service.search_geoapify_places(search_params.model_dump())
+    except Exception as e:
+        raise http_400_bad_request("Failed to search places")
+
+@vendors_router.get("/events/{event_id}/places", response_model=List[GeoapifyPlaceSuggestion])
+async def search_event_places_geoapify(
+    event_id: int,
+    search_params: EventPlaceSearchParams = Depends(),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Search for places based on an event venue"""
+    try:
+        vendor_service = VendorService(db)
+        return await vendor_service.search_event_places(
+            event_id, current_user.id, search_params.model_dump()
+        )
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "access" in str(e).lower() or "permission" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request("Failed to search event places")
+
+@vendors_router.get("/events/{event_id}/venue-search", response_model=EventVenueSearchResponse)
+async def search_event_places_and_vendors(
+    event_id: int,
+    search_params: EventVenueSearchParams = Depends(),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Search external places and internal vendors based on an event venue"""
+    try:
+        vendor_service = VendorService(db)
+        result = await vendor_service.search_event_places_and_vendors(
+            event_id, current_user.id, search_params.model_dump()
+        )
+
+        vendor_responses = [VendorResponse.model_validate(vendor) for vendor in result["vendors"]]
+        vendor_list = VendorListResponse(
+            vendors=vendor_responses,
+            total=result["total"],
+            page=result["page"],
+            per_page=result["per_page"],
+            has_next=(result["page"] * result["per_page"]) < result["total"],
+            has_prev=result["page"] > 1
+        )
+
+        return EventVenueSearchResponse(
+            places=result["places"],
+            vendors=vendor_list
+        )
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "access" in str(e).lower() or "permission" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request("Failed to search event venues")
 
 @vendors_router.get("/{vendor_id}", response_model=VendorResponse)
 async def get_vendor(
