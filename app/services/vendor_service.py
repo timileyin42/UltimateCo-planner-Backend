@@ -826,9 +826,12 @@ class VendorService:
 
         if isinstance(categories, str):
             categories = [item.strip() for item in categories.split(",") if item.strip()]
+        categories = self._normalize_geoapify_categories(categories)
 
         if not query and not categories:
             raise ValidationError("Provide a query or categories for place search")
+        if latitude is None or longitude is None:
+            raise ValidationError("Latitude and longitude are required for Geoapify search")
 
         params: Dict[str, Any] = {
             "apiKey": settings.GEOAPIFY_API_KEY,
@@ -839,13 +842,17 @@ class VendorService:
             params["text"] = query
         if categories:
             params["categories"] = ",".join(categories)
-        if latitude is not None and longitude is not None:
-            params["bias"] = f"proximity:{longitude},{latitude}"
-            params["filter"] = f"circle:{longitude},{latitude},{radius_meters}"
+        params["bias"] = f"proximity:{longitude},{latitude}"
+        params["filter"] = f"circle:{longitude},{latitude},{radius_meters}"
 
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get("https://api.geoapify.com/v2/places", params=params)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise ValidationError(
+                    f"Geoapify error {exc.response.status_code}: {exc.response.text}"
+                ) from exc
             data = response.json()
 
         results: List[GeoapifyPlaceSuggestion] = []
@@ -896,6 +903,8 @@ class VendorService:
 
         latitude = getattr(event, "latitude", None)
         longitude = getattr(event, "longitude", None)
+        if latitude is None or longitude is None:
+            raise ValidationError("Event location coordinates are missing. Update the event location.")
 
         return await self.search_geoapify_places({
             "query": query,
@@ -933,6 +942,8 @@ class VendorService:
 
         latitude = getattr(event, "latitude", None)
         longitude = getattr(event, "longitude", None)
+        if latitude is None or longitude is None:
+            raise ValidationError("Event location coordinates are missing. Update the event location.")
 
         places = await self.search_geoapify_places({
             "query": query,
@@ -958,6 +969,54 @@ class VendorService:
             "page": page,
             "per_page": per_page
         }
+
+    def _normalize_geoapify_categories(
+        self,
+        categories: Optional[List[str]]
+    ) -> Optional[List[str]]:
+        if not categories:
+            return None
+
+        alias_map = {
+            "restaurant": ["catering.restaurant"],
+            "amenity.restaurant": ["catering.restaurant"],
+            "hotel": ["accommodation.hotel"],
+            "bar": ["catering.bar"],
+            "club": ["adult.nightclub"],
+            "event hall": [
+                "building.public_and_civil",
+                "building.entertainment",
+                "activity.community_center"
+            ],
+            "venue": [
+                "building.public_and_civil",
+                "building.entertainment",
+                "activity.community_center",
+                "building.sport"
+            ]
+        }
+
+        normalized: List[str] = []
+        for item in categories:
+            if not item:
+                continue
+            key = item.strip().lower()
+            mapped = alias_map.get(key)
+            if mapped:
+                normalized.extend(mapped)
+            else:
+                normalized.append(item.strip())
+
+        if not normalized:
+            return None
+
+        seen = set()
+        unique = []
+        for item in normalized:
+            if item not in seen:
+                seen.add(item)
+                unique.append(item)
+        return unique
 
 # Global vendor service instance
 def get_vendor_service(db: Session) -> VendorService:
