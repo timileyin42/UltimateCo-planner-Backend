@@ -36,6 +36,18 @@ class SmartReminderCreate(SmartReminderBase):
     """Schema for creating a smart reminder."""
     pass
 
+class InviteReminderCreate(BaseModel):
+    """Schema for creating an invite reminder."""
+    scheduled_time: datetime = Field(..., description="When to send the reminder")
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    message: Optional[str] = Field(None, min_length=1, max_length=1000)
+    target_all_guests: bool = Field(default=False, description="Send to all event guests")
+    target_rsvp_status: Optional[str] = Field("accepted", description="Filter by RSVP status")
+    send_email: bool = Field(default=True, description="Send via email")
+    send_sms: bool = Field(default=False, description="Send via SMS")
+    send_push: bool = Field(default=True, description="Send push notification")
+    send_in_app: bool = Field(default=True, description="Send in-app notification")
+
 class SmartReminderUpdate(BaseModel):
     """Schema for updating a smart reminder."""
     title: Optional[str] = Field(None, min_length=1, max_length=200)

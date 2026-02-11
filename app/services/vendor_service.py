@@ -12,9 +12,12 @@ from app.models.vendor_models import (
 from app.models.event_models import Event
 from app.core.idempotency import idempotent_operation, IdempotencyManager
 from app.core.errors import NotFoundError, AuthorizationError, ValidationError
+from app.core.config import get_settings
+from app.schemas.location import GeoapifyPlaceSuggestion, Coordinates
 import json
 import uuid
 from decimal import Decimal
+import httpx
 
 class VendorService:
     """Service for managing vendor collaboration and bookings."""
@@ -805,6 +808,156 @@ class VendorService:
         quotes = all_quotes[start:end]
         
         return quotes, total
+
+    async def search_geoapify_places(
+        self,
+        search_params: Dict[str, Any]
+    ) -> List[GeoapifyPlaceSuggestion]:
+        settings = get_settings()
+        if not settings.GEOAPIFY_API_KEY:
+            raise ValidationError("Geoapify API key not configured")
+
+        query = search_params.get("query")
+        categories = search_params.get("categories")
+        latitude = search_params.get("latitude")
+        longitude = search_params.get("longitude")
+        radius_meters = search_params.get("radius_meters", 5000)
+        limit = search_params.get("limit", 20)
+
+        if isinstance(categories, str):
+            categories = [item.strip() for item in categories.split(",") if item.strip()]
+
+        if not query and not categories:
+            raise ValidationError("Provide a query or categories for place search")
+
+        params: Dict[str, Any] = {
+            "apiKey": settings.GEOAPIFY_API_KEY,
+            "limit": limit
+        }
+
+        if query:
+            params["text"] = query
+        if categories:
+            params["categories"] = ",".join(categories)
+        if latitude is not None and longitude is not None:
+            params["bias"] = f"proximity:{longitude},{latitude}"
+            params["filter"] = f"circle:{longitude},{latitude},{radius_meters}"
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get("https://api.geoapify.com/v2/places", params=params)
+            response.raise_for_status()
+            data = response.json()
+
+        results: List[GeoapifyPlaceSuggestion] = []
+        for feature in data.get("features", []):
+            properties = feature.get("properties", {})
+            latitude_value = properties.get("lat")
+            longitude_value = properties.get("lon")
+            if latitude_value is None or longitude_value is None:
+                continue
+            coords = Coordinates(
+                latitude=latitude_value,
+                longitude=longitude_value
+            )
+            results.append(
+                GeoapifyPlaceSuggestion(
+                    place_id=properties.get("place_id"),
+                    name=properties.get("name"),
+                    formatted_address=properties.get("formatted"),
+                    coordinates=coords,
+                    categories=properties.get("categories") or [],
+                    distance_meters=properties.get("distance"),
+                    website=properties.get("website")
+                )
+            )
+
+        return results
+
+    async def search_event_places(
+        self,
+        event_id: int,
+        user_id: int,
+        search_params: Dict[str, Any]
+    ) -> List[GeoapifyPlaceSuggestion]:
+        event = self._get_event_with_access(event_id, user_id)
+
+        query_override = search_params.get("query_override")
+        categories = search_params.get("categories")
+        radius_meters = search_params.get("radius_meters", 5000)
+        limit = search_params.get("limit", 20)
+
+        event_parts = [
+            event.venue_name,
+            event.venue_address,
+            event.venue_city,
+            event.venue_country
+        ]
+        query = query_override or " ".join([part for part in event_parts if part])
+
+        latitude = getattr(event, "latitude", None)
+        longitude = getattr(event, "longitude", None)
+
+        return await self.search_geoapify_places({
+            "query": query,
+            "categories": categories,
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_meters": radius_meters,
+            "limit": limit
+        })
+
+    async def search_event_places_and_vendors(
+        self,
+        event_id: int,
+        user_id: int,
+        search_params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        event = self._get_event_with_access(event_id, user_id)
+
+        query_override = search_params.get("query_override")
+        place_categories = search_params.get("place_categories")
+        radius_meters = search_params.get("radius_meters", 5000)
+        limit = search_params.get("limit", 20)
+        page = search_params.get("page", 1)
+        per_page = search_params.get("per_page", 20)
+
+        event_parts = [
+            event.venue_name,
+            event.venue_address,
+            event.venue_city,
+            event.venue_country
+        ]
+        query = query_override or " ".join([part for part in event_parts if part])
+        if not query and not place_categories:
+            raise ValidationError("Event venue data is missing. Provide query_override or place_categories.")
+
+        latitude = getattr(event, "latitude", None)
+        longitude = getattr(event, "longitude", None)
+
+        places = await self.search_geoapify_places({
+            "query": query,
+            "categories": place_categories,
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_meters": radius_meters,
+            "limit": limit
+        })
+
+        vendors, total = self.search_vendors({
+            "category": search_params.get("vendor_category"),
+            "city": event.venue_city,
+            "country": event.venue_country,
+            "page": page,
+            "per_page": per_page
+        })
+
+        return {
+            "places": places,
+            "vendors": vendors,
+            "total": total,
+            "page": page,
+            "per_page": per_page
+        }
 
 # Global vendor service instance
 def get_vendor_service(db: Session) -> VendorService:

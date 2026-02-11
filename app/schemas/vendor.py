@@ -5,6 +5,7 @@ from datetime import datetime, time
 from app.models.vendor_models import (
     VendorCategory, VendorStatus, BookingStatus, PaymentStatus, ServiceType
 )
+from app.schemas.location import GeoapifyPlaceSuggestion
 
 # Base schemas
 class UserBasic(BaseModel):
@@ -353,6 +354,16 @@ class VendorSearchParams(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number")
     per_page: int = Field(default=20, ge=1, le=100, description="Items per page")
 
+class EventVenueSearchParams(BaseModel):
+    """Schema for combined event venue search parameters."""
+    vendor_category: Optional[VendorCategory] = Field(None, description="Filter internal vendors by category")
+    place_categories: Optional[List[str]] = Field(None, description="Geoapify categories")
+    radius_meters: int = Field(5000, ge=100, le=50000, description="Search radius in meters")
+    limit: int = Field(20, ge=1, le=50, description="Max number of places")
+    page: int = Field(default=1, ge=1, description="Vendor page number")
+    per_page: int = Field(default=20, ge=1, le=100, description="Vendor items per page")
+    query_override: Optional[str] = Field(None, min_length=1, max_length=200, description="Override event-based place query")
+
 class BookingSearchParams(BaseModel):
     """Schema for booking search parameters."""
     status: Optional[BookingStatus] = Field(None, description="Filter by status")
@@ -371,6 +382,11 @@ class VendorListResponse(BaseModel):
     per_page: int
     has_next: bool
     has_prev: bool
+
+class EventVenueSearchResponse(BaseModel):
+    """Schema for combined event venue search response."""
+    places: List[GeoapifyPlaceSuggestion]
+    vendors: VendorListResponse
 
 class VendorServiceListResponse(BaseModel):
     """Schema for paginated vendor service list."""

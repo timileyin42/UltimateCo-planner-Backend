@@ -37,7 +37,8 @@ from app.schemas.notification import (
     # In-app notifications and device management
     InAppNotificationResponse, InAppNotificationListResponse, MarkNotificationReadRequest,
     DeviceRegistrationRequest, DeviceResponse, WebSocketStatsResponse,
-    UserNotificationListResponse
+    UserNotificationListResponse,
+    InviteReminderCreate
 )
 
 notifications_router = APIRouter()
@@ -182,8 +183,32 @@ async def create_automatic_reminders(
     except Exception as e:
         if "not found" in str(e).lower():
             raise http_404_not_found(str(e))
+        elif "disabled" in str(e).lower():
+            raise http_400_bad_request(str(e))
         else:
             raise http_400_bad_request("Failed to create automatic reminders")
+
+@notifications_router.post("/events/{event_id}/invite-reminders", response_model=SmartReminderResponse)
+async def create_invite_reminder(
+    event_id: int,
+    reminder_data: InviteReminderCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create an invite reminder for an event"""
+    try:
+        notification_service = NotificationService(db)
+        reminder = notification_service.create_invite_reminder(
+            event_id, current_user.id, reminder_data.model_dump()
+        )
+        return SmartReminderResponse.model_validate(reminder)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "permission" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request("Failed to create invite reminder")
 
 # Notification preferences
 @notifications_router.get("/preferences", response_model=List[NotificationPreferenceResponse])

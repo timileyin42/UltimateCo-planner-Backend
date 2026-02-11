@@ -144,6 +144,11 @@ async def startup_event():
     else:
         logger.info("No read replicas configured")
 
+    if settings.GEOAPIFY_API_KEY:
+        logger.info("Geoapify Places API configured")
+    else:
+        logger.warning("Geoapify Places API key missing")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown event"""

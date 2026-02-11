@@ -60,6 +60,36 @@ class LocationSuggestion(BaseModel):
         }
 
 
+class GeoapifyPlaceSuggestion(BaseModel):
+    """A place suggestion from Geoapify Places API."""
+    place_id: Optional[str] = Field(None, description="Geoapify place ID")
+    name: Optional[str] = Field(None, description="Place name")
+    formatted_address: Optional[str] = Field(None, description="Formatted address")
+    coordinates: Coordinates = Field(..., description="Geographic coordinates")
+    categories: List[str] = Field(default_factory=list, description="Geoapify categories")
+    distance_meters: Optional[float] = Field(None, description="Distance from search center in meters")
+    website: Optional[str] = Field(None, description="Website URL")
+
+    class Config:
+        from_attributes = True
+
+
+class GeoapifyPlaceSearchParams(BaseModel):
+    """Search parameters for Geoapify places search."""
+    query: Optional[str] = Field(None, min_length=1, max_length=200, description="Search text")
+    categories: Optional[List[str]] = Field(None, description="Geoapify categories")
+    latitude: Optional[float] = Field(None, ge=-90, le=90, description="Center latitude")
+    longitude: Optional[float] = Field(None, ge=-180, le=180, description="Center longitude")
+    radius_meters: int = Field(5000, ge=100, le=50000, description="Search radius in meters")
+    limit: int = Field(20, ge=1, le=50, description="Max number of results")
+
+class EventPlaceSearchParams(BaseModel):
+    """Search parameters for event-based Geoapify places search."""
+    categories: Optional[List[str]] = Field(None, description="Geoapify categories")
+    radius_meters: int = Field(5000, ge=100, le=50000, description="Search radius in meters")
+    limit: int = Field(20, ge=1, le=50, description="Max number of results")
+    query_override: Optional[str] = Field(None, min_length=1, max_length=200, description="Override event-based query")
+
 class LocationValidation(BaseModel):
     """Result of location validation."""
     is_valid: bool = Field(..., description="Whether the location is valid")

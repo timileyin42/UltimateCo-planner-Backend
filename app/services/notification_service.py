@@ -46,17 +46,25 @@ class NotificationService:
         event = self._get_event_with_access(event_id, user_id)
         
         # Prepare reminder data
+        notification_type = NotificationType(reminder_data['notification_type'])
+        target_all_guests = reminder_data.get('target_all_guests', True)
+        target_rsvp_status = reminder_data.get('target_rsvp_status')
+        if notification_type == NotificationType.RSVP_REMINDER:
+            target_all_guests = False
+            target_rsvp_status = target_rsvp_status or "accepted"
+
         processed_data = {
             'title': reminder_data['title'],
             'message': reminder_data['message'],
-            'notification_type': NotificationType(reminder_data['notification_type']),
+            'notification_type': notification_type,
             'scheduled_time': reminder_data['scheduled_time'],
             'frequency': ReminderFrequency(reminder_data.get('frequency', 'once')),
             'event_id': event_id,
             'creator_id': user_id,
-            'target_all_guests': reminder_data.get('target_all_guests', True),
+            'auto_generated': False,
+            'target_all_guests': target_all_guests,
             'target_user_ids': reminder_data.get('target_user_ids'),
-            'target_rsvp_status': reminder_data.get('target_rsvp_status'),
+            'target_rsvp_status': target_rsvp_status,
             'send_email': reminder_data.get('send_email', True),
             'send_sms': reminder_data.get('send_sms', False),
             'send_push': reminder_data.get('send_push', True),
@@ -71,6 +79,49 @@ class NotificationService:
         # Queue notifications for delivery
         self._queue_reminder_notifications(reminder)
         
+        return reminder
+
+    def create_invite_reminder(
+        self,
+        event_id: int,
+        user_id: int,
+        reminder_data: Dict[str, Any]
+    ):
+        event = self._get_event_with_access(event_id, user_id)
+        event_date = None
+        if getattr(event, "start_datetime", None):
+            event_date = event.start_datetime.strftime("%B %d, %Y at %I:%M %p")
+
+        title = reminder_data.get("title") or f"Invitation Reminder - {event.title}"
+        if reminder_data.get("message"):
+            message = reminder_data["message"]
+        elif event_date:
+            message = f"Reminder: You're invited to {event.title} on {event_date}."
+        else:
+            message = f"Reminder: You're invited to {event.title}."
+
+        target_all_guests = reminder_data.get('target_all_guests', False)
+        target_rsvp_status = reminder_data.get('target_rsvp_status') or "accepted"
+
+        processed_data = {
+            'title': title,
+            'message': message,
+            'notification_type': NotificationType.EVENT_INVITE,
+            'scheduled_time': reminder_data['scheduled_time'],
+            'frequency': ReminderFrequency.ONCE,
+            'event_id': event_id,
+            'creator_id': user_id,
+            'auto_generated': False,
+            'target_all_guests': target_all_guests,
+            'target_rsvp_status': target_rsvp_status,
+            'send_email': reminder_data.get('send_email', True),
+            'send_sms': reminder_data.get('send_sms', False),
+            'send_push': reminder_data.get('send_push', True),
+            'send_in_app': reminder_data.get('send_in_app', True)
+        }
+
+        reminder = self.notification_repo.create_reminder(processed_data)
+        self._queue_reminder_notifications(reminder)
         return reminder
     
     def get_event_reminders(
@@ -146,29 +197,7 @@ class NotificationService:
     # Automatic reminder creation
     def create_automatic_reminders(self, event_id: int) -> List:
         """Create automatic reminders for an event."""
-        event = self.event_repo.get_by_id(event_id)
-        
-        if not event:
-            raise NotFoundError("Event not found")
-        
-        created_reminders = []
-        
-        # Create RSVP reminder (7 days before event)
-        rsvp_reminder = self._create_rsvp_reminder(event)
-        if rsvp_reminder:
-            created_reminders.append(rsvp_reminder)
-        
-        # Create event reminders (1 month, 1 week, 1 day, and day-of)
-        event_reminders = self._create_event_reminders(event)
-        if event_reminders:
-            created_reminders.extend(event_reminders)
-        
-        # Create dress code reminder if applicable
-        dress_code_reminder = self._create_dress_code_reminder(event)
-        if dress_code_reminder:
-            created_reminders.append(dress_code_reminder)
-        
-        return created_reminders
+        raise ValidationError("Automatic reminders are disabled. Create reminders manually.")
     
     # Notification processing
     async def process_pending_notifications(self, limit: int = 50) -> int:

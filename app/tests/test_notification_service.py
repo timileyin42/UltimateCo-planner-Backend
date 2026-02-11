@@ -209,25 +209,10 @@ class TestNotificationService:
             mock_db.commit.assert_called_once()
     
     # Automatic reminder creation tests
-    def test_create_automatic_reminders_success(self, notification_service, mock_db, mock_event):
-        """Test successful automatic reminders creation."""
-        # Setup
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_event
-        
-        with patch.object(notification_service, '_create_rsvp_reminder') as mock_rsvp:
-            with patch.object(notification_service, '_create_event_reminder') as mock_event_rem:
-                with patch.object(notification_service, '_create_dress_code_reminder') as mock_dress:
-                    mock_rsvp.return_value = Mock(spec=SmartReminder)
-                    mock_event_rem.return_value = Mock(spec=SmartReminder)
-                    mock_dress.return_value = None  # No dress code
-                    
-                    # Execute
-                    result = notification_service.create_automatic_reminders(1)
-                    
-                    # Assert
-                    assert len(result) == 2  # RSVP and event reminders
-                    mock_rsvp.assert_called_once_with(mock_event)
-                    mock_event_rem.assert_called_once_with(mock_event)
+    def test_create_automatic_reminders_disabled(self, notification_service):
+        """Test automatic reminders are disabled."""
+        with pytest.raises(ValidationError, match="Automatic reminders are disabled"):
+            notification_service.create_automatic_reminders(1)
     
     # Notification processing tests
     @pytest.mark.asyncio
