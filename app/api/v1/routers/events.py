@@ -12,7 +12,7 @@ from app.services.event_service import EventService
 from app.services.subscription_service import SubscriptionService, UsageLimitExceededError
 from app.schemas.event import (
     EventCreate, EventUpdate, EventResponse, EventSummary, EventListResponse,
-    EventInvitationCreate, EventInvitationUpdate, EventInvitationResponse,
+    EventInvitationCreate, EventInvitationUpdate, EventInvitationResponse, EventAcceptedAttendeesResponse,
     TaskCreate, TaskUpdate, TaskUpdateById, TaskResponse, TaskCategoriesResponse, TaskCategory, TaskCategoryItem, TaskStatus,
     TaskCategoriesUpdate,
     ExpenseCreate, ExpenseUpdate, ExpenseResponse,
@@ -836,6 +836,25 @@ async def get_event_attendees(
         raise http_403_forbidden("Access denied to this event")
     except Exception:
         raise http_400_bad_request("Failed to retrieve attendees")
+
+@events_router.get("/{event_id}/attendees/accepted", response_model=EventAcceptedAttendeesResponse)
+async def get_event_accepted_attendees(
+    event_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get accepted attendees for an event"""
+    try:
+        event_service = EventService(db)
+        invitations = event_service.get_accepted_event_attendees(event_id, current_user.id)
+        attendees = [UserSummary.model_validate(inv.user) for inv in invitations if inv.user]
+        return EventAcceptedAttendeesResponse(total=len(attendees), attendees=attendees)
+    except NotFoundError:
+        raise http_404_not_found("Event not found")
+    except AuthorizationError:
+        raise http_403_forbidden("Access denied to this event")
+    except Exception:
+        raise http_400_bad_request("Failed to retrieve accepted attendees")
 
 @events_router.get("/{event_id}/collaborators", response_model=List[UserSummary])
 async def get_event_collaborators(
