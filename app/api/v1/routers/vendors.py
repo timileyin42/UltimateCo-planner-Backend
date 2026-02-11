@@ -44,7 +44,7 @@ from app.schemas.vendor import (
     EventVenueSearchParams,
     EventVenueSearchResponse
 )
-from app.schemas.location import GeoapifyPlaceSearchParams, GeoapifyPlaceSuggestion, EventPlaceSearchParams
+from app.schemas.location import GeoapifyPlaceSuggestion, EventPlaceSearchParams
 from app.models.user_models import User
 from app.models.vendor_models import VendorCategory, BookingStatus, PaymentStatus
 from datetime import datetime, timedelta
@@ -150,14 +150,26 @@ async def search_vendors(
 
 @vendors_router.get("/places/search", response_model=List[GeoapifyPlaceSuggestion])
 async def search_places_geoapify(
-    search_params: GeoapifyPlaceSearchParams = Depends(),
+    query: Optional[str] = Query(None, min_length=1, max_length=200),
+    categories: Optional[List[str]] = Query(None),
+    latitude: Optional[float] = Query(None, ge=-90, le=90),
+    longitude: Optional[float] = Query(None, ge=-180, le=180),
+    radius_meters: int = Query(5000, ge=100, le=50000),
+    limit: int = Query(20, ge=1, le=50),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Search for venues and restaurants via Geoapify"""
     try:
         vendor_service = VendorService(db)
-        return await vendor_service.search_geoapify_places(search_params.model_dump())
+        return await vendor_service.search_geoapify_places({
+            "query": query,
+            "categories": categories,
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_meters": radius_meters,
+            "limit": limit
+        })
     except Exception as e:
         raise http_400_bad_request("Failed to search places")
 
