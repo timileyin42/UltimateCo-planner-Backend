@@ -474,6 +474,15 @@ class EventService:
 
         return invitations
 
+    def get_accepted_event_attendees(self, event_id: int, user_id: int) -> List[EventInvitation]:
+        """Get accepted attendee invitations for an event"""
+        event = self.get_event_by_id(event_id, user_id)
+        if not event:
+            raise NotFoundError("Event not found")
+
+        invitations = self.event_repo.get_event_invitations(event_id, include_relations=True)
+        return [inv for inv in invitations if inv.rsvp_status == RSVPStatus.ACCEPTED]
+
     def get_event_collaborators(self, event_id: int, user_id: int) -> List[User]:
         """List event collaborators"""
         event = self.get_event_by_id(event_id, user_id)

@@ -267,6 +267,11 @@ class EventInvitationResponse(EventInvitationBase):
     
     model_config = ConfigDict(from_attributes=True)
 
+class EventAcceptedAttendeesResponse(BaseModel):
+    """Schema for accepted attendees response"""
+    total: int
+    attendees: List[UserSummary]
+
 class CollaboratorAddRequest(BaseModel):
     """Schema for adding collaborators to an event"""
     user_ids: List[int] = Field(..., min_items=1)
