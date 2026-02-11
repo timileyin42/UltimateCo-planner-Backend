@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.deps import get_db, get_current_active_user
-from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden
+from app.core.errors import http_400_bad_request, http_404_not_found, http_403_forbidden, ValidationError
 from app.services.vendor_service import VendorService
 from app.models.vendor_models import VendorBooking
 from sqlalchemy.orm import joinedload
@@ -150,16 +150,51 @@ async def search_vendors(
 
 @vendors_router.get("/places/search", response_model=List[GeoapifyPlaceSuggestion])
 async def search_places_geoapify(
-    query: Optional[str] = Query(None, min_length=1, max_length=200),
-    categories: Optional[List[str]] = Query(None),
-    latitude: Optional[float] = Query(None, ge=-90, le=90),
-    longitude: Optional[float] = Query(None, ge=-180, le=180),
-    radius_meters: int = Query(5000, ge=100, le=50000),
-    limit: int = Query(20, ge=1, le=50),
+    query: Optional[str] = Query(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Free-text search, e.g. restaurant, coffee, event hall"
+    ),
+    categories: Optional[List[str]] = Query(
+        None,
+        description="Geoapify categories or aliases: restaurant, amenity.restaurant, venue, hotel, bar, club, event hall"
+    ),
+    latitude: Optional[float] = Query(
+        None,
+        ge=-90,
+        le=90,
+        description="Search center latitude (required with longitude)"
+    ),
+    longitude: Optional[float] = Query(
+        None,
+        ge=-180,
+        le=180,
+        description="Search center longitude (required with latitude)"
+    ),
+    radius_meters: int = Query(
+        5000,
+        ge=100,
+        le=50000,
+        description="Search radius in meters"
+    ),
+    limit: int = Query(
+        20,
+        ge=1,
+        le=50,
+        description="Max number of places to return"
+    ),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Search for venues and restaurants via Geoapify"""
+    """Search external places with Geoapify using text, categories, and a search center.
+
+    Requirements:
+    - Provide either query or categories.
+    - Provide both latitude and longitude.
+    - Categories must match Geoapify taxonomy; aliases are mapped to supported values.
+    - Aliases supported: restaurant, amenity.restaurant, venue, hotel, bar, club, event hall.
+    """
     try:
         vendor_service = VendorService(db)
         return await vendor_service.search_geoapify_places({
@@ -171,6 +206,8 @@ async def search_places_geoapify(
             "limit": limit
         })
     except Exception as e:
+        if isinstance(e, ValidationError):
+            raise http_400_bad_request(str(e))
         raise http_400_bad_request("Failed to search places")
 
 @vendors_router.get("/events/{event_id}/places", response_model=List[GeoapifyPlaceSuggestion])
@@ -180,13 +217,20 @@ async def search_event_places_geoapify(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Search for places based on an event venue"""
+    """Search Geoapify places using the event venue as the search center.
+
+    Requirements:
+    - Event must have latitude and longitude saved.
+    - Provide categories or rely on the event venue text.
+    """
     try:
         vendor_service = VendorService(db)
         return await vendor_service.search_event_places(
             event_id, current_user.id, search_params.model_dump()
         )
     except Exception as e:
+        if isinstance(e, ValidationError):
+            raise http_400_bad_request(str(e))
         if "not found" in str(e).lower():
             raise http_404_not_found(str(e))
         elif "access" in str(e).lower() or "permission" in str(e).lower():
@@ -201,7 +245,12 @@ async def search_event_places_and_vendors(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Search external places and internal vendors based on an event venue"""
+    """Search Geoapify places and internal vendors based on the event venue.
+
+    Requirements:
+    - Event must have latitude and longitude saved.
+    - Provide query_override or place_categories if the event venue text is empty.
+    """
     try:
         vendor_service = VendorService(db)
         result = await vendor_service.search_event_places_and_vendors(
@@ -223,6 +272,8 @@ async def search_event_places_and_vendors(
             vendors=vendor_list
         )
     except Exception as e:
+        if isinstance(e, ValidationError):
+            raise http_400_bad_request(str(e))
         if "not found" in str(e).lower():
             raise http_404_not_found(str(e))
         elif "access" in str(e).lower() or "permission" in str(e).lower():
