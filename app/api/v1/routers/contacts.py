@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -6,7 +7,7 @@ from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user_models import User
-from app.models.contact_models import ContactInviteStatus, UserContact
+from app.models.contact_models import ContactInviteStatus, UserContact, ContactInvitation
 from app.services.contact_service import ContactService
 from app.schemas.contact_schemas import (
     ContactCreate, ContactUpdate, ContactResponse, ContactListResponse,
@@ -15,8 +16,10 @@ from app.schemas.contact_schemas import (
     InvitationListResponse, InvitationResponseRequest,
     ContactGroupCreate, ContactGroupUpdate, ContactGroupResponse, ContactGroupListResponse,
     AddContactToGroupRequest, ContactGroupMembershipResponse,
-    ContactStatsResponse, ContactImportRequest, ContactImportResponse
+    ContactStatsResponse, ContactImportRequest, ContactImportResponse,
+    PublicEventInviteResponse
 )
+from app.schemas.event import EventSummary
 
 router = APIRouter()
 
@@ -272,6 +275,46 @@ async def send_invitation(
         contact_id=invitation_data.contact_id,
         event_id=invitation_data.event_id,
         message=invitation_data.message
+    )
+
+
+@router.get("/invitations/public/{token}", response_model=PublicEventInviteResponse)
+async def get_public_invitation_event(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    invitation = db.query(ContactInvitation).filter(
+        ContactInvitation.invitation_token == token
+    ).first()
+
+    if not invitation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found"
+        )
+
+    is_expired = invitation.expires_at is not None and invitation.expires_at < datetime.utcnow()
+    invalid_statuses = {
+        ContactInviteStatus.EXPIRED,
+        ContactInviteStatus.FAILED
+    }
+    is_valid = not is_expired and invitation.status not in invalid_statuses
+
+    event_summary = (
+        EventSummary.model_validate(invitation.event)
+        if invitation.event and not invitation.event.is_deleted
+        else None
+    )
+
+    return PublicEventInviteResponse(
+        token=token,
+        is_valid=is_valid,
+        invitation_status=invitation.status,
+        invitation_type=invitation.invitation_type,
+        inviter_name=invitation.sender.full_name if invitation.sender else None,
+        message=invitation.message,
+        event=event_summary,
+        accept_requires_auth=True
     )
 
 @router.get("/invitations/sent", response_model=InvitationListResponse)
