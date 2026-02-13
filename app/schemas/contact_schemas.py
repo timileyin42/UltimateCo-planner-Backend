@@ -7,6 +7,7 @@ from phonenumbers import NumberParseException
 
 from app.models.contact_models import ContactInviteStatus
 from app.models.shared_models import RSVPStatus
+from app.schemas.event import EventSummary
 
 
 class ContactBase(BaseModel):
@@ -141,6 +142,17 @@ class ContactInvitationResponse(ContactInvitationBase):
     event_title: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class PublicEventInviteResponse(BaseModel):
+    token: str
+    is_valid: bool
+    invitation_status: ContactInviteStatus
+    invitation_type: str
+    inviter_name: Optional[str] = None
+    message: Optional[str] = None
+    event: Optional[EventSummary] = None
+    accept_requires_auth: bool = True
 
 
 class InvitationResponseRequest(BaseModel):
