@@ -6,197 +6,151 @@
     <title>Verify Your Email</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #1f2937;
         }
-        .container {
-            background-color: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        .wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
         }
         .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f3f4f6;
+            padding: 24px 32px;
+            background: linear-gradient(90deg, #f7b500 0%, #ff5a3c 100%);
+            color: #ffffff;
         }
-        .logo-container {
-            margin-bottom: 20px;
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
         }
-        .logo-icon {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 10px;
-            background: linear-gradient(135deg, #FF5252, #FFC107);
-            border-radius: 16px;
-            display: flex;
+        .brand-sub {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 6px;
+        }
+        .content {
+            padding: 28px 32px 8px;
+        }
+        .kicker {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            background: #f7b500;
+            color: #1f2937;
+            font-weight: 700;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 20px rgba(255, 82, 82, 0.3);
-        }
-        .logo-icon svg {
-            width: 40px;
-            height: 40px;
-        }
-        .logo {
-            font-size: 28px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #FF5252, #FFC107);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-        }
-        .verify-icon {
-            font-size: 48px;
-            margin-bottom: 20px;
+            font-size: 16px;
         }
         .title {
             font-size: 24px;
-            color: #1f2937;
-            margin-bottom: 20px;
+            margin: 16px 0 12px;
+            font-weight: 700;
         }
-        .content {
-            margin-bottom: 30px;
+        .text {
+            color: #4b5563;
+            font-size: 15px;
+            line-height: 1.7;
         }
-        .verify-button {
+        .button {
             display: inline-block;
-            background: linear-gradient(135deg, #FF5252, #FF9999);
-            color: white;
-            padding: 15px 30px;
+            background: #f7b500;
+            color: #1f2937;
+            padding: 12px 28px;
             text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 16px;
-            margin: 20px 0;
-            box-shadow: 0 4px 15px rgba(255, 82, 82, 0.3);
-        }
-        .verify-button:hover {
-            background: linear-gradient(135deg, #E64545, #FF8888);
+            border-radius: 999px;
+            font-weight: 700;
+            margin: 18px 0 6px;
         }
         .benefits {
-            background-color: #FFF9E6;
-            padding: 20px;
-            border-radius: 8px;
+            background: #fff7db;
+            border-radius: 16px;
+            padding: 18px 20px;
             margin: 20px 0;
-            border-left: 4px solid #FFC107;
+            color: #1f2937;
         }
         .benefit-item {
             margin: 8px 0;
-            padding-left: 20px;
-            position: relative;
         }
-        .benefit-item:before {
-            content: "✓";
-            position: absolute;
-            left: 0;
-            color: #00ACC1;
-            font-weight: bold;
+        .link-fallback {
+            background: #f3f4f6;
+            padding: 14px 16px;
+            border-radius: 12px;
+            margin: 14px 0;
+            word-break: break-all;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 13px;
         }
-        .security-notice {
-            background-color: #fef3c7;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 20px 0;
-            border-left: 4px solid #f59e0b;
+        .security {
+            background: #fff1d6;
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin: 18px 0;
+            color: #7a4b00;
+        }
+        .footer-card {
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 18px;
+            padding: 18px 20px;
+            margin: 20px 32px 12px;
+        }
+        .footer-card-title {
+            font-weight: 700;
+            margin-bottom: 6px;
         }
         .footer {
             text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            color: #6b7280;
-            font-size: 14px;
-        }
-        .link-fallback {
-            background-color: #f3f4f6;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 15px 0;
-            word-break: break-all;
-            font-family: monospace;
-            font-size: 14px;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 12px 32px 28px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo-container">
-                <div class="logo-icon">
-                    <!-- PlanEtAl Logo Icon -->
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="50" cy="50" r="45" fill="white" opacity="0.3"/>
-                        <path d="M30 50 Q50 25, 70 50 T70 75" stroke="white" stroke-width="8" fill="none" stroke-linecap="round"/>
-                        <circle cx="35" cy="45" r="6" fill="white"/>
-                        <circle cx="65" cy="55" r="6" fill="white"/>
-                    </svg>
+    <div class="wrapper">
+        <div class="card">
+            <div class="header">
+                <div class="brand">{{ app_name }}</div>
+                <div class="brand-sub">Confirm your account</div>
+            </div>
+            <div class="content">
+                <div class="kicker">📧</div>
+                <h1 class="title">Verify your email address</h1>
+                <p class="text">Hi {{ user_name }},</p>
+                <p class="text">Please confirm your email to finish setting up your {{ app_name }} account.</p>
+                <a href="{{ verification_url }}" class="button">Verify My Email</a>
+                <div class="benefits">
+                    <div class="feature-item">Keep your account secure and recoverable</div>
+                    <div class="feature-item">Receive invites, reminders, and updates</div>
+                    <div class="feature-item">Access all {{ app_name }} features without restrictions</div>
                 </div>
-                <div class="logo">{{ app_name }}</div>
+                <p class="text">If the button doesn’t work, copy this link into your browser:</p>
+                <div class="link-fallback">{{ verification_url }}</div>
+                <div class="security">
+                    This link expires in 24 hours. If you didn’t create this account, ignore this email.
+                </div>
+                <p class="text">Happy planning,<br>The {{ app_name }} Team</p>
             </div>
-            <div class="verify-icon">📧</div>
-            <h1 class="title">Verify Your Email Address</h1>
-        </div>
-        
-        <div class="content">
-            <p>Hi {{ user_name }},</p>
-            
-            <p>Welcome to {{ app_name }}! To complete your account setup and start planning amazing events, please verify your email address by clicking the button below:</p>
-            
-            <div style="text-align: center;">
-                <a href="{{ verification_url }}" class="verify-button">Verify My Email</a>
+            <div class="footer-card">
+                <div class="footer-card-title">{{ app_name }}</div>
+                <div>Build the moments that matter.</div>
             </div>
-            
-            <div class="benefits">
-                <h3 style="margin-top: 0; color: #1f2937;">Why verify your email?</h3>
-                <div class="benefit-item">Secure your account and enable password recovery</div>
-                <div class="benefit-item">Receive important event notifications and updates</div>
-                <div class="benefit-item">Get invitations and RSVP confirmations</div>
-                <div class="benefit-item">Access all {{ app_name }} features without restrictions</div>
-                <div class="benefit-item">Stay connected with your event planning community</div>
+            <div class="footer">
+                <p>This email was sent to verify your {{ app_name }} account.</p>
+                <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
             </div>
-            
-            <p>If the button above doesn't work, you can copy and paste this link into your browser:</p>
-            <div class="link-fallback">
-                {{ verification_url }}
-            </div>
-            
-            <div class="security-notice">
-                <strong> Security Note:</strong>
-                <ul style="margin: 10px 0; padding-left: 20px;">
-                    <li>This verification link is unique to your account</li>
-                    <li>The link will expire in 24 hours for security</li>
-                    <li>If you didn't create this account, please ignore this email</li>
-                    <li>Never share verification links with others</li>
-                </ul>
-            </div>
-            
-            <p>Once verified, you'll be able to:</p>
-            <ul>
-                <li>Create and organize events</li>
-                <li>Invite friends and family</li>
-                <li>Collaborate on event planning</li>
-                <li>Track RSVPs and manage guest lists</li>
-                <li>Share photos and memories</li>
-                <li>Get AI-powered planning suggestions</li>
-            </ul>
-            
-            <p>If you have any questions or need help, our support team is here to assist you.</p>
-            
-            <p>Happy planning!<br>
-The {{ app_name }} Team</p>
-        </div>
-        
-        <div class="footer">
-            <p>This email was sent to verify your {{ app_name }} account.</p>
-            <p>If you didn't create an account, you can safely ignore this email.</p>
-            <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
         </div>
     </div>
 </body>

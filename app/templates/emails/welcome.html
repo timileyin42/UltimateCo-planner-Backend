@@ -6,161 +6,131 @@
     <title>Welcome to {{ app_name }}</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #1f2937;
         }
-        .container {
-            background-color: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        .wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
         }
         .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f3f4f6;
+            padding: 24px 32px;
+            background: linear-gradient(90deg, #f7b500 0%, #ff5a3c 100%);
+            color: #ffffff;
         }
-        .logo-container {
-            margin-bottom: 20px;
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
         }
-        .logo-icon {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 10px;
-            background: linear-gradient(135deg, #FF5252, #FFC107);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 20px rgba(255, 82, 82, 0.3);
-        }
-        .logo-icon svg {
-            width: 40px;
-            height: 40px;
-        }
-        .logo {
-            font-size: 28px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #FF5252, #FFC107);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .logo-text {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .welcome-title {
-            font-size: 24px;
-            color: #1f2937;
-            margin-bottom: 20px;
+        .brand-sub {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 6px;
         }
         .content {
-            margin-bottom: 30px;
+            padding: 28px 32px 8px;
+        }
+        .kicker {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            background: #f7b500;
+            color: #1f2937;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        .title {
+            font-size: 24px;
+            margin: 16px 0 12px;
+            font-weight: 700;
+        }
+        .text {
+            color: #4b5563;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+        .features {
+            background: #fff7db;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin: 20px 0;
+            color: #1f2937;
+        }
+        .feature-item {
+            margin: 8px 0;
         }
         .button {
             display: inline-block;
-            background: linear-gradient(135deg, #00ACC1, #0097A7);
-            color: white;
-            padding: 12px 30px;
+            background: #f7b500;
+            color: #1f2937;
+            padding: 12px 28px;
             text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-            box-shadow: 0 4px 15px rgba(0, 172, 193, 0.3);
+            border-radius: 999px;
+            font-weight: 700;
+            margin: 18px 0 6px;
         }
-        .button:hover {
-            background: linear-gradient(135deg, #0097A7, #00838F);
+        .footer-card {
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 18px;
+            padding: 18px 20px;
+            margin: 20px 32px 12px;
         }
-        .features {
-            background: linear-gradient(135deg, #FFF9E6, #FFECB3);
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #FFC107;
-        }
-        .feature-item {
-            margin: 10px 0;
-            padding-left: 20px;
-            position: relative;
-        }
-        .feature-item:before {
-            content: "✓";
-            position: absolute;
-            left: 0;
-            color: #FF5252;
-            font-weight: bold;
+        .footer-card-title {
+            font-weight: 700;
+            margin-bottom: 6px;
         }
         .footer {
             text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            color: #6b7280;
-            font-size: 14px;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 12px 32px 28px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo-container">
-                <div class="logo-icon">
-                    <!-- PlanEtAl Logo Icon -->
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="50" cy="50" r="45" fill="white" opacity="0.3"/>
-                        <path d="M30 50 Q50 25, 70 50 T70 75" stroke="white" stroke-width="8" fill="none" stroke-linecap="round"/>
-                        <circle cx="35" cy="45" r="6" fill="white"/>
-                        <circle cx="65" cy="55" r="6" fill="white"/>
-                    </svg>
-                </div>
-                <div class="logo-text">
-                    <span class="logo">{{ app_name }}</span>
-                </div>
+    <div class="wrapper">
+        <div class="card">
+            <div class="header">
+                <div class="brand">{{ app_name }}</div>
+                <div class="brand-sub">Plan unforgettable moments</div>
             </div>
-            <h1 class="welcome-title">Welcome, {{ user_name }}! 🎉</h1>
-        </div>
-        
-        <div class="content">
-            <p>We're thrilled to have you join the {{ app_name }} community! You're now part of a platform that makes event planning collaborative, stress-free, and fun.</p>
-            
-            <div class="features">
-                <h3>Here's what you can do with {{ app_name }}:</h3>
-                <div class="feature-item">Create and organize amazing events</div>
-                <div class="feature-item">Invite friends and track RSVPs</div>
-                <div class="feature-item">Collaborate on planning with tasks and polls</div>
-                <div class="feature-item">Manage budgets and split expenses</div>
-                <div class="feature-item">Share photos and memories</div>
-                <div class="feature-item">Get AI-powered planning suggestions</div>
-            </div>
-            
-            <p>Ready to start planning your first event? Click the button below to get started!</p>
-            
-            <div style="text-align: center;">
+            <div class="content">
+                <div class="kicker">P</div>
+                <h1 class="title">Thanks for signing up, {{ user_name }}!</h1>
+                <p class="text">We’re excited to have you on {{ app_name }}. You can now create beautiful events, invite guests, and keep everything organized in one place.</p>
+                <div class="features">
+                    <div class="feature-item">Create and organize events with ease</div>
+                    <div class="feature-item">Invite guests and track RSVPs</div>
+                    <div class="feature-item">Collaborate with tasks, polls, and timelines</div>
+                    <div class="feature-item">Manage budgets, vendors, and memories</div>
+                </div>
+                <p class="text">Ready to start planning your first event?</p>
                 <a href="{{ login_url }}" class="button">Start Planning</a>
+                <p class="text">If you need help, reach out anytime. We’re here to support you.</p>
             </div>
-            
-            <p>If you have any questions or need help getting started, don't hesitate to reach out to our support team.</p>
-            
-            <p>Happy planning!<br>
-The {{ app_name }} Team</p>
-        </div>
-        
-        <div class="footer">
-            <p>This email was sent to {{ user_email }}. If you didn't create this account, please ignore this email.</p>
-            <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
+            <div class="footer-card">
+                <div class="footer-card-title">{{ app_name }}</div>
+                <div>Build the moments that matter.</div>
+            </div>
+            <div class="footer">
+                <p>This email was sent to {{ user_email }}. If you didn’t create this account, ignore this email.</p>
+                <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
+            </div>
         </div>
     </div>
 </body>
