@@ -2,60 +2,132 @@
 <html>
 <head>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #00ACC1, #00BCD4); color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; box-shadow: 0 4px 12px rgba(0, 172, 193, 0.3); }
-        .logo-container { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 15px; }
-        .logo-icon { width: 50px; height: 50px; }
-        .logo-icon svg { width: 100%; height: 100%; }
-        .logo { font-size: 24px; font-weight: bold; }
-        .content { background-color: #f9f9f9; padding: 20px; }
-        .task-info { background-color: white; padding: 15px; margin: 15px 0; border-left: 4px solid #FFC107; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .button { display: inline-block; background: linear-gradient(135deg, #FF5252, #FF9999); color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; margin: 15px 0; font-weight: 600; box-shadow: 0 4px 12px rgba(255, 82, 82, 0.3); }
-        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #1f2937;
+        }
+        .wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
+        }
+        .header {
+            padding: 24px 32px;
+            background: linear-gradient(90deg, #f7b500 0%, #ff5a3c 100%);
+            color: #ffffff;
+        }
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+        }
+        .brand-sub {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 6px;
+        }
+        .content {
+            padding: 28px 32px 8px;
+        }
+        .kicker {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            background: #f7b500;
+            color: #1f2937;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        .title {
+            font-size: 24px;
+            margin: 16px 0 6px;
+            font-weight: 700;
+        }
+        .text {
+            color: #4b5563;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+        .item-info {
+            background: #fff7db;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin: 18px 0;
+        }
+        .button {
+            display: inline-block;
+            background: #111827;
+            color: #ffffff;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 999px;
+            font-weight: 600;
+            margin: 12px 0;
+        }
+        .footer-card {
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 18px;
+            padding: 18px 20px;
+            margin: 20px 32px 12px;
+        }
+        .footer-card-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .footer {
+            text-align: center;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 12px 32px 28px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo-container">
-                <div class="logo-icon">
-                    <!-- PlanEtAl Logo Icon -->
-                    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="50" cy="50" r="45" fill="white" opacity="0.3"/>
-                        <path d="M30 50 Q50 25, 70 50 T70 75" stroke="white" stroke-width="8" fill="none" stroke-linecap="round"/>
-                        <circle cx="35" cy="45" r="6" fill="white"/>
-                        <circle cx="65" cy="55" r="6" fill="white"/>
-                    </svg>
+    <div class="wrapper">
+        <div class="card">
+            <div class="header">
+                <div class="brand">{{ app_name }}</div>
+                <div class="brand-sub">Timeline update</div>
+            </div>
+            <div class="content">
+                <div class="kicker">📌</div>
+                <h1 class="title">New task assigned</h1>
+                <p class="text">Hi {{ assignee_name }}, {{ assigner_name }} assigned you a task for {{ event_title }}.</p>
+                <div class="item-info">
+                    <strong>{{ item_title }}</strong>
+                    <p><strong>Timeline:</strong> {{ timeline_title }}</p>
+                    <p><strong>Start:</strong> {{ start_time }}</p>
+                    <p><strong>Duration:</strong> {{ duration_minutes }} minutes</p>
+                    {% if location %}
+                    <p><strong>Location:</strong> {{ location }}</p>
+                    {% endif %}
+                    {% if description %}
+                    <p><strong>Description:</strong> {{ description }}</p>
+                    {% endif %}
                 </div>
-                <div class="logo">{{ app_name }}</div>
+                <a href="{{ timeline_url }}" class="button">View Timeline</a>
+                <p class="text">Please make sure you’re available and prepared for this task.</p>
             </div>
-            <h1>New Timeline Task Assigned</h1>
-        </div>
-        <div class="content">
-            <p>Hi {{ assignee_name }},</p>
-            <p><strong>{{ assigner_name }}</strong> has assigned you a task in the timeline for <strong>{{ event_title }}</strong>.</p>
-            
-            <div class="item-info">
-                <h3>{{ item_title }}</h3>
-                <p><strong>Timeline:</strong> {{ timeline_title }}</p>
-                <p><strong>Event:</strong> {{ event_title }}</p>
-                <p><strong>Start Time:</strong> {{ start_time }}</p>
-                <p><strong>Duration:</strong> {{ duration_minutes }} minutes</p>
-                {% if location %}
-                <p><strong>Location:</strong> {{ location }}</p>
-                {% endif %}
-                {% if description %}
-                <p><strong>Description:</strong> {{ description }}</p>
-                {% endif %}
+            <div class="footer-card">
+                <div class="footer-card-title">{{ app_name }}</div>
+                <div>Build the moments that matter.</div>
             </div>
-            
-            <a href="{{ timeline_url }}" class="button">View Timeline</a>
-            
-            <p>Please make sure you're available and prepared for this task.</p>
-        </div>
-        <div class="footer">
-            <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
+            <div class="footer">
+                <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
+            </div>
         </div>
     </div>
 </body>
