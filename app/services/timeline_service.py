@@ -7,6 +7,7 @@ from app.models.timeline_models import TimelineItemType, TimelineStatus
 from app.models.event_models import EventInvitation
 from app.core.errors import NotFoundError, ValidationError, AuthorizationError
 from app.schemas.pagination import PaginationParams
+from app.services.event_service import EventService
 from app.services.ai_service import ai_service
 import json
 
@@ -480,6 +481,43 @@ class TimelineService:
         }
         
         return self.timeline_repo.get_templates(pagination, filters)
+
+    def get_template_detail(self, template_id: int, user_id: int) -> Dict[str, Any]:
+        template = self.timeline_repo.get_template_by_id(template_id)
+        if not template:
+            raise NotFoundError("Template not found")
+
+        if not template.is_public and template.creator_id != user_id:
+            raise AuthorizationError("Access denied to this template")
+
+        try:
+            template_data = json.loads(template.template_data) if template.template_data else {}
+        except json.JSONDecodeError:
+            template_data = {}
+
+        event_service = EventService(self.db)
+        task_categories = event_service.get_task_template_categories(template.event_type)
+
+        return {
+            "template": template,
+            "template_data": template_data,
+            "cover_image_url": self.get_template_cover_image(template_data),
+            "task_categories": [
+                {
+                    "name": category.name,
+                    "items": [
+                        {"title": item.title, "description": item.description}
+                        for item in category.items
+                    ],
+                }
+                for category in task_categories
+            ],
+        }
+
+    def get_template_cover_image(self, template_data: Dict[str, Any]) -> Optional[str]:
+        if not template_data:
+            return None
+        return template_data.get("cover_image_url")
     
     # Dependencies
     def add_item_dependency(

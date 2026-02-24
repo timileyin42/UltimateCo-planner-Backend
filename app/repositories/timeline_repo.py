@@ -308,7 +308,6 @@ class TimelineRepository:
         total = query.count()
         
         templates = query.order_by(
-            desc(TimelineTemplate.is_featured),
             desc(TimelineTemplate.usage_count),
             desc(TimelineTemplate.created_at)
         ).offset(pagination.offset).limit(pagination.limit).all()

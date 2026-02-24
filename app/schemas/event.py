@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, FieldValidat
 from app.models.shared_models import EventType, EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.user import UserSummary
 from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, LocationOptimizationResponse, Coordinates
+from app.schemas.timeline import TimelineTemplateResponse
+from app.schemas.pagination import PaginationMeta
 
 def _normalize_event_type_value(value):
     if isinstance(value, EventType):
@@ -222,6 +224,18 @@ class EventSummary(BaseModel):
     cover_image_url: Optional[str] = None
     attendee_count: int
     
+    model_config = ConfigDict(from_attributes=True)
+
+class DiscoveryEventSummary(BaseModel):
+    id: int
+    title: str
+    event_type: str
+    status: EventStatus
+    start_datetime: datetime
+    cover_image_url: Optional[str] = None
+    total_budget: Optional[float] = None
+    attendee_count: int
+
     model_config = ConfigDict(from_attributes=True)
 
 # Event invitation schemas
@@ -618,6 +632,18 @@ class EventListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+class DiscoveryTemplatesResponse(BaseModel):
+    templates: List[TimelineTemplateResponse]
+    meta: PaginationMeta
+
+class DiscoveryEventsResponse(BaseModel):
+    events: List[DiscoveryEventSummary]
+    meta: PaginationMeta
+
+class DiscoveryResponse(BaseModel):
+    templates: DiscoveryTemplatesResponse
+    events: DiscoveryEventsResponse
 
 class EventStatsResponse(BaseModel):
     """Schema for event statistics"""

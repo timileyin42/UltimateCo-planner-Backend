@@ -3,15 +3,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import Optional, List
 from datetime import datetime,timedelta
+import json
 from app.core.deps import get_db, get_current_user, get_current_active_user
 from app.core.errors import (
     http_400_bad_request, http_404_not_found, http_403_forbidden,
     AuthorizationError, NotFoundError, ValidationError
 )
 from app.services.event_service import EventService
+from app.services.timeline_service import TimelineService
 from app.services.subscription_service import SubscriptionService, UsageLimitExceededError
 from app.schemas.event import (
-    EventCreate, EventUpdate, EventResponse, EventSummary, EventListResponse,
+    EventCreate, EventUpdate, EventResponse, EventSummary, EventListResponse, DiscoveryResponse, DiscoveryEventSummary,
     EventInvitationCreate, EventInvitationUpdate, EventInvitationResponse, EventAcceptedAttendeesResponse,
     TaskCreate, TaskUpdate, TaskUpdateById, TaskResponse, TaskCategoriesResponse, TaskCategory, TaskCategoryItem, TaskStatus,
     TaskCategoriesUpdate,
@@ -20,12 +22,13 @@ from app.schemas.event import (
     EventSearchQuery, EventStatsResponse, EventLocationOptimizationRequest, EventLocationOptimizationResponse,
     EventDuplicateRequest, CollaboratorAddRequest
 )
+from app.schemas.timeline import TimelineTemplateResponse
 from app.repositories.event_repo import EventRepository
 from app.schemas.location import (
     LocationAutocompleteRequest, LocationSuggestion, NearbyPlacesRequest, LocationUpdateRequest
 )
 from app.services.google_maps_service import google_maps_service
-from app.schemas.pagination import PaginatedResponse, PaginationParams
+from app.schemas.pagination import PaginatedResponse, PaginationParams, PaginationMeta
 from app.models.user_models import User
 from app.models.event_models import Task
 from app.models.shared_models import EventStatus, EventType
@@ -476,6 +479,65 @@ async def get_my_events(
         raise
     except Exception as e:
         raise http_400_bad_request(f"Failed to retrieve user events: {str(e)}")
+
+@events_router.get("/discovery", response_model=DiscoveryResponse)
+async def get_discovery(
+    template_event_type: Optional[str] = Query(None, description="Filter templates by event type"),
+    template_page: int = Query(1, ge=1, description="Template page number"),
+    template_per_page: int = Query(12, ge=1, le=100, description="Templates per page"),
+    events_page: int = Query(1, ge=1, description="Events page number"),
+    events_per_page: int = Query(6, ge=1, le=100, description="Events per page"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        timeline_service = TimelineService(db)
+        templates, templates_total = timeline_service.get_templates({
+            "event_type": template_event_type,
+            "is_public": True,
+            "page": template_page,
+            "per_page": template_per_page
+        })
+        template_responses = []
+        for template in templates:
+            response = TimelineTemplateResponse.model_validate(template)
+            try:
+                template_data = json.loads(template.template_data) if template.template_data else {}
+            except json.JSONDecodeError:
+                template_data = {}
+            response.cover_image_url = template_data.get("cover_image_url")
+            template_responses.append(response)
+        template_meta = PaginationMeta.create(
+            page=template_page,
+            size=template_per_page,
+            total=templates_total
+        )
+
+        event_repo = EventRepository(db)
+        events_pagination = PaginationParams(page=events_page, size=events_per_page)
+        events, events_total = event_repo.get_public_events(
+            events_pagination,
+            filters={"exclude_creator_id": current_user.id}
+        )
+        event_responses = [DiscoveryEventSummary.model_validate(event) for event in events]
+        events_meta = PaginationMeta.create(
+            page=events_page,
+            size=events_per_page,
+            total=events_total
+        )
+
+        return DiscoveryResponse(
+            templates={
+                "templates": template_responses,
+                "meta": template_meta
+            },
+            events={
+                "events": event_responses,
+                "meta": events_meta
+            }
+        )
+    except Exception as e:
+        raise http_400_bad_request(f"Failed to load discovery data: {str(e)}")
 
 
 @events_router.get("/{event_id}", response_model=EventResponse)
