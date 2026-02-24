@@ -161,8 +161,21 @@ class TimelineTemplateResponse(TimelineTemplateBase):
     creator: UserBasic
     is_verified: bool
     usage_count: int
+    cover_image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+class TemplateTaskItem(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+class TemplateTaskCategory(BaseModel):
+    name: str
+    items: List[TemplateTaskItem] = Field(default_factory=list)
+
+class TimelineTemplateDetailResponse(TimelineTemplateResponse):
+    template_data: Dict[str, Any]
+    task_categories: List[TemplateTaskCategory] = Field(default_factory=list)
 
 # AI generation schemas
 class AITimelineRequest(BaseModel):

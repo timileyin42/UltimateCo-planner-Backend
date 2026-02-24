@@ -9,7 +9,7 @@ from app.models.user_models import User
 from app.models.shared_models import EventStatus, RSVPStatus, TaskStatus, TaskPriority
 from app.schemas.event import (
     EventCreate, EventUpdate, EventInvitationCreate, EventInvitationUpdate,
-    TaskCreate, TaskUpdate, TaskUpdateById, TaskCategory, ExpenseCreate, ExpenseUpdate, CommentCreate,
+    TaskCreate, TaskUpdate, TaskUpdateById, TaskCategory, TaskCategoryItem, ExpenseCreate, ExpenseUpdate, CommentCreate,
     PollCreate, PollVoteCreate
 )
 from app.schemas.location import Coordinates
@@ -1309,13 +1309,8 @@ class EventService:
             self.db.commit()
             self.db.refresh(event)
 
-    def _generate_default_task_categories(self, event: Event) -> None:
-        """Generate default task category templates based on event type"""
-        from app.models.event_models import Task
-        from app.models.shared_models import TaskStatus, TaskPriority
-        
-        # Define default templates by event type
-        task_templates = {
+    def _task_template_map(self) -> Dict[str, Dict[str, List[str]]]:
+        return {
             'BIRTHDAY': {
                 'Food': [
                     'Confirm brunch menu with cafe',
@@ -1420,15 +1415,29 @@ class EventService:
                 ],
             },
         }
-        
-        # Get templates for this event type, or use generic template
-        # Normalize event type to uppercase for matching
-        event_type_key = event.event_type.upper() if hasattr(event.event_type, 'upper') else str(event.event_type).upper()
-        templates = task_templates.get(event_type_key, {
+
+    def _get_task_templates_for_type(self, event_type: Optional[str]) -> Dict[str, List[str]]:
+        templates = self._task_template_map()
+        event_type_key = event_type.upper() if event_type else ''
+        return templates.get(event_type_key, {
             'Food': ['Plan food and drinks'],
             'Guests': ['Send invitations', 'Track RSVPs'],
             'Logistics': ['Book venue', 'Arrange setup'],
         })
+
+    def get_task_template_categories(self, event_type: Optional[str]) -> List[TaskCategory]:
+        templates = self._get_task_templates_for_type(event_type)
+        categories: List[TaskCategory] = []
+        for category_name, task_titles in templates.items():
+            items = [TaskCategoryItem(title=title) for title in task_titles]
+            categories.append(TaskCategory(name=category_name, items=items))
+        return categories
+
+    def _generate_default_task_categories(self, event: Event) -> None:
+        """Generate default task category templates based on event type"""
+        from app.models.event_models import Task
+        from app.models.shared_models import TaskStatus, TaskPriority
+        templates = self._get_task_templates_for_type(event.event_type)
         
         # Create tasks for each category
         for category_name, task_titles in templates.items():

@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 from app.models.user_models import User
 from app.core.config import settings
 from datetime import datetime
+import json
 from app.core.deps import get_db, get_current_active_user
 from app.core.errors import (
     http_400_bad_request,
@@ -23,6 +24,7 @@ from app.schemas.timeline import (
     
     # Template schemas
     TimelineTemplateCreate, TimelineTemplateUpdate, TimelineTemplateResponse, TimelineTemplateListResponse,
+    TimelineTemplateDetailResponse,
     
     # AI and search schemas
     AITimelineRequest, AITimelineResponse, TimelineSearchParams,
@@ -415,6 +417,30 @@ async def create_timeline_template(
     except Exception as e:
         raise http_400_bad_request("Failed to create timeline template")
 
+@timeline_router.get("/timeline-templates/{template_id}", response_model=TimelineTemplateDetailResponse)
+async def get_timeline_template_detail(
+    template_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        timeline_service = TimelineService(db)
+        template_detail = timeline_service.get_template_detail(template_id, current_user.id)
+
+        template = template_detail["template"]
+        response = TimelineTemplateDetailResponse.model_validate(template)
+        response.template_data = template_detail["template_data"]
+        response.cover_image_url = template_detail.get("cover_image_url")
+        response.task_categories = template_detail["task_categories"]
+        return response
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "access denied" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request("Failed to get timeline template")
+
 @timeline_router.post("/events/{event_id}/apply-template/{template_id}", response_model=EventTimelineResponse)
 async def apply_timeline_template(
     event_id: int,
@@ -597,7 +623,15 @@ async def get_public_timeline_templates(
             (page - 1) * per_page
         ).limit(per_page).all()
         
-        template_responses = [TimelineTemplateResponse.model_validate(t) for t in templates]
+        template_responses = []
+        for template in templates:
+            response = TimelineTemplateResponse.model_validate(template)
+            try:
+                template_data = json.loads(template.template_data) if template.template_data else {}
+            except json.JSONDecodeError:
+                template_data = {}
+            response.cover_image_url = template_data.get("cover_image_url")
+            template_responses.append(response)
         
         return TimelineTemplateListResponse(
             templates=template_responses,

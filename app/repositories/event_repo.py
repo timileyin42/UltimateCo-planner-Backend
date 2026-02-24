@@ -467,6 +467,9 @@ class EventRepository:
             elif field == 'creator_id':
                 query = query.filter(Event.creator_id == value)
             
+            elif field == 'exclude_creator_id':
+                query = query.filter(Event.creator_id != value)
+            
             elif hasattr(Event, field):
                 if isinstance(value, list):
                     query = query.filter(getattr(Event, field).in_(value))
