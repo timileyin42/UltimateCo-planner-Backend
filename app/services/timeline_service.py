@@ -515,7 +515,14 @@ class TimelineService:
         }
 
     def get_event_template_metadata(self, event_id: int, user_id: int) -> Dict[str, Any]:
-        event = self._get_event_with_access(event_id, user_id)
+        try:
+            event = self._get_event_with_access(event_id, user_id)
+        except AuthorizationError:
+            event = self.event_repo.get_by_id(event_id, include_relations=True)
+            if not event:
+                raise NotFoundError("Event not found")
+            if not getattr(event, "is_public", False):
+                raise
 
         raw_categories = getattr(event, "task_categories", None) or []
         normalized_categories: List[Dict[str, Any]] = []
