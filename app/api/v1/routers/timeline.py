@@ -12,6 +12,7 @@ from app.core.errors import (
     http_404_not_found,
     http_403_forbidden,
     AuthorizationError,
+    NotFoundError,
 )
 from app.services.timeline_service import TimelineService
 from app.services.email_service import email_service
@@ -476,13 +477,12 @@ async def get_event_template_metadata(
         timeline_service = TimelineService(db)
         metadata = timeline_service.get_event_template_metadata(event_id, current_user.id)
         return EventTemplateMetadataResponse(**metadata)
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise http_404_not_found(str(e))
-        elif "access denied" in str(e).lower() or "permission" in str(e).lower():
-            raise http_403_forbidden(str(e))
-        else:
-            raise http_400_bad_request("Failed to get event template metadata")
+    except NotFoundError as e:
+        raise http_404_not_found(str(e))
+    except AuthorizationError as e:
+        raise http_403_forbidden(str(e))
+    except Exception:
+        raise http_400_bad_request("Failed to get event template metadata")
 
 # Statistics and analytics
 @timeline_router.get("/timelines/{timeline_id}/statistics", response_model=TimelineStatistics)

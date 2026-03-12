@@ -1,6 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import Mock
 
+from app.core.errors import AuthorizationError
 from app.services.timeline_service import TimelineService
 
 
@@ -62,3 +64,28 @@ class TestTimelineEventTemplateMetadata:
         assert metadata["event_id"] == 7
         assert metadata["task_categories"] == []
         assert metadata["template_data"]["items"] == []
+
+    def test_get_event_template_metadata_allows_public_event_when_user_not_member(self):
+        service = TimelineService.__new__(TimelineService)
+        event = SimpleNamespace(
+            id=32,
+            title="Public Showcase",
+            description="Open event",
+            event_type="other",
+            status="confirmed",
+            start_datetime=None,
+            end_datetime=None,
+            cover_image_url=None,
+            total_budget=None,
+            attendee_count=0,
+            task_categories=[],
+            is_public=True
+        )
+        service._get_event_with_access = Mock(side_effect=AuthorizationError("You don't have access to this event"))
+        service.event_repo = Mock()
+        service.event_repo.get_by_id.return_value = event
+
+        metadata = service.get_event_template_metadata(32, 3)
+
+        assert metadata["event_id"] == 32
+        assert metadata["title"] == "Public Showcase"
