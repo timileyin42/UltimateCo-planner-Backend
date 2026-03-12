@@ -2,6 +2,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, time
 import asyncio
+import json
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.event_repo import EventRepository
 from app.repositories.user_repo import UserRepository
@@ -49,6 +50,10 @@ class NotificationService:
         notification_type = NotificationType(reminder_data['notification_type'])
         target_all_guests = reminder_data.get('target_all_guests', True)
         target_rsvp_status = reminder_data.get('target_rsvp_status')
+        frequency = ReminderFrequency(reminder_data.get('frequency', 'once'))
+        recurrence_count = int(reminder_data.get('recurrence_count', 1))
+        custom_interval_days = reminder_data.get('custom_interval_days')
+        self._validate_recurrence_settings(frequency, recurrence_count, custom_interval_days)
         if notification_type == NotificationType.RSVP_REMINDER:
             target_all_guests = False
             target_rsvp_status = target_rsvp_status or "accepted"
@@ -58,12 +63,14 @@ class NotificationService:
             'message': reminder_data['message'],
             'notification_type': notification_type,
             'scheduled_time': reminder_data['scheduled_time'],
-            'frequency': ReminderFrequency(reminder_data.get('frequency', 'once')),
+            'frequency': frequency,
+            'recurrence_count': recurrence_count,
+            'conditions': self._build_conditions(custom_interval_days),
             'event_id': event_id,
             'creator_id': user_id,
             'auto_generated': False,
             'target_all_guests': target_all_guests,
-            'target_user_ids': reminder_data.get('target_user_ids'),
+            'target_specific_users': reminder_data.get('target_specific_users'),
             'target_rsvp_status': target_rsvp_status,
             'send_email': reminder_data.get('send_email', True),
             'send_sms': reminder_data.get('send_sms', False),
@@ -166,12 +173,31 @@ class NotificationService:
         event = self._get_event_with_access(reminder.event_id, user_id)
         if not self._can_edit_reminder(reminder, event, user_id):
             raise AuthorizationError("You don't have permission to edit this reminder")
+
+        has_custom_interval_update = 'custom_interval_days' in update_data
+        custom_interval_days = update_data.pop('custom_interval_days', None)
+        effective_frequency = ReminderFrequency(update_data.get('frequency', reminder.frequency))
+        effective_recurrence_count = int(update_data.get('recurrence_count', reminder.recurrence_count or 1))
+        effective_custom_interval_days = (
+            custom_interval_days
+            if has_custom_interval_update
+            else self._extract_custom_interval_days(reminder.conditions)
+        )
+        self._validate_recurrence_settings(
+            effective_frequency,
+            effective_recurrence_count,
+            effective_custom_interval_days
+        )
+        if has_custom_interval_update or effective_frequency != reminder.frequency:
+            update_data['conditions'] = self._build_conditions(
+                effective_custom_interval_days if effective_frequency == ReminderFrequency.CUSTOM else None
+            )
         
         # Update reminder
         updated_reminder = self.notification_repo.update_reminder(reminder_id, update_data)
         
         # If scheduling changed, requeue notifications
-        if 'scheduled_time' in update_data or 'frequency' in update_data:
+        if 'scheduled_time' in update_data or 'frequency' in update_data or 'recurrence_count' in update_data:
             self._requeue_reminder_notifications(updated_reminder)
         
         return updated_reminder
@@ -569,6 +595,7 @@ class NotificationService:
         """Queue notifications for a reminder."""
         # Get target users
         target_users = self.notification_repo.get_reminder_targets(reminder)
+        occurrence_times = self._generate_occurrence_times(reminder)
         
         for user in target_users:
             # Get user preferences
@@ -591,16 +618,78 @@ class NotificationService:
             if reminder.send_in_app and preferences.get('in_app_enabled', True):
                 channels_to_send.append(NotificationChannel.IN_APP)
             
-            # Create queue items for each channel
-            for channel in channels_to_send:
-                self._queue_notification(
-                    reminder, user, channel, preferences
-                )
+            # Create queue items for each channel and occurrence
+            for scheduled_time in occurrence_times:
+                for channel in channels_to_send:
+                    self._queue_notification(
+                        reminder, user, channel, preferences, scheduled_time=scheduled_time
+                    )
     
-    def _queue_notification(self, reminder, user, channel: NotificationChannel, preferences: Dict):
+    def _generate_occurrence_times(self, reminder) -> List[datetime]:
+        """Build scheduled times for all occurrences of a reminder."""
+        recurrence_count = max(1, getattr(reminder, 'recurrence_count', 1) or 1)
+        frequency = getattr(reminder, 'frequency', ReminderFrequency.ONCE) or ReminderFrequency.ONCE
+        start_time = reminder.scheduled_time
+
+        if frequency == ReminderFrequency.ONCE:
+            return [start_time]
+        if frequency == ReminderFrequency.DAILY:
+            interval = timedelta(days=1)
+        elif frequency == ReminderFrequency.WEEKLY:
+            interval = timedelta(weeks=1)
+        elif frequency == ReminderFrequency.CUSTOM:
+            custom_interval_days = self._extract_custom_interval_days(getattr(reminder, 'conditions', None))
+            if not custom_interval_days:
+                raise ValidationError("Custom frequency requires custom_interval_days")
+            interval = timedelta(days=custom_interval_days)
+        else:
+            raise ValidationError("Unsupported reminder frequency")
+
+        return [start_time + (interval * index) for index in range(recurrence_count)]
+
+    def _validate_recurrence_settings(
+        self,
+        frequency: ReminderFrequency,
+        recurrence_count: int,
+        custom_interval_days: Optional[int]
+    ):
+        if recurrence_count < 1:
+            raise ValidationError("recurrence_count must be at least 1")
+        if frequency == ReminderFrequency.ONCE and recurrence_count > 1:
+            raise ValidationError("For frequency 'once', recurrence_count must be 1")
+        if custom_interval_days is not None and int(custom_interval_days) < 1:
+            raise ValidationError("custom_interval_days must be at least 1")
+        if frequency == ReminderFrequency.CUSTOM and custom_interval_days is None:
+            raise ValidationError("Custom frequency requires custom_interval_days")
+
+    def _build_conditions(self, custom_interval_days: Optional[int]) -> Optional[str]:
+        if custom_interval_days is None:
+            return None
+        return json.dumps({'custom_interval_days': int(custom_interval_days)})
+
+    def _extract_custom_interval_days(self, conditions: Optional[str]) -> Optional[int]:
+        if not conditions:
+            return None
+        try:
+            parsed = json.loads(conditions)
+        except (ValueError, TypeError):
+            return None
+        interval = parsed.get('custom_interval_days')
+        if interval is None:
+            return None
+        return int(interval)
+    
+    def _queue_notification(
+        self,
+        reminder,
+        user,
+        channel: NotificationChannel,
+        preferences: Dict,
+        scheduled_time: Optional[datetime] = None
+    ):
         """Queue a single notification."""
         # Calculate scheduled time based on user preferences
-        scheduled_time = reminder.scheduled_time
+        scheduled_time = scheduled_time or reminder.scheduled_time
         
         # Apply user's advance notice preference
         advance_notice_hours = preferences.get('advance_notice_hours', 0)
@@ -620,7 +709,7 @@ class NotificationService:
             'channel': channel,
             'subject': reminder.title,
             'message': reminder.message,
-            'scheduled_time': scheduled_time,
+            'scheduled_for': scheduled_time,
             'priority': self._get_notification_priority(reminder.notification_type),
             'status': 'queued'
         }
