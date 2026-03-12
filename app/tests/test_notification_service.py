@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from sqlalchemy.orm import Session
@@ -114,6 +115,59 @@ class TestNotificationService:
             mock_db.commit.assert_called_once()
             mock_db.refresh.assert_called_once()
             assert result is not None
+
+    def test_create_reminder_rsvp_targets_only_accepted(self, notification_service, mock_event):
+        """RSVP reminders should default to accepted invitees only."""
+        reminder_data = {
+            "title": "RSVP Reminder",
+            "message": "Please confirm attendance",
+            "notification_type": "rsvp_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "target_all_guests": True
+        }
+
+        created_reminder = Mock(spec=SmartReminder)
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with patch.object(notification_service.notification_repo, 'create_reminder', return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, '_queue_reminder_notifications') as mock_queue:
+                    notification_service.create_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["notification_type"] == NotificationType.RSVP_REMINDER
+        assert created_payload["target_all_guests"] is False
+        assert created_payload["target_rsvp_status"] == "accepted"
+        mock_queue.assert_called_once_with(created_reminder)
+
+    def test_create_reminder_once_cannot_repeat(self, notification_service, mock_event):
+        """Once reminders cannot be created with recurrence_count greater than 1."""
+        reminder_data = {
+            "title": "Single Reminder",
+            "message": "One-off reminder",
+            "notification_type": "event_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "once",
+            "recurrence_count": 3
+        }
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with pytest.raises(ValidationError, match="recurrence_count must be 1"):
+                notification_service.create_reminder(1, 1, reminder_data)
+
+    def test_create_reminder_custom_requires_interval_days(self, notification_service, mock_event):
+        """Custom frequency must include custom_interval_days."""
+        reminder_data = {
+            "title": "Custom Reminder",
+            "message": "Custom cadence reminder",
+            "notification_type": "event_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "custom",
+            "recurrence_count": 3
+        }
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with pytest.raises(ValidationError, match="requires custom_interval_days"):
+                notification_service.create_reminder(1, 1, reminder_data)
     
     def test_create_reminder_event_not_found(self, notification_service, mock_db):
         """Test reminder creation with non-existent event."""
@@ -625,6 +679,103 @@ class TestNotificationService:
             
             # Assert - should cancel existing and queue new
             mock_queue_query.filter.return_value.update.assert_called_once()
+
+    def test_queue_notification_uses_scheduled_for_field(self, notification_service):
+        """Queue item payload should use scheduled_for expected by NotificationQueue model."""
+        reminder = Mock(spec=SmartReminder)
+        reminder.id = 11
+        reminder.event_id = 22
+        reminder.notification_type = NotificationType.RSVP_REMINDER
+        reminder.title = "Reminder title"
+        reminder.message = "Reminder message"
+        reminder.scheduled_time = datetime.utcnow() + timedelta(hours=2)
+
+        user = Mock(spec=User)
+        user.id = 33
+
+        preferences = {
+            "advance_notice_hours": 0,
+            "quiet_hours_start": None,
+            "quiet_hours_end": None
+        }
+
+        with patch.object(notification_service.notification_repo, 'create_notification_queue_item') as mock_create_queue:
+            notification_service._queue_notification(
+                reminder=reminder,
+                user=user,
+                channel=NotificationChannel.EMAIL,
+                preferences=preferences
+            )
+
+        queue_payload = mock_create_queue.call_args[0][0]
+        assert "scheduled_for" in queue_payload
+        assert "scheduled_time" not in queue_payload
+        assert queue_payload["scheduled_for"] == reminder.scheduled_time
+
+    def test_generate_occurrence_times_daily(self, notification_service):
+        """Daily reminders should generate one occurrence per recurrence_count."""
+        reminder = Mock(spec=SmartReminder)
+        start_time = datetime.utcnow() + timedelta(days=1)
+        reminder.scheduled_time = start_time
+        reminder.frequency = ReminderFrequency.DAILY
+        reminder.recurrence_count = 3
+
+        occurrences = notification_service._generate_occurrence_times(reminder)
+
+        assert len(occurrences) == 3
+        assert occurrences[0] == start_time
+        assert occurrences[1] == start_time + timedelta(days=1)
+        assert occurrences[2] == start_time + timedelta(days=2)
+
+    def test_generate_occurrence_times_custom(self, notification_service):
+        """Custom reminders should generate occurrences using custom interval days."""
+        reminder = Mock(spec=SmartReminder)
+        start_time = datetime.utcnow() + timedelta(days=1)
+        reminder.scheduled_time = start_time
+        reminder.frequency = ReminderFrequency.CUSTOM
+        reminder.recurrence_count = 4
+        reminder.conditions = json.dumps({"custom_interval_days": 3})
+
+        occurrences = notification_service._generate_occurrence_times(reminder)
+
+        assert len(occurrences) == 4
+        assert occurrences[0] == start_time
+        assert occurrences[1] == start_time + timedelta(days=3)
+        assert occurrences[2] == start_time + timedelta(days=6)
+        assert occurrences[3] == start_time + timedelta(days=9)
+
+    def test_queue_reminder_notifications_respects_recurrence_count(self, notification_service):
+        """Queueing should fan out by recipients, channels, and recurrence occurrences."""
+        reminder = Mock(spec=SmartReminder)
+        reminder.id = 101
+        reminder.event_id = 202
+        reminder.notification_type = NotificationType.EVENT_REMINDER
+        reminder.scheduled_time = datetime.utcnow() + timedelta(days=2)
+        reminder.frequency = ReminderFrequency.DAILY
+        reminder.recurrence_count = 2
+        reminder.send_email = True
+        reminder.send_sms = False
+        reminder.send_push = False
+        reminder.send_in_app = True
+
+        users = [Mock(spec=User), Mock(spec=User)]
+        users[0].id = 1
+        users[1].id = 2
+
+        with patch.object(notification_service.notification_repo, 'get_reminder_targets', return_value=users):
+            with patch.object(notification_service, '_get_user_notification_preferences', return_value={
+                'email_enabled': True,
+                'sms_enabled': False,
+                'push_enabled': False,
+                'in_app_enabled': True,
+                'advance_notice_hours': 0,
+                'quiet_hours_start': None,
+                'quiet_hours_end': None
+            }):
+                with patch.object(notification_service, '_queue_notification') as mock_queue:
+                    notification_service._queue_reminder_notifications(reminder)
+
+        assert mock_queue.call_count == 8
     
     # Integration-style tests
     def test_notification_workflow_integration(self, notification_service, mock_db, mock_event):
