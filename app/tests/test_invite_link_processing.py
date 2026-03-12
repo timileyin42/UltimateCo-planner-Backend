@@ -68,3 +68,17 @@ class TestInviteLinkProcessing:
 
     def test_normalize_url_for_compare_strips_quotes_and_trailing_slash(self):
         assert public_routes._normalize_url_for_compare("`https://planetal.app/invite/token/`") == "https://planetal.app/invite/token"
+
+    def test_mobile_app_invite_url_uses_mobile_scheme(self, monkeypatch):
+        monkeypatch.setattr(public_routes.settings, "MOBILE_APP_SCHEME", "planetal://")
+
+        assert public_routes._mobile_app_invite_url("pfz9aadgkmdz") == "planetal://invite/pfz9aadgkmdz"
+
+    def test_simple_fallback_page_includes_mobile_link(self, monkeypatch):
+        monkeypatch.setattr(public_routes.settings, "MOBILE_APP_SCHEME", "planetal://")
+        monkeypatch.setattr(public_routes.settings, "INVITE_FALLBACK_URL", "https://planetal.app")
+        monkeypatch.setattr(public_routes.settings, "FRONTEND_URL", "https://planetal.app")
+
+        response = public_routes._simple_fallback_page("https://planetal.app/invite/pfz9aadgkmdz", token="pfz9aadgkmdz")
+
+        assert "Open app link" in response.body.decode()
