@@ -62,6 +62,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - ASYNC_DATABASE_URL=${ASYNC_DATABASE_URL}
       - RUN_MIGRATIONS=true
+      - FORWARDED_ALLOW_IPS=*
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs

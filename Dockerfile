@@ -30,6 +30,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 ENV PATH="/opt/venv/bin:$PATH"
+ENV FORWARDED_ALLOW_IPS="*"
 
 # Set work directory
 WORKDIR /app
@@ -68,4 +69,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Run migrations then start the app (CMD can still be overridden)
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "0", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "--access-logformat", "%(t)s %(h)s - \"%(r)s\" %(s)s"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--forwarded-allow-ips", "*", "--timeout", "0", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "--access-logformat", "%(t)s %(h)s - \"%(r)s\" %(s)s"]
