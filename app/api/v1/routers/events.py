@@ -501,6 +501,7 @@ async def get_discovery(
         template_responses = []
         for template in templates:
             response = TimelineTemplateResponse.model_validate(template)
+            response.template_id = response.id
             try:
                 template_data = json.loads(template.template_data) if template.template_data else {}
             except json.JSONDecodeError:
@@ -519,7 +520,11 @@ async def get_discovery(
             events_pagination,
             filters={"exclude_creator_id": current_user.id}
         )
-        event_responses = [DiscoveryEventSummary.model_validate(event) for event in events]
+        event_responses = []
+        for event in events:
+            response = DiscoveryEventSummary.model_validate(event)
+            response.event_id = response.id
+            event_responses.append(response)
         events_meta = PaginationMeta.create(
             page=events_page,
             size=events_per_page,

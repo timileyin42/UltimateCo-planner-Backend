@@ -228,6 +228,7 @@ class EventSummary(BaseModel):
 
 class DiscoveryEventSummary(BaseModel):
     id: int
+    event_id: Optional[int] = None
     title: str
     event_type: str
     status: EventStatus
