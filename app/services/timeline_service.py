@@ -514,6 +514,73 @@ class TimelineService:
             ],
         }
 
+    def get_event_template_metadata(self, event_id: int, user_id: int) -> Dict[str, Any]:
+        event = self._get_event_with_access(event_id, user_id)
+
+        raw_categories = getattr(event, "task_categories", None) or []
+        normalized_categories: List[Dict[str, Any]] = []
+        template_items: List[Dict[str, Any]] = []
+
+        for category in raw_categories:
+            category_name = (category.get("name") if isinstance(category, dict) else getattr(category, "name", None)) or "General"
+            raw_items = category.get("items", []) if isinstance(category, dict) else getattr(category, "items", [])
+            normalized_items: List[Dict[str, Any]] = []
+
+            for item in raw_items or []:
+                title = (item.get("title") if isinstance(item, dict) else getattr(item, "title", None)) or ""
+                title = title.strip()
+                if not title:
+                    continue
+
+                description = item.get("description") if isinstance(item, dict) else getattr(item, "description", None)
+                completed = item.get("completed", False) if isinstance(item, dict) else getattr(item, "completed", False)
+
+                normalized_items.append({
+                    "title": title,
+                    "description": description
+                })
+                template_items.append({
+                    "title": title,
+                    "description": description,
+                    "category": category_name,
+                    "completed": bool(completed)
+                })
+
+            normalized_categories.append({
+                "name": category_name,
+                "items": normalized_items
+            })
+
+        event_type = getattr(event, "event_type", None)
+        if hasattr(event_type, "value"):
+            event_type = event_type.value
+        status = getattr(event, "status", None)
+        if hasattr(status, "value"):
+            status = status.value
+
+        template_data = {
+            "source": "event",
+            "event_id": event.id,
+            "event_type": event_type,
+            "cover_image_url": getattr(event, "cover_image_url", None),
+            "items": template_items
+        }
+
+        return {
+            "event_id": event.id,
+            "title": event.title,
+            "description": getattr(event, "description", None),
+            "event_type": event_type,
+            "status": status,
+            "start_datetime": getattr(event, "start_datetime", None),
+            "end_datetime": getattr(event, "end_datetime", None),
+            "cover_image_url": getattr(event, "cover_image_url", None),
+            "total_budget": getattr(event, "total_budget", None),
+            "attendee_count": int(getattr(event, "attendee_count", 0) or 0),
+            "template_data": template_data,
+            "task_categories": normalized_categories
+        }
+
     def get_template_cover_image(self, template_data: Dict[str, Any]) -> Optional[str]:
         if not template_data:
             return None

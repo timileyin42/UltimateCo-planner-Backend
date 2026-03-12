@@ -158,6 +158,7 @@ class TimelineTemplateResponse(TimelineTemplateBase):
     model_config = ConfigDict(from_attributes=True)
     
     id: int
+    template_id: Optional[int] = None
     creator: UserBasic
     is_verified: bool
     usage_count: int
@@ -175,6 +176,21 @@ class TemplateTaskCategory(BaseModel):
 
 class TimelineTemplateDetailResponse(TimelineTemplateResponse):
     template_data: Dict[str, Any]
+    task_categories: List[TemplateTaskCategory] = Field(default_factory=list)
+
+
+class EventTemplateMetadataResponse(BaseModel):
+    event_id: int
+    title: str
+    description: Optional[str] = None
+    event_type: str
+    status: str
+    start_datetime: Optional[datetime] = None
+    end_datetime: Optional[datetime] = None
+    cover_image_url: Optional[str] = None
+    total_budget: Optional[float] = None
+    attendee_count: int = 0
+    template_data: Dict[str, Any] = Field(default_factory=dict)
     task_categories: List[TemplateTaskCategory] = Field(default_factory=list)
 
 # AI generation schemas

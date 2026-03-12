@@ -24,7 +24,7 @@ from app.schemas.timeline import (
     
     # Template schemas
     TimelineTemplateCreate, TimelineTemplateUpdate, TimelineTemplateResponse, TimelineTemplateListResponse,
-    TimelineTemplateDetailResponse,
+    TimelineTemplateDetailResponse, EventTemplateMetadataResponse,
     
     # AI and search schemas
     AITimelineRequest, AITimelineResponse, TimelineSearchParams,
@@ -411,8 +411,9 @@ async def create_timeline_template(
     try:
         timeline_service = TimelineService(db)
         template = timeline_service.create_template(current_user.id, template_data)
-        
-        return TimelineTemplateResponse.model_validate(template)
+        response = TimelineTemplateResponse.model_validate(template)
+        response.template_id = response.id
+        return response
         
     except Exception as e:
         raise http_400_bad_request("Failed to create timeline template")
@@ -429,6 +430,7 @@ async def get_timeline_template_detail(
 
         template = template_detail["template"]
         response = TimelineTemplateDetailResponse.model_validate(template)
+        response.template_id = response.id
         response.template_data = template_detail["template_data"]
         response.cover_image_url = template_detail.get("cover_image_url")
         response.task_categories = template_detail["task_categories"]
@@ -462,6 +464,25 @@ async def apply_timeline_template(
             raise http_403_forbidden(str(e))
         else:
             raise http_400_bad_request("Failed to apply timeline template")
+
+
+@timeline_router.get("/events/{event_id}/template-metadata", response_model=EventTemplateMetadataResponse)
+async def get_event_template_metadata(
+    event_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        timeline_service = TimelineService(db)
+        metadata = timeline_service.get_event_template_metadata(event_id, current_user.id)
+        return EventTemplateMetadataResponse(**metadata)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise http_404_not_found(str(e))
+        elif "access denied" in str(e).lower() or "permission" in str(e).lower():
+            raise http_403_forbidden(str(e))
+        else:
+            raise http_400_bad_request("Failed to get event template metadata")
 
 # Statistics and analytics
 @timeline_router.get("/timelines/{timeline_id}/statistics", response_model=TimelineStatistics)
@@ -626,6 +647,7 @@ async def get_public_timeline_templates(
         template_responses = []
         for template in templates:
             response = TimelineTemplateResponse.model_validate(template)
+            response.template_id = response.id
             try:
                 template_data = json.loads(template.template_data) if template.template_data else {}
             except json.JSONDecodeError:
