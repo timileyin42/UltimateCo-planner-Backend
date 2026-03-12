@@ -659,6 +659,8 @@ class NotificationService:
             raise ValidationError("For frequency 'once', recurrence_count must be 1")
         if custom_interval_days is not None and int(custom_interval_days) < 1:
             raise ValidationError("custom_interval_days must be at least 1")
+        if custom_interval_days is not None and int(custom_interval_days) > 365:
+            raise ValidationError("custom_interval_days must be at most 365")
         if frequency == ReminderFrequency.CUSTOM and custom_interval_days is None:
             raise ValidationError("Custom frequency requires custom_interval_days")
 

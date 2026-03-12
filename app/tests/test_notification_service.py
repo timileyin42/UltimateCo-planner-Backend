@@ -168,6 +168,22 @@ class TestNotificationService:
         with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
             with pytest.raises(ValidationError, match="requires custom_interval_days"):
                 notification_service.create_reminder(1, 1, reminder_data)
+
+    def test_create_reminder_custom_interval_days_upper_bound(self, notification_service, mock_event):
+        """Custom interval days should be capped at 365."""
+        reminder_data = {
+            "title": "Custom Reminder",
+            "message": "Too large custom interval",
+            "notification_type": "event_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "custom",
+            "recurrence_count": 2,
+            "custom_interval_days": 366
+        }
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with pytest.raises(ValidationError, match="at most 365"):
+                notification_service.create_reminder(1, 1, reminder_data)
     
     def test_create_reminder_event_not_found(self, notification_service, mock_db):
         """Test reminder creation with non-existent event."""
