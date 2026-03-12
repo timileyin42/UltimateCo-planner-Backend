@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     MOBILE_APP_SCHEME: Optional[str] = None  # Mobile app deep link scheme
     DEEP_LINK_BASE_URL: Optional[str] = None  # Public deep link domain (e.g. https://planetal.app)
     INVITE_FALLBACK_URL: Optional[str] = None  # Web fallback when invite is invalid
+    IOS_APP_STORE_URL: Optional[str] = None
+    ANDROID_PLAY_STORE_URL: Optional[str] = None
     ANDROID_PACKAGE_NAME: Optional[str] = None
     ANDROID_SHA256_CERT_FINGERPRINTS: Union[List[str], str] = []
     IOS_APP_ID: Optional[str] = None  # e.g. TEAMID.com.planetal.app
