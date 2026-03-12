@@ -192,7 +192,7 @@ class InviteService:
                     message="Invalid invite code"
                 )
             
-            if not invite_code.can_be_used():
+            if not invite_code.is_valid:
                 return ProcessInviteResponse(
                     success=False,
                     message="Invite code is expired or already used"
@@ -232,7 +232,7 @@ class InviteService:
                     message="Invalid invite link"
                 )
             
-            if not invite_link.can_be_used():
+            if not invite_link.is_valid:
                 return ProcessInviteResponse(
                     success=False,
                     message="Invite link is expired or has reached maximum uses"
