@@ -14,12 +14,16 @@ logger = get_logger(__name__)
 
 def _deep_link_base() -> str:
     base = settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL
-    return base.rstrip("/")
+    return base.strip("`'\" ").rstrip("/")
 
 
 def _invite_fallback_url() -> str:
     fallback = settings.INVITE_FALLBACK_URL or settings.FRONTEND_URL
-    return fallback.rstrip("/")
+    return fallback.strip("`'\" ").rstrip("/")
+
+
+def _normalize_url_for_compare(url: str) -> str:
+    return url.strip("`'\" ").rstrip("/")
 
 
 def _simple_fallback_page(target_url: str) -> HTMLResponse:
@@ -64,14 +68,15 @@ def handle_invite_link(
 
     target_base = _deep_link_base()
     target_url = f"{target_base}/invite/{token}"
+    normalized_request_url = _normalize_url_for_compare(str(request.url))
 
     if not is_valid:
         fallback_url = _invite_fallback_url()
-        if str(request.url).rstrip("/") == fallback_url:
+        if normalized_request_url == _normalize_url_for_compare(fallback_url):
             return _simple_fallback_page(fallback_url)
         return RedirectResponse(url=fallback_url, status_code=302)
 
-    if str(request.url) == target_url:
+    if normalized_request_url == _normalize_url_for_compare(target_url):
         return _simple_fallback_page(target_url)
 
     return RedirectResponse(url=target_url, status_code=302)

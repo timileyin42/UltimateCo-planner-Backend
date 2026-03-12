@@ -80,7 +80,7 @@ class InviteRepository:
     def use_invite_code(self, code: str, used_by_user_id: int) -> Optional[InviteCode]:
         """Mark an invite code as used"""
         invite_code = self.get_invite_code_by_code(code)
-        if invite_code and invite_code.can_be_used():
+        if invite_code and invite_code.is_valid:
             invite_code.used_at = datetime.utcnow()
             invite_code.used_by_user_id = used_by_user_id
             self.db.commit()
@@ -153,7 +153,7 @@ class InviteRepository:
                        ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> Optional[InviteLink]:
         """Record usage of an invite link"""
         invite_link = self.get_invite_link_by_link_id(link_id)
-        if invite_link and invite_link.can_be_used():
+        if invite_link and invite_link.is_valid:
             # Create usage record
             usage = InviteLinkUsage(
                 invite_link_id=invite_link.id,
