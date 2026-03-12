@@ -36,29 +36,37 @@ def _mobile_app_invite_url(token: Optional[str]) -> Optional[str]:
     return f"{scheme_base.rstrip('/')}/invite/{token}"
 
 
-def _simple_fallback_page(target_url: str, token: Optional[str] = None, invalid_link: bool = False) -> HTMLResponse:
+def _preferred_store_url(user_agent: str) -> Optional[str]:
+    ua = (user_agent or "").lower()
+    if "iphone" in ua or "ipad" in ua or "ipod" in ua or "ios" in ua:
+        return settings.IOS_APP_STORE_URL
+    if "android" in ua:
+        return settings.ANDROID_PLAY_STORE_URL
+    return settings.IOS_APP_STORE_URL or settings.ANDROID_PLAY_STORE_URL
+
+
+def _simple_fallback_page(
+    target_url: str,
+    token: Optional[str] = None,
+    invalid_link: bool = False,
+    user_agent: str = ""
+) -> HTMLResponse:
     safe_target_url = escape(_normalize_url_for_compare(target_url))
-    safe_web_url = escape(_invite_fallback_url())
     mobile_url = _mobile_app_invite_url(token)
     safe_mobile_url = escape(mobile_url) if mobile_url else ""
-    heading = "This invite link is no longer valid" if invalid_link else "Open in PlanEtAl"
+    ios_store_url = settings.IOS_APP_STORE_URL
+    android_store_url = settings.ANDROID_PLAY_STORE_URL
+    preferred_store_url = _preferred_store_url(user_agent)
+    safe_ios_store_url = escape(ios_store_url) if ios_store_url else ""
+    safe_android_store_url = escape(android_store_url) if android_store_url else ""
+    safe_preferred_store_url = escape(preferred_store_url) if preferred_store_url else ""
+    heading = "Invite link unavailable" if invalid_link else "PlanEtAl"
     description = (
-        "Use the options below to continue."
+        "This invite may be expired, disabled, or already used."
         if invalid_link
-        else "Use the options below to continue in the app or on web."
+        else "Plan beautifully together. Tap below to open your invite in the app."
     )
-    primary_label = "Open app link"
-    fallback_label = "Open web page"
-    open_script = ""
-    if mobile_url and not invalid_link:
-        open_script = f"""
-        <script>
-            setTimeout(function () {{
-                window.location.href = "{safe_mobile_url}";
-            }}, 150);
-        </script>
-        """
-
+    primary_label = "Open in PlanEtAl app"
     html = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -69,48 +77,136 @@ def _simple_fallback_page(target_url: str, token: Optional[str] = None, invalid_
         <style>
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                max-width: 520px;
-                margin: 40px auto;
-                padding: 0 16px;
-                line-height: 1.5;
+                margin: 0;
+                min-height: 100vh;
+                line-height: 1.55;
+                background: radial-gradient(1200px 500px at 10% 10%, #fff3ee 0%, #fff 55%),
+                            radial-gradient(900px 500px at 90% 20%, #f7edff 0%, rgba(255,255,255,0) 50%);
+                color: #14161a;
             }}
-            .actions {{
-                display: flex;
-                gap: 12px;
-                flex-wrap: wrap;
+            .wrap {{
+                max-width: 560px;
+                margin: 0 auto;
+                padding: 32px 18px 44px;
+            }}
+            .logo {{
+                width: 42px;
+                height: 42px;
+                border-radius: 12px;
+                background: linear-gradient(135deg, #ff7a59 0%, #7a5cff 100%);
+                color: #fff;
+                display: grid;
+                place-items: center;
+                font-weight: 700;
+                margin-bottom: 16px;
+            }}
+            .card {{
+                background: rgba(255, 255, 255, 0.88);
+                border: 1px solid #eee;
+                border-radius: 18px;
+                box-shadow: 0 10px 30px rgba(20, 22, 26, 0.06);
+                padding: 24px;
+            }}
+            h1 {{
+                font-size: 28px;
+                margin: 0 0 10px;
+                letter-spacing: -0.02em;
+            }}
+            p {{
+                margin: 0;
+                color: #4b5563;
+            }}
+            .cta {{
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
                 margin-top: 20px;
-            }}
-            .btn {{
-                display: inline-block;
                 text-decoration: none;
-                padding: 10px 14px;
-                border-radius: 8px;
-                border: 1px solid #d0d7de;
-                color: #111827;
+                padding: 12px 16px;
+                border-radius: 10px;
+                background: #14161a;
+                color: #fff;
+                font-weight: 600;
+                min-width: 210px;
             }}
-            .btn-primary {{
-                background: #111827;
-                color: #ffffff;
-                border-color: #111827;
+            .cta:hover {{
+                opacity: 0.92;
             }}
             .muted {{
                 margin-top: 16px;
-                font-size: 14px;
+                font-size: 12px;
                 color: #6b7280;
                 word-break: break-all;
             }}
+            .section-title {{
+                margin-top: 18px;
+                font-size: 14px;
+                color: #6b7280;
+            }}
+            .feature-list {{
+                margin: 8px 0 0;
+                padding-left: 18px;
+                color: #374151;
+                font-size: 14px;
+            }}
+            .feature-list li {{
+                margin: 4px 0;
+            }}
+            .store-links {{
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-top: 14px;
+            }}
+            .store-link {{
+                text-decoration: none;
+                padding: 8px 11px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                color: #374151;
+                font-size: 13px;
+            }}
         </style>
+        <script>
+            function openPlanEtAl() {{
+                var appUrl = "{safe_mobile_url}";
+                var storeUrl = "{safe_preferred_store_url}";
+                if (!appUrl) {{
+                    if (storeUrl) {{
+                        window.location.href = storeUrl;
+                    }}
+                    return false;
+                }}
+                window.location.href = appUrl;
+                if (storeUrl) {{
+                    setTimeout(function () {{
+                        window.location.href = storeUrl;
+                    }}, 1300);
+                }}
+                return false;
+            }}
+        </script>
     </head>
     <body>
-        <h2>{heading}</h2>
-        <p>{description}</p>
-        <div class="actions">
-            {"<a class='btn btn-primary' href='" + safe_mobile_url + "'>" + primary_label + "</a>" if mobile_url else ""}
-            <a class="btn" href="{safe_target_url if not invalid_link else safe_web_url}">{fallback_label if invalid_link else "Open invite URL"}</a>
-            {"<a class='btn' href='" + safe_web_url + "'>" + fallback_label + "</a>" if mobile_url and not invalid_link else ""}
+        <div class="wrap">
+            <div class="logo">P</div>
+            <div class="card">
+                <h1>{heading}</h1>
+                <p>{description}</p>
+                {"<a class='cta' href='" + (safe_mobile_url or safe_preferred_store_url or safe_target_url) + "' onclick='return openPlanEtAl();'>" + primary_label + "</a>" if not invalid_link else "<a class='cta' href='" + (safe_preferred_store_url or safe_target_url) + "'>Download PlanEtAl</a>"}
+                {"<div class='store-links'>" if (ios_store_url or android_store_url) else ""}
+                {"<a class='store-link' href='" + safe_ios_store_url + "'>Download on the App Store</a>" if ios_store_url else ""}
+                {"<a class='store-link' href='" + safe_android_store_url + "'>Get it on Google Play</a>" if android_store_url else ""}
+                {"</div>" if (ios_store_url or android_store_url) else ""}
+                <div class="section-title">Why PlanEtAl</div>
+                <ul class="feature-list">
+                    <li>Collaborative event planning in one place</li>
+                    <li>Invites, reminders, RSVP, and timelines together</li>
+                    <li>Built for both hosts and guests</li>
+                </ul>
+            </div>
+            <p class="muted">{safe_target_url}</p>
         </div>
-        <p class="muted">{safe_target_url if not invalid_link else safe_web_url}</p>
-        {open_script}
     </body>
     </html>
     """
@@ -145,11 +241,11 @@ def handle_invite_link(
     if not is_valid:
         fallback_url = _invite_fallback_url()
         if normalized_request_url == _normalize_url_for_compare(fallback_url):
-            return _simple_fallback_page(fallback_url, invalid_link=True)
+            return _simple_fallback_page(fallback_url, invalid_link=True, user_agent=request.headers.get("user-agent", ""))
         return RedirectResponse(url=fallback_url, status_code=302)
 
     if normalized_request_url == _normalize_url_for_compare(target_url):
-        return _simple_fallback_page(target_url, token=token)
+        return _simple_fallback_page(target_url, token=token, user_agent=request.headers.get("user-agent", ""))
 
     return RedirectResponse(url=target_url, status_code=302)
 

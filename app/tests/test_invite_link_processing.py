@@ -74,11 +74,32 @@ class TestInviteLinkProcessing:
 
         assert public_routes._mobile_app_invite_url("pfz9aadgkmdz") == "planetal://invite/pfz9aadgkmdz"
 
+    def test_preferred_store_url_ios(self, monkeypatch):
+        monkeypatch.setattr(public_routes.settings, "IOS_APP_STORE_URL", "https://apps.apple.com/app/id123")
+        monkeypatch.setattr(public_routes.settings, "ANDROID_PLAY_STORE_URL", "https://play.google.com/store/apps/details?id=com.app.planetal")
+
+        url = public_routes._preferred_store_url("Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X)")
+
+        assert url == "https://apps.apple.com/app/id123"
+
+    def test_preferred_store_url_android(self, monkeypatch):
+        monkeypatch.setattr(public_routes.settings, "IOS_APP_STORE_URL", "https://apps.apple.com/app/id123")
+        monkeypatch.setattr(public_routes.settings, "ANDROID_PLAY_STORE_URL", "https://play.google.com/store/apps/details?id=com.app.planetal")
+
+        url = public_routes._preferred_store_url("Mozilla/5.0 (Linux; Android 14; Pixel 8)")
+
+        assert url == "https://play.google.com/store/apps/details?id=com.app.planetal"
+
     def test_simple_fallback_page_includes_mobile_link(self, monkeypatch):
         monkeypatch.setattr(public_routes.settings, "MOBILE_APP_SCHEME", "planetal://")
         monkeypatch.setattr(public_routes.settings, "INVITE_FALLBACK_URL", "https://planetal.app")
         monkeypatch.setattr(public_routes.settings, "FRONTEND_URL", "https://planetal.app")
+        monkeypatch.setattr(public_routes.settings, "IOS_APP_STORE_URL", "https://apps.apple.com/app/id123")
+        monkeypatch.setattr(public_routes.settings, "ANDROID_PLAY_STORE_URL", "https://play.google.com/store/apps/details?id=com.app.planetal")
 
         response = public_routes._simple_fallback_page("https://planetal.app/invite/pfz9aadgkmdz", token="pfz9aadgkmdz")
+        page = response.body.decode()
 
-        assert "Open app link" in response.body.decode()
+        assert "Open in PlanEtAl app" in page
+        assert "Download on the App Store" in page
+        assert "Get it on Google Play" in page
