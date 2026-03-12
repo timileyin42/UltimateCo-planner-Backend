@@ -49,7 +49,8 @@ def _simple_fallback_page(
     target_url: str,
     token: Optional[str] = None,
     invalid_link: bool = False,
-    user_agent: str = ""
+    user_agent: str = "",
+    status_code: int = 200
 ) -> HTMLResponse:
     safe_target_url = escape(_normalize_url_for_compare(target_url))
     mobile_url = _mobile_app_invite_url(token)
@@ -210,7 +211,7 @@ def _simple_fallback_page(
     </body>
     </html>
     """
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, status_code=status_code)
 
 
 @router.get("/invite/{token}")
@@ -239,10 +240,12 @@ def handle_invite_link(
     normalized_request_url = _normalize_url_for_compare(str(request.url))
 
     if not is_valid:
-        fallback_url = _invite_fallback_url()
-        if normalized_request_url == _normalize_url_for_compare(fallback_url):
-            return _simple_fallback_page(fallback_url, invalid_link=True, user_agent=request.headers.get("user-agent", ""))
-        return RedirectResponse(url=fallback_url, status_code=302)
+        return _simple_fallback_page(
+            str(request.url),
+            invalid_link=True,
+            user_agent=request.headers.get("user-agent", ""),
+            status_code=404
+        )
 
     if normalized_request_url == _normalize_url_for_compare(target_url):
         return _simple_fallback_page(target_url, token=token, user_agent=request.headers.get("user-agent", ""))

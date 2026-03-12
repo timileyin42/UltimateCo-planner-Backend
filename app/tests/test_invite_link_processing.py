@@ -103,3 +103,12 @@ class TestInviteLinkProcessing:
         assert "Open in PlanEtAl app" in page
         assert "Download on the App Store" in page
         assert "Get it on Google Play" in page
+
+    def test_simple_fallback_page_invalid_link_status_code(self):
+        response = public_routes._simple_fallback_page(
+            "https://planetal.app/invite/invalid-token",
+            invalid_link=True,
+            status_code=404
+        )
+
+        assert response.status_code == 404
