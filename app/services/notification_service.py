@@ -111,13 +111,23 @@ class NotificationService:
 
         target_all_guests = reminder_data.get('target_all_guests', False)
         target_rsvp_status = reminder_data.get('target_rsvp_status') or "accepted"
+        frequency, recurrence_count, custom_interval_days = self._resolve_frequency_settings(
+            frequency_input=reminder_data.get('frequency', ReminderFrequency.ONCE),
+            recurrence_count_input=None,
+            custom_interval_days_input=None,
+        )
+        if frequency == ReminderFrequency.CUSTOM and custom_interval_days is None:
+            custom_interval_days = 1
+        self._validate_recurrence_settings(frequency, recurrence_count, custom_interval_days)
 
         processed_data = {
             'title': title,
             'message': message,
             'notification_type': NotificationType.EVENT_INVITE,
             'scheduled_time': reminder_data['scheduled_time'],
-            'frequency': ReminderFrequency.ONCE,
+            'frequency': frequency,
+            'recurrence_count': recurrence_count,
+            'conditions': self._build_conditions(custom_interval_days),
             'event_id': event_id,
             'creator_id': user_id,
             'auto_generated': False,
