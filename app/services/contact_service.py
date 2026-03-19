@@ -140,6 +140,13 @@ class ContactService:
         recipient_user = None
         if contact.email:
             recipient_user = self.db.query(User).filter(User.email == contact.email).first()
+
+        delivery_method = "sms" if contact.phone_number else "email" if contact.email else None
+        if delivery_method is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Contact must have a phone number or email to receive invitation"
+            )
         
         # Create invitation
         invitation = ContactInvitation(
@@ -149,6 +156,10 @@ class ContactService:
             event_id=event_id,
             invitation_token=str(uuid.uuid4()),
             message=message,
+            invitation_type="event_invite" if event_id is not None else "app_invite",
+            delivery_method=delivery_method,
+            recipient_phone=contact.phone_number if delivery_method == "sms" else None,
+            recipient_email=contact.email if delivery_method == "email" else None,
             status=ContactInviteStatus.PENDING
         )
         
