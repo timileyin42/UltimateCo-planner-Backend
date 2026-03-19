@@ -31,7 +31,6 @@ class SmartReminderBase(BaseModel):
     notification_type: NotificationType = Field(..., description="Type of notification")
     scheduled_time: datetime = Field(..., description="When to send the reminder")
     frequency: str = Field(default="never", description="Reminder frequency: never, everyday, weekly, every2weeks, everymonth, custom")
-    custom_interval_days: Optional[int] = Field(None, ge=1, le=365, description="Custom interval in days when frequency is custom")
     target_all_guests: bool = Field(default=False, description="Send to all event guests")
     target_specific_users: Optional[List[int]] = Field(None, description="Specific user IDs to target")
     target_rsvp_status: Optional[str] = Field(None, description="Filter by RSVP status")
@@ -111,7 +110,6 @@ class SmartReminderUpdate(BaseModel):
     message: Optional[str] = Field(None, min_length=1, max_length=1000)
     scheduled_time: Optional[datetime] = None
     frequency: Optional[str] = Field(None, description="Reminder frequency: never, everyday, weekly, every2weeks, everymonth, custom")
-    custom_interval_days: Optional[int] = Field(None, ge=1, le=365)
     is_active: Optional[bool] = None
     target_all_guests: Optional[bool] = None
     target_specific_users: Optional[List[int]] = None
