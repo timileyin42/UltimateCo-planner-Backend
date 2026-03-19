@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
+from datetime import datetime, timedelta
 
 from app.api import public_routes
+from app.models.contact_models import ContactInviteStatus
 from app.services.invite_service import InviteService
 
 
@@ -112,3 +114,27 @@ class TestInviteLinkProcessing:
         )
 
         assert response.status_code == 404
+
+    def test_contact_invitation_valid_helper_accepts_pending_non_expired(self):
+        invitation = SimpleNamespace(
+            status=ContactInviteStatus.PENDING,
+            expires_at=datetime.utcnow() + timedelta(days=1)
+        )
+
+        assert public_routes._is_contact_invitation_valid(invitation) is True
+
+    def test_contact_invitation_valid_helper_rejects_expired(self):
+        invitation = SimpleNamespace(
+            status=ContactInviteStatus.PENDING,
+            expires_at=datetime.utcnow() - timedelta(seconds=1)
+        )
+
+        assert public_routes._is_contact_invitation_valid(invitation) is False
+
+    def test_contact_invitation_valid_helper_rejects_failed_status(self):
+        invitation = SimpleNamespace(
+            status=ContactInviteStatus.FAILED,
+            expires_at=None
+        )
+
+        assert public_routes._is_contact_invitation_valid(invitation) is False

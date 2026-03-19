@@ -1,5 +1,6 @@
 from typing import List, Optional
 from html import escape
+from datetime import datetime
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.logger import get_logger
+from app.models.contact_models import ContactInvitation, ContactInviteStatus
 from app.repositories.invite_repo import InviteRepository
 
 router = APIRouter()
@@ -34,6 +36,17 @@ def _mobile_app_invite_url(token: Optional[str]) -> Optional[str]:
     if scheme_base.endswith("://") or scheme_base.endswith("/"):
         return f"{scheme_base}invite/{token}"
     return f"{scheme_base.rstrip('/')}/invite/{token}"
+
+
+def _is_contact_invitation_valid(invitation: Optional[ContactInvitation]) -> bool:
+    if not invitation:
+        return False
+    is_expired = invitation.expires_at is not None and invitation.expires_at < datetime.utcnow()
+    invalid_statuses = {
+        ContactInviteStatus.EXPIRED,
+        ContactInviteStatus.FAILED
+    }
+    return not is_expired and invitation.status not in invalid_statuses
 
 
 def _preferred_store_url(user_agent: str) -> Optional[str]:
@@ -228,11 +241,18 @@ def handle_invite_link(
 
     invite_code = repo.get_invite_code_by_code(token)
     invite_link = repo.get_invite_link_by_link_id(token) if not invite_code else None
+    contact_invitation = (
+        db.query(ContactInvitation).filter(ContactInvitation.invitation_token == token).first()
+        if not invite_code and not invite_link
+        else None
+    )
 
     is_valid = False
     if invite_code and invite_code.is_valid:
         is_valid = True
     if invite_link and invite_link.is_valid:
+        is_valid = True
+    if _is_contact_invitation_valid(contact_invitation):
         is_valid = True
 
     target_base = _deep_link_base()
