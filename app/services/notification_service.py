@@ -706,6 +706,12 @@ class NotificationService:
         if normalized_frequency_key in {"everymonth", "monthly"}:
             return ReminderFrequency.CUSTOM, recurrence_count, 30
 
+        if normalized_frequency_key == ReminderFrequency.CUSTOM.value:
+            custom_interval_days = (
+                1 if custom_interval_days_input in (None, "") else int(custom_interval_days_input)
+            )
+            return ReminderFrequency.CUSTOM, recurrence_count, custom_interval_days
+
         frequency = ReminderFrequency(frequency_input)
         custom_interval_days = (
             None if custom_interval_days_input in (None, "") else int(custom_interval_days_input)

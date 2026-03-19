@@ -278,15 +278,13 @@ class TestNotificationService:
             message="Custom cadence reminder",
             notification_type="event_reminder",
             scheduled_time=datetime.utcnow() + timedelta(hours=1),
-            frequency="custom",
-            custom_interval_days=10
+            frequency="custom"
         )
 
         assert payload.frequency == "custom"
-        assert payload.custom_interval_days == 10
 
-    def test_create_reminder_custom_requires_interval_days(self, notification_service, mock_event):
-        """Custom frequency must include custom_interval_days."""
+    def test_create_reminder_custom_defaults_interval_to_one_day(self, notification_service, mock_event):
+        """Custom frequency should default to one-day interval when not provided."""
         reminder_data = {
             "title": "Custom Reminder",
             "message": "Custom cadence reminder",
@@ -296,9 +294,16 @@ class TestNotificationService:
             "recurrence_count": 3
         }
 
+        created_reminder = Mock(spec=SmartReminder)
+
         with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
-            with pytest.raises(ValidationError, match="requires custom_interval_days"):
-                notification_service.create_reminder(1, 1, reminder_data)
+            with patch.object(notification_service.notification_repo, 'create_reminder', return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, '_queue_reminder_notifications'):
+                    notification_service.create_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["frequency"] == ReminderFrequency.CUSTOM
+        assert created_payload["conditions"] == json.dumps({"custom_interval_days": 1})
 
     def test_create_reminder_custom_interval_days_upper_bound(self, notification_service, mock_event):
         """Custom interval days should be capped at 365."""
