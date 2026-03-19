@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from app.services.notification_service import NotificationService
+from app.repositories.notification_repo import NotificationRepository
 from app.models.notification_models import (
     SmartReminder, NotificationLog, NotificationPreference, ReminderTemplate,
     AutomationRule, NotificationQueue, NotificationType, NotificationStatus,
@@ -13,6 +14,21 @@ from app.models.user_models import User
 from app.models.event_models import Event, EventInvitation
 from app.models.shared_models import RSVPStatus
 from app.core.errors import NotFoundError, ValidationError, AuthorizationError
+from app.schemas.notification import SmartReminderCreate, SmartReminderUpdate
+
+
+def test_notification_repository_coerces_frequency_aliases():
+    repo = NotificationRepository(Mock(spec=Session))
+    assert repo._coerce_frequency("never") == ReminderFrequency.ONCE
+    assert repo._coerce_frequency("everyday") == ReminderFrequency.DAILY
+    assert repo._coerce_frequency("weekly") == ReminderFrequency.WEEKLY
+    assert repo._coerce_frequency("custom") == ReminderFrequency.CUSTOM
+
+
+def test_notification_repository_rejects_unknown_frequency():
+    repo = NotificationRepository(Mock(spec=Session))
+    with pytest.raises(ValueError):
+        repo._coerce_frequency("everyyear")
 
 class TestNotificationService:
     """Test cases for NotificationService."""
@@ -139,8 +155,8 @@ class TestNotificationService:
         assert created_payload["target_rsvp_status"] == "accepted"
         mock_queue.assert_called_once_with(created_reminder)
 
-    def test_create_reminder_once_cannot_repeat(self, notification_service, mock_event):
-        """Once reminders cannot be created with recurrence_count greater than 1."""
+    def test_create_reminder_once_forces_single_occurrence(self, notification_service, mock_event):
+        """Once reminders should always be normalized to one occurrence."""
         reminder_data = {
             "title": "Single Reminder",
             "message": "One-off reminder",
@@ -150,9 +166,90 @@ class TestNotificationService:
             "recurrence_count": 3
         }
 
+        created_reminder = Mock(spec=SmartReminder)
+
         with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
-            with pytest.raises(ValidationError, match="recurrence_count must be 1"):
-                notification_service.create_reminder(1, 1, reminder_data)
+            with patch.object(notification_service.notification_repo, 'create_reminder', return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, '_queue_reminder_notifications'):
+                    notification_service.create_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["frequency"] == ReminderFrequency.ONCE
+        assert created_payload["recurrence_count"] == 1
+        assert created_payload["conditions"] is None
+
+    def test_create_reminder_every_2_weeks_alias_sets_custom_interval(self, notification_service, mock_event):
+        """every2weeks should map to custom frequency with a 14-day interval."""
+        reminder_data = {
+            "title": "Biweekly Reminder",
+            "message": "Biweekly cadence reminder",
+            "notification_type": "event_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "every2weeks"
+        }
+
+        created_reminder = Mock(spec=SmartReminder)
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with patch.object(notification_service.notification_repo, 'create_reminder', return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, '_queue_reminder_notifications'):
+                    notification_service.create_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["frequency"] == ReminderFrequency.CUSTOM
+        assert created_payload["conditions"] == json.dumps({"custom_interval_days": 14})
+
+    def test_create_reminder_every_month_alias_sets_custom_interval(self, notification_service, mock_event):
+        """everymonth should map to custom frequency with a 30-day interval."""
+        reminder_data = {
+            "title": "Monthly Reminder",
+            "message": "Monthly cadence reminder",
+            "notification_type": "event_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "everymonth"
+        }
+
+        created_reminder = Mock(spec=SmartReminder)
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with patch.object(notification_service.notification_repo, 'create_reminder', return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, '_queue_reminder_notifications'):
+                    notification_service.create_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["frequency"] == ReminderFrequency.CUSTOM
+        assert created_payload["conditions"] == json.dumps({"custom_interval_days": 30})
+
+    def test_smart_reminder_create_schema_accepts_every_2_weeks(self):
+        payload = SmartReminderCreate(
+            title="Biweekly Reminder",
+            message="Biweekly cadence reminder",
+            notification_type="event_reminder",
+            scheduled_time=datetime.utcnow() + timedelta(hours=1),
+            frequency="every 2 weeks"
+        )
+
+        assert payload.frequency == "every2weeks"
+
+    def test_smart_reminder_update_schema_accepts_never(self):
+        payload = SmartReminderUpdate(
+            frequency="never",
+        )
+
+        assert payload.frequency == "never"
+
+    def test_smart_reminder_create_schema_accepts_custom(self):
+        payload = SmartReminderCreate(
+            title="Custom Reminder",
+            message="Custom cadence reminder",
+            notification_type="event_reminder",
+            scheduled_time=datetime.utcnow() + timedelta(hours=1),
+            frequency="custom",
+            custom_interval_days=10
+        )
+
+        assert payload.frequency == "custom"
+        assert payload.custom_interval_days == 10
 
     def test_create_reminder_custom_requires_interval_days(self, notification_service, mock_event):
         """Custom frequency must include custom_interval_days."""

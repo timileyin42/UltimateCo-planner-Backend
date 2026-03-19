@@ -102,6 +102,8 @@ class NotificationRepository:
     
     def create_reminder(self, reminder_data: Dict[str, Any]) -> SmartReminder:
         """Create a new smart reminder"""
+        if 'frequency' in reminder_data:
+            reminder_data['frequency'] = self._coerce_frequency(reminder_data['frequency'])
         reminder = SmartReminder(**reminder_data)
         self.db.add(reminder)
         self.db.commit()
@@ -116,11 +118,27 @@ class NotificationRepository:
 
         for field, value in update_data.items():
             if hasattr(reminder, field):
+                if field == 'frequency':
+                    value = self._coerce_frequency(value)
                 setattr(reminder, field, value)
         
         self.db.commit()
         self.db.refresh(reminder)
         return reminder
+
+    def _coerce_frequency(self, value: Any) -> ReminderFrequency:
+        if isinstance(value, ReminderFrequency):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized == "never":
+                return ReminderFrequency.ONCE
+            if normalized == "everyday":
+                return ReminderFrequency.DAILY
+            if normalized in {"every2weeks", "every 2 weeks", "everymonth", "every month"}:
+                return ReminderFrequency.CUSTOM
+            return ReminderFrequency(normalized)
+        return ReminderFrequency(value)
         
     
     def delete_reminder(self, reminder_id: int) -> bool:
@@ -709,4 +727,3 @@ class NotificationRepository:
                 query = query.filter(SmartReminder.creator_id == filters['creator_id'])
         
         return query.count()
-

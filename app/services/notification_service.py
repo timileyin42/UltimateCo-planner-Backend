@@ -50,9 +50,11 @@ class NotificationService:
         notification_type = NotificationType(reminder_data['notification_type'])
         target_all_guests = reminder_data.get('target_all_guests', True)
         target_rsvp_status = reminder_data.get('target_rsvp_status')
-        frequency = ReminderFrequency(reminder_data.get('frequency', 'once'))
-        recurrence_count = int(reminder_data.get('recurrence_count', 1))
-        custom_interval_days = reminder_data.get('custom_interval_days')
+        frequency, recurrence_count, custom_interval_days = self._resolve_frequency_settings(
+            frequency_input=reminder_data.get('frequency', ReminderFrequency.ONCE),
+            recurrence_count_input=reminder_data.get('recurrence_count'),
+            custom_interval_days_input=reminder_data.get('custom_interval_days'),
+        )
         self._validate_recurrence_settings(frequency, recurrence_count, custom_interval_days)
         if notification_type == NotificationType.RSVP_REMINDER:
             target_all_guests = False
@@ -174,30 +176,35 @@ class NotificationService:
         if not self._can_edit_reminder(reminder, event, user_id):
             raise AuthorizationError("You don't have permission to edit this reminder")
 
-        has_custom_interval_update = 'custom_interval_days' in update_data
-        custom_interval_days = update_data.pop('custom_interval_days', None)
-        effective_frequency = ReminderFrequency(update_data.get('frequency', reminder.frequency))
-        effective_recurrence_count = int(update_data.get('recurrence_count', reminder.recurrence_count or 1))
-        effective_custom_interval_days = (
-            custom_interval_days
-            if has_custom_interval_update
-            else self._extract_custom_interval_days(reminder.conditions)
+        has_recurrence_update = any(
+            key in update_data for key in ('frequency', 'recurrence_count', 'custom_interval_days')
+        )
+        effective_frequency, effective_recurrence_count, effective_custom_interval_days = self._resolve_frequency_settings(
+            frequency_input=update_data.get('frequency', reminder.frequency),
+            recurrence_count_input=update_data.get('recurrence_count', reminder.recurrence_count or 1),
+            custom_interval_days_input=update_data.get(
+                'custom_interval_days',
+                self._extract_custom_interval_days(reminder.conditions)
+            ),
         )
         self._validate_recurrence_settings(
             effective_frequency,
             effective_recurrence_count,
             effective_custom_interval_days
         )
-        if has_custom_interval_update or effective_frequency != reminder.frequency:
+        if has_recurrence_update:
+            update_data['frequency'] = effective_frequency
+            update_data['recurrence_count'] = effective_recurrence_count
             update_data['conditions'] = self._build_conditions(
                 effective_custom_interval_days if effective_frequency == ReminderFrequency.CUSTOM else None
             )
+        update_data.pop('custom_interval_days', None)
         
         # Update reminder
         updated_reminder = self.notification_repo.update_reminder(reminder_id, update_data)
         
         # If scheduling changed, requeue notifications
-        if 'scheduled_time' in update_data or 'frequency' in update_data or 'recurrence_count' in update_data:
+        if 'scheduled_time' in update_data or has_recurrence_update:
             self._requeue_reminder_notifications(updated_reminder)
         
         return updated_reminder
@@ -663,6 +670,44 @@ class NotificationService:
             raise ValidationError("custom_interval_days must be at most 365")
         if frequency == ReminderFrequency.CUSTOM and custom_interval_days is None:
             raise ValidationError("Custom frequency requires custom_interval_days")
+
+    def _resolve_frequency_settings(
+        self,
+        frequency_input: Any,
+        recurrence_count_input: Optional[Any],
+        custom_interval_days_input: Optional[Any]
+    ) -> Tuple[ReminderFrequency, int, Optional[int]]:
+        normalized_frequency_key = self._normalize_frequency_key(frequency_input)
+
+        if normalized_frequency_key in {"never", ReminderFrequency.ONCE.value}:
+            return ReminderFrequency.ONCE, 1, None
+
+        recurrence_count = 1 if recurrence_count_input in (None, "") else int(recurrence_count_input)
+
+        if normalized_frequency_key in {"everyday", ReminderFrequency.DAILY.value}:
+            return ReminderFrequency.DAILY, recurrence_count, None
+
+        if normalized_frequency_key == ReminderFrequency.WEEKLY.value:
+            return ReminderFrequency.WEEKLY, recurrence_count, None
+
+        if normalized_frequency_key in {"every2weeks", "biweekly", "fortnightly"}:
+            return ReminderFrequency.CUSTOM, recurrence_count, 14
+
+        if normalized_frequency_key in {"everymonth", "monthly"}:
+            return ReminderFrequency.CUSTOM, recurrence_count, 30
+
+        frequency = ReminderFrequency(frequency_input)
+        custom_interval_days = (
+            None if custom_interval_days_input in (None, "") else int(custom_interval_days_input)
+        )
+        return frequency, recurrence_count, custom_interval_days
+
+    def _normalize_frequency_key(self, value: Any) -> Any:
+        if isinstance(value, ReminderFrequency):
+            return value.value
+        if isinstance(value, str):
+            return value.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+        return value
 
     def _build_conditions(self, custom_interval_days: Optional[int]) -> Optional[str]:
         if custom_interval_days is None:
