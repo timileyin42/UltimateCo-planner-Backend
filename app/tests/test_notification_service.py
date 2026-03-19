@@ -220,6 +220,40 @@ class TestNotificationService:
         assert created_payload["frequency"] == ReminderFrequency.CUSTOM
         assert created_payload["conditions"] == json.dumps({"custom_interval_days": 30})
 
+    def test_create_invite_reminder_every_2_weeks_uses_fixed_interval(self, notification_service, mock_event):
+        reminder_data = {
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "every2weeks"
+        }
+
+        created_reminder = Mock(spec=SmartReminder)
+
+        with patch.object(notification_service, "_get_event_with_access", return_value=mock_event):
+            with patch.object(notification_service.notification_repo, "create_reminder", return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, "_queue_reminder_notifications"):
+                    notification_service.create_invite_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["frequency"] == ReminderFrequency.CUSTOM
+        assert created_payload["conditions"] == json.dumps({"custom_interval_days": 14})
+
+    def test_create_invite_reminder_custom_frequency_defaults_to_daily_interval(self, notification_service, mock_event):
+        reminder_data = {
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "custom"
+        }
+
+        created_reminder = Mock(spec=SmartReminder)
+
+        with patch.object(notification_service, "_get_event_with_access", return_value=mock_event):
+            with patch.object(notification_service.notification_repo, "create_reminder", return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, "_queue_reminder_notifications"):
+                    notification_service.create_invite_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["frequency"] == ReminderFrequency.CUSTOM
+        assert created_payload["conditions"] == json.dumps({"custom_interval_days": 1})
+
     def test_smart_reminder_create_schema_accepts_every_2_weeks(self):
         payload = SmartReminderCreate(
             title="Biweekly Reminder",

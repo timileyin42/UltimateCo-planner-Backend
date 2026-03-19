@@ -70,6 +70,7 @@ class SmartReminderCreate(SmartReminderBase):
 class InviteReminderCreate(BaseModel):
     """Schema for creating an invite reminder."""
     scheduled_time: datetime = Field(..., description="When to send the reminder")
+    frequency: str = Field(default="never", description="Reminder frequency: never, everyday, weekly, every2weeks, everymonth, custom")
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     message: Optional[str] = Field(None, min_length=1, max_length=1000)
     target_all_guests: bool = Field(default=False, description="Send to all event guests")
@@ -78,6 +79,31 @@ class InviteReminderCreate(BaseModel):
     send_sms: bool = Field(default=False, description="Send via SMS")
     send_push: bool = Field(default=True, description="Send push notification")
     send_in_app: bool = Field(default=True, description="Send in-app notification")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_frequency_payload(cls, value):
+        if not isinstance(value, dict):
+            return value
+
+        frequency_key = _normalize_frequency_key(value.get("frequency", ReminderFrequency.ONCE.value))
+        if frequency_key in {"never"}:
+            value["frequency"] = "never"
+        elif frequency_key in {"everyday"}:
+            value["frequency"] = "everyday"
+        elif frequency_key in {"weekly"}:
+            value["frequency"] = "weekly"
+        elif frequency_key in {"every2weeks", "biweekly", "fortnightly"}:
+            value["frequency"] = "every2weeks"
+        elif frequency_key in {"everymonth", "monthly"}:
+            value["frequency"] = "everymonth"
+        elif frequency_key in {"custom"}:
+            value["frequency"] = "custom"
+        elif frequency_key in {ReminderFrequency.ONCE.value}:
+            value["frequency"] = "never"
+        elif frequency_key in {ReminderFrequency.DAILY.value}:
+            value["frequency"] = "everyday"
+        return value
 
 class SmartReminderUpdate(BaseModel):
     """Schema for updating a smart reminder."""
