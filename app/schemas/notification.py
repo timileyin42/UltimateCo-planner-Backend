@@ -1,9 +1,17 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.models.notification_models import (
     NotificationType, NotificationStatus, NotificationChannel, ReminderFrequency
 )
+
+
+def _normalize_frequency_key(value: Any) -> Any:
+    if isinstance(value, ReminderFrequency):
+        return value.value
+    if isinstance(value, str):
+        return value.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+    return value
 
 # Base schemas
 class UserBasic(BaseModel):
@@ -22,8 +30,7 @@ class SmartReminderBase(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000, description="Reminder message")
     notification_type: NotificationType = Field(..., description="Type of notification")
     scheduled_time: datetime = Field(..., description="When to send the reminder")
-    frequency: ReminderFrequency = Field(default=ReminderFrequency.ONCE, description="Reminder frequency")
-    recurrence_count: int = Field(default=1, ge=1, le=10, description="Number of times to repeat")
+    frequency: str = Field(default="never", description="Reminder frequency: never, everyday, weekly, every2weeks, everymonth, custom")
     custom_interval_days: Optional[int] = Field(None, ge=1, le=365, description="Custom interval in days when frequency is custom")
     target_all_guests: bool = Field(default=False, description="Send to all event guests")
     target_specific_users: Optional[List[int]] = Field(None, description="Specific user IDs to target")
@@ -35,7 +42,30 @@ class SmartReminderBase(BaseModel):
 
 class SmartReminderCreate(SmartReminderBase):
     """Schema for creating a smart reminder."""
-    pass
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_frequency_payload(cls, value):
+        if not isinstance(value, dict):
+            return value
+
+        frequency_key = _normalize_frequency_key(value.get("frequency", ReminderFrequency.ONCE.value))
+        if frequency_key in {"never"}:
+            value["frequency"] = "never"
+        elif frequency_key in {"everyday"}:
+            value["frequency"] = "everyday"
+        elif frequency_key in {"weekly"}:
+            value["frequency"] = "weekly"
+        elif frequency_key in {"every2weeks", "biweekly", "fortnightly"}:
+            value["frequency"] = "every2weeks"
+        elif frequency_key in {"everymonth", "monthly"}:
+            value["frequency"] = "everymonth"
+        elif frequency_key in {"custom"}:
+            value["frequency"] = "custom"
+        elif frequency_key in {ReminderFrequency.ONCE.value}:
+            value["frequency"] = "never"
+        elif frequency_key in {ReminderFrequency.DAILY.value}:
+            value["frequency"] = "everyday"
+        return value
 
 class InviteReminderCreate(BaseModel):
     """Schema for creating an invite reminder."""
@@ -54,8 +84,7 @@ class SmartReminderUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     message: Optional[str] = Field(None, min_length=1, max_length=1000)
     scheduled_time: Optional[datetime] = None
-    frequency: Optional[ReminderFrequency] = None
-    recurrence_count: Optional[int] = Field(None, ge=1, le=10)
+    frequency: Optional[str] = Field(None, description="Reminder frequency: never, everyday, weekly, every2weeks, everymonth, custom")
     custom_interval_days: Optional[int] = Field(None, ge=1, le=365)
     is_active: Optional[bool] = None
     target_all_guests: Optional[bool] = None
@@ -65,6 +94,33 @@ class SmartReminderUpdate(BaseModel):
     send_sms: Optional[bool] = None
     send_push: Optional[bool] = None
     send_in_app: Optional[bool] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_frequency_payload(cls, value):
+        if not isinstance(value, dict):
+            return value
+        if "frequency" not in value:
+            return value
+
+        frequency_key = _normalize_frequency_key(value.get("frequency"))
+        if frequency_key in {"never"}:
+            value["frequency"] = "never"
+        elif frequency_key in {"everyday"}:
+            value["frequency"] = "everyday"
+        elif frequency_key in {"weekly"}:
+            value["frequency"] = "weekly"
+        elif frequency_key in {"every2weeks", "biweekly", "fortnightly"}:
+            value["frequency"] = "every2weeks"
+        elif frequency_key in {"everymonth", "monthly"}:
+            value["frequency"] = "everymonth"
+        elif frequency_key in {"custom"}:
+            value["frequency"] = "custom"
+        elif frequency_key in {ReminderFrequency.ONCE.value}:
+            value["frequency"] = "never"
+        elif frequency_key in {ReminderFrequency.DAILY.value}:
+            value["frequency"] = "everyday"
+        return value
 
 class SmartReminderResponse(SmartReminderBase):
     """Schema for smart reminder response."""
