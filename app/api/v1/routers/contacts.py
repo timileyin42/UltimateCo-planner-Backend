@@ -308,6 +308,7 @@ async def get_public_invitation_event(
 
     return PublicEventInviteResponse(
         token=token,
+        invitation_id=invitation.id,
         is_valid=is_valid,
         invitation_status=invitation.status,
         invitation_type=invitation.invitation_type,
@@ -400,6 +401,21 @@ async def respond_to_invitation(
     contact_service = ContactService(db)
     return contact_service.respond_to_invitation(
         invitation_id=invitation_id,
+        user_id=current_user.id,
+        rsvp_status=response_data.status
+    )
+
+
+@router.post("/invitations/public/{token}/respond", response_model=ContactInvitationResponse)
+async def respond_to_public_invitation(
+    token: str,
+    response_data: InvitationResponseRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    contact_service = ContactService(db)
+    return contact_service.respond_to_invitation_token(
+        token=token,
         user_id=current_user.id,
         rsvp_status=response_data.status
     )

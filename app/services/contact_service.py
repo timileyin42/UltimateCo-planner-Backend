@@ -451,6 +451,76 @@ class ContactService:
         
         return invitation
 
+    def respond_to_invitation_token(
+        self,
+        token: str,
+        user_id: int,
+        rsvp_status: str
+    ) -> ContactInvitation:
+        invitation = self.db.query(ContactInvitation).filter(
+            ContactInvitation.invitation_token == token
+        ).first()
+
+        if not invitation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invite not found"
+            )
+
+        if invitation.status != ContactInviteStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invitation not found or already responded"
+            )
+
+        is_expired = invitation.expires_at is not None and invitation.expires_at < datetime.utcnow()
+        if is_expired:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invite has expired"
+            )
+
+        if invitation.recipient_id is not None and invitation.recipient_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not allowed to respond to this invite"
+            )
+
+        if rsvp_status == "accepted":
+            invitation.status = ContactInviteStatus.ACCEPTED
+        elif rsvp_status == "declined":
+            invitation.status = ContactInviteStatus.DECLINED
+
+        invitation.responded_at = datetime.utcnow()
+        invitation.recipient_id = user_id
+
+        if invitation.event_id:
+            event_invite = self.db.query(EventInvitation).filter(
+                and_(
+                    EventInvitation.event_id == invitation.event_id,
+                    EventInvitation.user_id == user_id
+                )
+            ).first()
+
+            event_rsvp_status = RSVPStatus.ACCEPTED if rsvp_status == "accepted" else RSVPStatus.DECLINED
+
+            if not event_invite:
+                event_invite = EventInvitation(
+                    event_id=invitation.event_id,
+                    user_id=user_id,
+                    rsvp_status=event_rsvp_status,
+                    invited_at=invitation.created_at,
+                    responded_at=datetime.utcnow()
+                )
+                self.db.add(event_invite)
+            else:
+                event_invite.rsvp_status = event_rsvp_status
+                event_invite.responded_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(invitation)
+        return invitation
+
     def create_contact_group(
         self, 
         user_id: int, 
