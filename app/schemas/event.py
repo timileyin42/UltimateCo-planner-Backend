@@ -221,6 +221,8 @@ class EventSummary(BaseModel):
     start_datetime: datetime
     venue_name: Optional[str] = None
     venue_city: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     cover_image_url: Optional[str] = None
     attendee_count: int
     

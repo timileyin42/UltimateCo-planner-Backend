@@ -388,6 +388,15 @@ class ContactService:
                 ContactInvitation.status == ContactInviteStatus.PENDING
             )
         ).first()
+
+        if not invitation:
+            invitation = self.db.query(ContactInvitation).filter(
+                and_(
+                    ContactInvitation.event_id == invitation_id,
+                    ContactInvitation.recipient_id == user_id,
+                    ContactInvitation.status == ContactInviteStatus.PENDING
+                )
+            ).order_by(desc(ContactInvitation.created_at)).first()
         
         if not invitation:
             raise HTTPException(
