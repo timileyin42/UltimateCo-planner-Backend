@@ -146,6 +146,7 @@ class ContactInvitationResponse(ContactInvitationBase):
 
 class PublicEventInviteResponse(BaseModel):
     token: str
+    invitation_id: Optional[int] = None
     is_valid: bool
     invitation_status: ContactInviteStatus
     invitation_type: str
