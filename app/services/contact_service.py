@@ -313,7 +313,13 @@ class ContactService:
                     sms_result = {"status": "failed", "error": str(sms_err)}
                 
                 # Update invitation status based on SMS result
-                if sms_result and sms_result.get("status") == "success":
+                sms_status = (
+                    (sms_result.get("status") or "").strip().lower()
+                    if isinstance(sms_result, dict)
+                    else ""
+                )
+                successful_sms_statuses = {"success", "sent", "queued", "accepted"}
+                if sms_status in successful_sms_statuses:
                     invitation.status = ContactInviteStatus.SENT
                     results["sent"].append({
                         "phone_number": cleaned_phone,
