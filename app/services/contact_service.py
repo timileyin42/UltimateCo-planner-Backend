@@ -387,11 +387,12 @@ class ContactService:
         rsvp_status: str
     ) -> ContactInvitation:
         """Accept or decline an invitation"""
+        allowed_statuses = [ContactInviteStatus.PENDING, ContactInviteStatus.SENT]
         invitation = self.db.query(ContactInvitation).filter(
             and_(
                 ContactInvitation.id == invitation_id,
                 ContactInvitation.recipient_id == user_id,
-                ContactInvitation.status == ContactInviteStatus.PENDING
+                ContactInvitation.status.in_(allowed_statuses)
             )
         ).first()
 
@@ -400,7 +401,7 @@ class ContactService:
                 and_(
                     ContactInvitation.event_id == invitation_id,
                     ContactInvitation.recipient_id == user_id,
-                    ContactInvitation.status == ContactInviteStatus.PENDING
+                    ContactInvitation.status.in_(allowed_statuses)
                 )
             ).order_by(desc(ContactInvitation.created_at)).first()
         
@@ -457,6 +458,7 @@ class ContactService:
         user_id: int,
         rsvp_status: str
     ) -> ContactInvitation:
+        allowed_statuses = {ContactInviteStatus.PENDING, ContactInviteStatus.SENT}
         invitation = self.db.query(ContactInvitation).filter(
             ContactInvitation.invitation_token == token
         ).first()
@@ -467,7 +469,7 @@ class ContactService:
                 detail="Invite not found"
             )
 
-        if invitation.status != ContactInviteStatus.PENDING:
+        if invitation.status not in allowed_statuses:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Invitation not found or already responded"
