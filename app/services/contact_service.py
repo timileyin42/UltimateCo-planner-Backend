@@ -22,6 +22,17 @@ from app.services.sms_service import SMSService
 class ContactService:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _respondable_statuses() -> List[ContactInviteStatus]:
+        return [
+            ContactInviteStatus.PENDING,
+            ContactInviteStatus.SENT,
+            ContactInviteStatus.DELIVERED,
+            ContactInviteStatus.OPENED,
+            ContactInviteStatus.ACCEPTED,
+            ContactInviteStatus.DECLINED
+        ]
         self.sms_service = SMSService()
 
     def add_contact(self, user_id: int, contact_data: Dict[str, Any]) -> UserContact:
@@ -387,7 +398,7 @@ class ContactService:
         rsvp_status: str
     ) -> ContactInvitation:
         """Accept or decline an invitation"""
-        allowed_statuses = [ContactInviteStatus.PENDING, ContactInviteStatus.SENT]
+        allowed_statuses = self._respondable_statuses()
         invitation = self.db.query(ContactInvitation).filter(
             and_(
                 ContactInvitation.id == invitation_id,
@@ -458,7 +469,7 @@ class ContactService:
         user_id: int,
         rsvp_status: str
     ) -> ContactInvitation:
-        allowed_statuses = {ContactInviteStatus.PENDING, ContactInviteStatus.SENT}
+        allowed_statuses = set(self._respondable_statuses())
         invitation = self.db.query(ContactInvitation).filter(
             ContactInvitation.invitation_token == token
         ).first()
