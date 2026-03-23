@@ -132,6 +132,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
     command: celery -A app.tasks.celery_app beat --loglevel=${CELERY_LOG_LEVEL:-info} --schedule=/tmp/celerybeat-schedule
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - planetal-network
     logging:
