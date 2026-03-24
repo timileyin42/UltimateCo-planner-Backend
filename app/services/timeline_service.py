@@ -476,6 +476,7 @@ class TimelineService:
         filters = {
             'event_type': search_payload.get('event_type'),
             'creator_id': search_payload.get('creator_id'),
+            'exclude_creator_id': search_payload.get('exclude_creator_id'),
             'is_public': search_payload.get('is_public'),
             'category': search_payload.get('category')
         }
@@ -495,23 +496,11 @@ class TimelineService:
         except json.JSONDecodeError:
             template_data = {}
 
-        event_service = EventService(self.db)
-        task_categories = event_service.get_task_template_categories(template.event_type)
-
         return {
             "template": template,
             "template_data": template_data,
             "cover_image_url": self.get_template_cover_image(template_data),
-            "task_categories": [
-                {
-                    "name": category.name,
-                    "items": [
-                        {"title": item.title, "description": item.description}
-                        for item in category.items
-                    ],
-                }
-                for category in task_categories
-            ],
+            "task_categories": [],
         }
 
     def get_event_template_metadata(self, event_id: int, user_id: int) -> Dict[str, Any]:
@@ -525,13 +514,11 @@ class TimelineService:
                 raise
 
         raw_categories = getattr(event, "task_categories", None) or []
-        normalized_categories: List[Dict[str, Any]] = []
         template_items: List[Dict[str, Any]] = []
 
         for category in raw_categories:
             category_name = (category.get("name") if isinstance(category, dict) else getattr(category, "name", None)) or "General"
             raw_items = category.get("items", []) if isinstance(category, dict) else getattr(category, "items", [])
-            normalized_items: List[Dict[str, Any]] = []
 
             for item in raw_items or []:
                 title = (item.get("title") if isinstance(item, dict) else getattr(item, "title", None)) or ""
@@ -542,21 +529,12 @@ class TimelineService:
                 description = item.get("description") if isinstance(item, dict) else getattr(item, "description", None)
                 completed = item.get("completed", False) if isinstance(item, dict) else getattr(item, "completed", False)
 
-                normalized_items.append({
-                    "title": title,
-                    "description": description
-                })
                 template_items.append({
                     "title": title,
                     "description": description,
                     "category": category_name,
                     "completed": bool(completed)
                 })
-
-            normalized_categories.append({
-                "name": category_name,
-                "items": normalized_items
-            })
 
         event_type = getattr(event, "event_type", None)
         if hasattr(event_type, "value"):
@@ -585,7 +563,7 @@ class TimelineService:
             "total_budget": getattr(event, "total_budget", None),
             "attendee_count": int(getattr(event, "attendee_count", 0) or 0),
             "template_data": template_data,
-            "task_categories": normalized_categories
+            "task_categories": []
         }
 
     def get_template_cover_image(self, template_data: Dict[str, Any]) -> Optional[str]:

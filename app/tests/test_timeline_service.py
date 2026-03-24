@@ -220,6 +220,19 @@ class TestTimelineService:
         mock_db.commit.assert_called_once()
         mock_db.refresh.assert_called_once()
         assert result == mock_timeline_item
+
+    def test_get_templates_forwards_exclude_creator_filter(self, timeline_service):
+        with patch.object(timeline_service.timeline_repo, "get_templates", return_value=([], 0)) as mock_get_templates:
+            timeline_service.get_templates({
+                "is_public": True,
+                "exclude_creator_id": 9,
+                "page": 1,
+                "per_page": 12
+            })
+
+        filters = mock_get_templates.call_args[0][1]
+        assert filters["exclude_creator_id"] == 9
+        assert filters["is_public"] is True
     
     def test_update_item_status_success(self, timeline_service, mock_db, mock_timeline_item):
         """Test successful timeline item status update."""

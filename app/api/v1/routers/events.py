@@ -223,6 +223,8 @@ async def get_events(
             if category == "public":
                 # Public events - no authentication required
                 query = query.filter(Event.is_public == True, Event.status != EventStatus.DRAFT)
+                if current_user:
+                    query = query.filter(Event.creator_id != current_user.id)
                 query = query.order_by(Event.start_datetime.desc())
                 
             elif not current_user:
@@ -495,6 +497,7 @@ async def get_discovery(
         templates, templates_total = timeline_service.get_templates({
             "event_type": template_event_type,
             "is_public": True,
+            "exclude_creator_id": current_user.id,
             "page": template_page,
             "per_page": template_per_page
         })
