@@ -298,6 +298,9 @@ class TimelineRepository:
             
             if filters.get('creator_id'):
                 query = query.filter(TimelineTemplate.creator_id == filters['creator_id'])
+
+            if filters.get('exclude_creator_id'):
+                query = query.filter(TimelineTemplate.creator_id != filters['exclude_creator_id'])
             
             if filters.get('is_public') is not None:
                 query = query.filter(TimelineTemplate.is_public == filters['is_public'])

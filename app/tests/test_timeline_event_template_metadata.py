@@ -7,7 +7,7 @@ from app.services.timeline_service import TimelineService
 
 
 class TestTimelineEventTemplateMetadata:
-    def test_get_event_template_metadata_maps_event_and_tasks(self):
+    def test_get_event_template_metadata_hides_task_categories(self):
         service = TimelineService.__new__(TimelineService)
         event = SimpleNamespace(
             id=42,
@@ -38,7 +38,7 @@ class TestTimelineEventTemplateMetadata:
         assert metadata["title"] == "Launch Party"
         assert metadata["event_type"] == "other"
         assert metadata["status"] == "confirmed"
-        assert metadata["task_categories"][0]["name"] == "Logistics"
+        assert metadata["task_categories"] == []
         assert metadata["template_data"]["source"] == "event"
         assert len(metadata["template_data"]["items"]) == 2
 

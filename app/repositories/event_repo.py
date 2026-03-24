@@ -93,7 +93,8 @@ class EventRepository:
         """Get public events with pagination and filtering"""
         query = self.db.query(Event).filter(
             Event.is_public == True,
-            Event.is_deleted == False
+            Event.is_deleted == False,
+            Event.status != EventStatus.DRAFT
         )
         
         if filters:
