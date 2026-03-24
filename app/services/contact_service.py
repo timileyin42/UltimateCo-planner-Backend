@@ -470,6 +470,12 @@ class ContactService:
         rsvp_status: str
     ) -> ContactInvitation:
         allowed_statuses = set(self._respondable_statuses())
+        pre_response_statuses = {
+            ContactInviteStatus.PENDING,
+            ContactInviteStatus.SENT,
+            ContactInviteStatus.DELIVERED,
+            ContactInviteStatus.OPENED
+        }
         invitation = self.db.query(ContactInvitation).filter(
             ContactInvitation.invitation_token == token
         ).first()
@@ -493,7 +499,11 @@ class ContactService:
                 detail="Invite has expired"
             )
 
-        if invitation.recipient_id is not None and invitation.recipient_id != user_id:
+        if (
+            invitation.recipient_id is not None
+            and invitation.recipient_id != user_id
+            and invitation.status not in pre_response_statuses
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You are not allowed to respond to this invite"
