@@ -22,6 +22,7 @@ from app.services.sms_service import SMSService
 class ContactService:
     def __init__(self, db: Session):
         self.db = db
+        self.sms_service = SMSService()
 
     @staticmethod
     def _respondable_statuses() -> List[ContactInviteStatus]:
@@ -33,7 +34,6 @@ class ContactService:
             ContactInviteStatus.ACCEPTED,
             ContactInviteStatus.DECLINED
         ]
-        self.sms_service = SMSService()
 
     def add_contact(self, user_id: int, contact_data: Dict[str, Any]) -> UserContact:
         """Add a new contact to user's contact list"""
