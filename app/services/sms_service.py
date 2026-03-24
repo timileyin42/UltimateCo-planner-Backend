@@ -306,28 +306,24 @@ class SMSService:
         Supports international numbers from all countries.
         Returns E.164 format (e.g., +447700900123, +2348012345678, +11234567890)
         """
-        try:
-            # Use phonenumbers library for proper international parsing
-            parsed = phonenumbers.parse(phone_number, None)
-            
-            # Validate the number
+        cleaned = ''.join(char for char in str(phone_number).strip() if char.isdigit() or char == '+')
+        if cleaned.startswith('+'):
+            parsed = phonenumbers.parse(cleaned, None)
             if not phonenumbers.is_valid_number(parsed):
                 logger.warning(f"Invalid phone number detected: {phone_number}")
-            
-            # Format to E.164 international standard
             return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-            
-        except NumberParseException as e:
-            logger.warning(f"Phone number parse error for {phone_number}: {str(e)}")
-            
-            # Fallback: Basic cleanup
-            cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
-            
-            # Ensure it starts with +
-            if not cleaned.startswith('+'):
-                cleaned = '+' + cleaned.lstrip('0')
-            
-            return cleaned
+
+        digits = ''.join(char for char in cleaned if char.isdigit())
+        if digits.startswith("234"):
+            parsed = phonenumbers.parse(f"+{digits}", None)
+            if not phonenumbers.is_valid_number(parsed):
+                logger.warning(f"Invalid phone number detected: {phone_number}")
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+        if len(digits) == 11 and digits.startswith("0") and digits[1] in {"7", "8", "9"}:
+            return f"+234{digits[1:]}"
+
+        raise ValueError("Phone number must include country code (E.164) for non-Nigeria local formats")
 
     def get_message_status(self, message_id: str) -> Dict[str, Any]:
         """
