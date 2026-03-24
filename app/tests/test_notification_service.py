@@ -132,6 +132,25 @@ class TestNotificationService:
             mock_db.refresh.assert_called_once()
             assert result is not None
 
+    def test_create_reminder_defaults_title_and_message_when_missing(self, notification_service, mock_event):
+        reminder_data = {
+            "notification_type": "event_reminder",
+            "scheduled_time": datetime.utcnow() + timedelta(hours=1),
+            "frequency": "once"
+        }
+
+        created_reminder = Mock(spec=SmartReminder)
+
+        with patch.object(notification_service, '_get_event_with_access', return_value=mock_event):
+            with patch.object(notification_service.notification_repo, 'create_reminder', return_value=created_reminder) as mock_create:
+                with patch.object(notification_service, '_queue_reminder_notifications'):
+                    notification_service.create_reminder(1, 1, reminder_data)
+
+        created_payload = mock_create.call_args[0][0]
+        assert created_payload["title"] == f"Reminder - {mock_event.title}"
+        assert "Reminder:" in created_payload["message"]
+        assert mock_event.title in created_payload["message"]
+
     def test_create_reminder_rsvp_targets_only_accepted(self, notification_service, mock_event):
         """RSVP reminders should default to accepted invitees only."""
         reminder_data = {
@@ -264,6 +283,16 @@ class TestNotificationService:
         )
 
         assert payload.frequency == "every2weeks"
+
+    def test_smart_reminder_create_schema_accepts_missing_title_and_message(self):
+        payload = SmartReminderCreate(
+            notification_type="event_reminder",
+            scheduled_time=datetime.utcnow() + timedelta(hours=1),
+            frequency="never"
+        )
+
+        assert payload.title is None
+        assert payload.message is None
 
     def test_smart_reminder_update_schema_accepts_never(self):
         payload = SmartReminderUpdate(

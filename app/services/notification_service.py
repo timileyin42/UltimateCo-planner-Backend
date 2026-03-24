@@ -59,10 +59,22 @@ class NotificationService:
         if notification_type == NotificationType.RSVP_REMINDER:
             target_all_guests = False
             target_rsvp_status = target_rsvp_status or "accepted"
+        event_date = (
+            event.start_datetime.strftime("%B %d, %Y at %I:%M %p")
+            if getattr(event, "start_datetime", None)
+            else None
+        )
+        title = reminder_data.get("title") or f"Reminder - {event.title}"
+        if reminder_data.get("message"):
+            message = reminder_data["message"]
+        elif event_date:
+            message = f"Reminder: {event.title} is scheduled for {event_date}."
+        else:
+            message = f"Reminder: {event.title} is coming up."
 
         processed_data = {
-            'title': reminder_data['title'],
-            'message': reminder_data['message'],
+            'title': title,
+            'message': message,
             'notification_type': notification_type,
             'scheduled_time': reminder_data['scheduled_time'],
             'frequency': frequency,
