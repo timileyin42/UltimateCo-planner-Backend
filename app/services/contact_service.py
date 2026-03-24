@@ -623,16 +623,13 @@ class ContactService:
     def _is_valid_phone_number(self, phone_number: str) -> bool:
         """Validate phone number format using international standards"""
         try:
-            # Try to parse as international number
-            parsed = phonenumbers.parse(phone_number, None)
-            # Accept fully valid numbers; fallback to "possible" to allow test/dummy numbers
+            normalized = self._clean_phone_number(phone_number)
+            parsed = phonenumbers.parse(normalized, None)
             if phonenumbers.is_valid_number(parsed):
                 return True
             return phonenumbers.is_possible_number(parsed)
-        except NumberParseException:
-            # Fallback to basic regex validation if parsing fails
-            phone_pattern = r'^\+?[\d\s\-\(\)]{10,15}$'
-            return bool(re.match(phone_pattern, phone_number))
+        except (NumberParseException, ValueError):
+            return False
     
     def _clean_phone_number(self, phone_number: str) -> str:
         """Clean and standardize phone number to international E.164 format
@@ -645,24 +642,20 @@ class ContactService:
         
         Returns E.164 format (e.g., +447700900123) suitable for SMS delivery.
         """
-        try:
-            # First, try to parse with phonenumbers library for proper international handling
-            # This will detect country codes automatically and format correctly
-            parsed = phonenumbers.parse(phone_number, None)
-            
-            # Format to E.164 international standard (e.g., +447700900123)
+        cleaned = re.sub(r"[^\d+]", "", str(phone_number).strip())
+        if cleaned.startswith("+"):
+            parsed = phonenumbers.parse(cleaned, None)
             return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-            
-        except NumberParseException:
-            # If parsing fails, do basic cleanup and add + prefix
-            # Remove all non-digit characters except +
-            cleaned = re.sub(r'[^\d+]', '', phone_number)
-            
-            # Ensure it starts with +
-            if not cleaned.startswith('+'):
-                cleaned = '+' + cleaned.lstrip('0')
-            
-            return cleaned
+
+        digits = re.sub(r"[^\d]", "", cleaned)
+        if digits.startswith("234"):
+            parsed = phonenumbers.parse(f"+{digits}", None)
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+        if len(digits) == 11 and digits.startswith("0") and digits[1] in {"7", "8", "9"}:
+            return f"+234{digits[1:]}"
+
+        raise ValueError("Phone number must include country code (E.164) for non-Nigeria local formats")
 
     def _send_invitation_sms(self, invitation: ContactInvitation, contact: UserContact):
         """Send SMS invitation to contact"""
