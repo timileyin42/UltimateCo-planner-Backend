@@ -26,8 +26,8 @@ class UserBasic(BaseModel):
 # Smart Reminder schemas
 class SmartReminderBase(BaseModel):
     """Base smart reminder schema."""
-    title: str = Field(..., min_length=1, max_length=200, description="Reminder title")
-    message: str = Field(..., min_length=1, max_length=1000, description="Reminder message")
+    title: Optional[str] = Field(None, min_length=1, max_length=200, description="Reminder title")
+    message: Optional[str] = Field(None, min_length=1, max_length=1000, description="Reminder message")
     notification_type: NotificationType = Field(..., description="Type of notification")
     scheduled_time: datetime = Field(..., description="When to send the reminder")
     frequency: str = Field(default="never", description="Reminder frequency: never, everyday, weekly, every2weeks, everymonth, custom")
