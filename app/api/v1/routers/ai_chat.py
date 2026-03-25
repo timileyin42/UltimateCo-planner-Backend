@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
-from app.models.event_models import Event
-
 from app.core.deps import get_db, get_current_active_user
+from app.core.errors import ValidationError as AppValidationError
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.models.user_models import User
 from app.services.ai_service import ai_service
@@ -15,6 +14,7 @@ from app.schemas.chat import (
     ChatSessionResponse, 
     ChatMessageCreate, 
     ChatMessageResponse,
+    ChatSessionPlanUpdate,
     EventCreationResult
 )
 
@@ -115,6 +115,34 @@ async def send_chat_message(
             detail=f"Failed to send message: {str(e)}"
         )
 
+@ai_chat_router.post("/sessions/{session_id}/plan", response_model=ChatSessionResponse)
+@rate_limit_ai_analysis
+async def save_chat_plan(
+    request: Request,
+    session_id: str,
+    plan_update: ChatSessionPlanUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Persist structured plan data and tool-call trace for an AI chat session."""
+    try:
+        return await ai_service.save_chat_plan(db, session_id, current_user.id, plan_update)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except AppValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save chat plan: {str(e)}"
+        )
+
 @ai_chat_router.post("/sessions/{session_id}/complete", response_model=EventCreationResult)
 @rate_limit_ai_analysis
 async def complete_chat_session(
@@ -133,6 +161,11 @@ async def complete_chat_session(
             message=result["message"]
         )
     except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except AppValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -160,16 +193,7 @@ async def get_user_chat_sessions(
                 AIChatMessage.session_id == session.id
             ).order_by(AIChatMessage.created_at).all()
             
-            result.append(ChatSessionResponse(
-                id=session.session_id,
-                user_id=current_user.id,
-                status=session.status,
-                messages=[ai_service._message_to_schema(msg) for msg in messages],
-                event_data=session.event_data,
-                created_at=session.created_at,
-                updated_at=session.updated_at,
-                completed_at=session.completed_at
-            ))
+            result.append(ai_service._session_to_schema(session, messages=messages))
         
         return result
         

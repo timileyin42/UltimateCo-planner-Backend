@@ -1,11 +1,9 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Enum as SQLEnum, JSON, Index
+from sqlalchemy import String, Text, DateTime, ForeignKey, Enum as SQLEnum, Index
 from sqlalchemy.orm import relationship, Mapped, mapped_column
-from sqlalchemy.sql import func
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from app.models.shared_models import BaseModel, TimestampMixin
-from app.schemas.chat import ChatSessionStatus, ChatMessageRole
-import enum
+from app.schemas.chat import ChatMessageRole, ChatMessageType, ChatSessionStatus
 import uuid
 
 class AIChatSession(BaseModel, TimestampMixin):
@@ -21,7 +19,9 @@ class AIChatSession(BaseModel, TimestampMixin):
     
     # Event creation context
     event_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for event data being built
+    plan_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for structured plan snapshot
     context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for additional context
+    llm_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for provider/model metadata
     
     # Session metadata
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -64,6 +64,11 @@ class AIChatMessage(BaseModel, TimestampMixin):
     extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string for additional data
     suggestions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array of suggestions
     event_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON object for event preview
+    message_type: Mapped[str] = mapped_column(String(50), nullable=False, default=ChatMessageType.MESSAGE.value)
+    tool_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    tool_call_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    tool_arguments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tool_result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Session relationship
     session_id: Mapped[int] = mapped_column(ForeignKey("ai_chat_sessions.id"), nullable=False)
@@ -76,11 +81,14 @@ class AIChatMessage(BaseModel, TimestampMixin):
         # Single field indexes
         Index('idx_ai_chat_message_session_id', 'session_id'),
         Index('idx_ai_chat_message_role', 'role'),
+        Index('idx_ai_chat_message_message_type', 'message_type'),
+        Index('idx_ai_chat_message_tool_name', 'tool_name'),
         Index('idx_ai_chat_message_created_at', 'created_at'),
         Index('idx_ai_chat_message_updated_at', 'updated_at'),
         
         # Combined indexes for common queries
         Index('idx_ai_chat_message_session_role', 'session_id', 'role'),
+        Index('idx_ai_chat_message_session_type', 'session_id', 'message_type'),
         Index('idx_ai_chat_message_session_created', 'session_id', 'created_at'),
         Index('idx_ai_chat_message_role_created', 'role', 'created_at'),
     )
