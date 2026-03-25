@@ -17,12 +17,14 @@ from app.models.shared_models import RSVPStatus
 from app.core.database import get_db
 from app.core.config import settings
 from app.services.sms_service import SMSService
+from app.services.email_service import EmailService
 
 
 class ContactService:
     def __init__(self, db: Session):
         self.db = db
         self.sms_service = SMSService()
+        self.email_service = EmailService()
 
     @staticmethod
     def _respondable_statuses() -> List[ContactInviteStatus]:
@@ -354,6 +356,136 @@ class ContactService:
                 })
                 results["failure_count"] += 1
         
+        self.db.commit()
+        return results
+
+    def bulk_send_email_invitations(
+        self,
+        sender_id: int,
+        emails: List[str],
+        event_id: Optional[int] = None,
+        message: Optional[str] = None,
+        auto_add_to_contacts: bool = False
+    ) -> Dict[str, Any]:
+        """Send invitations directly to email addresses.
+
+        Args:
+            sender_id: User sending the invitations
+            emails: List of email addresses to invite
+            event_id: Optional event ID for event invitations
+            message: Optional custom message
+            auto_add_to_contacts: If True, save email addresses to contacts
+
+        Returns:
+            Dict with success/failure counts and invitation details
+        """
+        results: Dict[str, Any] = {
+            "sent": [],
+            "failed": [],
+            "total": len(emails),
+            "success_count": 0,
+            "failure_count": 0,
+        }
+
+        sender = self.db.query(User).filter(User.id == sender_id).first()
+        if not sender:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sender not found"
+            )
+
+        event = None
+        if event_id:
+            event = self.db.query(Event).filter(Event.id == event_id).first()
+
+        for email in emails:
+            try:
+                email = email.strip().lower()
+
+                # Find or optionally create contact record
+                contact = self.db.query(UserContact).filter(
+                    and_(
+                        UserContact.user_id == sender_id,
+                        UserContact.email == email
+                    )
+                ).first()
+
+                if not contact and auto_add_to_contacts:
+                    contact = UserContact(
+                        user_id=sender_id,
+                        name=email,
+                        email=email,
+                        source=ContactSource.MANUAL,
+                        is_favorite=False,
+                    )
+                    self.db.add(contact)
+                    self.db.flush()
+
+                if not contact:
+                    # Create a temporary contact to satisfy FK constraint
+                    contact = UserContact(
+                        user_id=sender_id,
+                        name=email,
+                        email=email,
+                        source=ContactSource.MANUAL,
+                        is_favorite=False,
+                    )
+                    self.db.add(contact)
+                    self.db.flush()
+
+                invitation_token = str(uuid.uuid4())
+
+                # Check if email belongs to an existing user
+                recipient_user = self.db.query(User).filter(
+                    User.email == email
+                ).first()
+
+                invitation = ContactInvitation(
+                    sender_id=sender_id,
+                    recipient_id=recipient_user.id if recipient_user else None,
+                    contact_id=contact.id,
+                    event_id=event_id,
+                    invitation_token=invitation_token,
+                    message=message,
+                    invitation_type="app_invite" if event_id is None else "event_invite",
+                    delivery_method="email",
+                    recipient_email=email,
+                    status=ContactInviteStatus.PENDING,
+                )
+                self.db.add(invitation)
+                self.db.flush()
+
+                # Send invite email (best-effort; do not crash on failure)
+                sent = self.email_service.send_contact_invite_email_sync(
+                    to_email=email,
+                    inviter_name=sender.full_name,
+                    invitation_token=invitation_token,
+                    event_title=event.title if event else None,
+                    message=message,
+                )
+
+                if sent:
+                    invitation.status = ContactInviteStatus.SENT
+                    results["sent"].append({
+                        "email": email,
+                        "invitation_id": invitation.id,
+                    })
+                    results["success_count"] += 1
+                else:
+                    invitation.status = ContactInviteStatus.FAILED
+                    results["failed"].append({
+                        "email": email,
+                        "error": "Email delivery failed",
+                    })
+                    results["failure_count"] += 1
+
+            except Exception as e:
+                results["failed"].append({
+                    "email": email,
+                    "error": str(e),
+                })
+                results["failure_count"] += 1
+
         self.db.commit()
         return results
 

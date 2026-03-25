@@ -12,7 +12,8 @@ from app.services.contact_service import ContactService
 from app.schemas.contact_schemas import (
     ContactCreate, ContactUpdate, ContactResponse, ContactListResponse,
     ContactInvitationCreate, BulkContactInvitationCreate, BulkPhoneInvitationCreate,
-    BulkPhoneInvitationResponse, ContactInvitationResponse,
+    BulkPhoneInvitationResponse, BulkEmailInvitationCreate, BulkEmailInvitationResponse,
+    ContactInvitationResponse,
     InvitationListResponse, InvitationResponseRequest,
     ContactGroupCreate, ContactGroupUpdate, ContactGroupResponse, ContactGroupListResponse,
     AddContactToGroupRequest, ContactGroupMembershipResponse,
@@ -261,6 +262,32 @@ async def send_bulk_phone_invitations(
         message=invitation_data.message,
         auto_add_to_contacts=invitation_data.auto_add_to_contacts
     )
+
+@router.post("/invitations/bulk-email", response_model=BulkEmailInvitationResponse, status_code=status.HTTP_201_CREATED)
+async def send_bulk_email_invitations(
+    invitation_data: BulkEmailInvitationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send invitations to a list of email addresses via Resend.
+
+    **Parameters:**
+    - **emails**: Email addresses to invite (1-50)
+    - **event_id**: Optional — invite to a specific event
+    - **message**: Optional — personal message included in the email
+    - **auto_add_to_contacts**: Optional — save addresses to Plan et al contacts
+
+    **Returns:** Details about sent/failed invitations
+    """
+    contact_service = ContactService(db)
+    return contact_service.bulk_send_email_invitations(
+        sender_id=current_user.id,
+        emails=[str(e) for e in invitation_data.emails],
+        event_id=invitation_data.event_id,
+        message=invitation_data.message,
+        auto_add_to_contacts=invitation_data.auto_add_to_contacts,
+    )
+
 
 @router.post("/invitations", response_model=ContactInvitationResponse, status_code=status.HTTP_201_CREATED)
 async def send_invitation(

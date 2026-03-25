@@ -99,6 +99,52 @@ class EmailService:
         
         return results
     
+    def send_contact_invite_email_sync(
+        self,
+        to_email: str,
+        inviter_name: str,
+        invitation_token: str,
+        event_title: Optional[str] = None,
+        message: Optional[str] = None
+    ) -> bool:
+        """Send a contact/app invitation email synchronously (for use in sync service methods)."""
+        if not self.is_configured():
+            logger.warning("Email not configured — skipping invite email to %s", to_email)
+            return False
+
+        base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL or "").rstrip("/")
+        invite_url = f"{base_url}/invite/{invitation_token}"
+
+        context = {
+            "app_name": "Plan et al",
+            "inviter_name": inviter_name,
+            "invite_url": invite_url,
+            "invitation_message": message,
+            "event_title": event_title,
+        }
+        html_content = self.render_template("contact_invite.html", context)
+        if not html_content:
+            return False
+
+        subject = (
+            f"{inviter_name} invited you to join '{event_title}' on Plan et al"
+            if event_title
+            else f"{inviter_name} invited you to join Plan et al"
+        )
+
+        try:
+            params: Dict[str, Any] = {
+                "from": f"{self.from_name} <{self.from_email}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+            response = resend.Emails.send(params)
+            return response.get("id") is not None
+        except Exception as e:
+            logger.error("Failed to send invite email to %s: %s", to_email, e)
+            return False
+
     def render_template(self, template_name: str, context: Dict[str, Any]) -> str:
         """Render email template with context."""
         try:
