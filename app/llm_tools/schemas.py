@@ -48,7 +48,11 @@ class VenueSearchInput(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=120)
     indoor_outdoor: Literal["indoor", "outdoor", "either"] = "either"
     guest_count: Optional[int] = Field(None, ge=1)
+    venue_setting: Literal["restaurant", "event_space", "either"] = "either"
+    cuisine: Optional[str] = Field(None, min_length=1, max_length=120)
     budget: Optional[BudgetRange] = None
+    page_size: int = Field(default=10, ge=1, le=20)
+    page_token: Optional[str] = Field(None, min_length=1)
 
 
 class PlaceDetailsInput(BaseModel):
@@ -195,6 +199,10 @@ class GooglePlacesSearchResponse(BaseModel):
     city: str
     included_type: Optional[str] = None
     budget: Optional[BudgetRange] = None
+    page_size: int = 10
+    returned_count: int = 0
+    next_page_token: Optional[str] = None
+    search_uri: Optional[str] = None
     candidates: List[GooglePlaceCandidate] = Field(default_factory=list)
     assumptions: List[str] = Field(default_factory=list)
 

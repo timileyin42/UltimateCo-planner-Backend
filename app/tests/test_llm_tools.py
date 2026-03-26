@@ -17,7 +17,11 @@ class StubPlacesClient:
 
     async def text_search(self, **kwargs):
         self.search_calls.append(kwargs)
-        return list(self.places)
+        return {
+            "places": list(self.places),
+            "next_page_token": kwargs.get("page_token"),
+            "search_uri": "https://maps.google.com/search/test",
+        }
 
     async def get_place_details(self, place_id, **kwargs):
         self.details_calls.append({"place_id": place_id, **kwargs})
@@ -36,6 +40,8 @@ async def test_google_places_text_search_builds_expected_request():
         return httpx.Response(
             200,
             json={
+                "nextPageToken": "page-token-2",
+                "searchUri": "https://maps.google.com/search/test",
                 "places": [
                     {
                         "id": "place-1",
@@ -55,6 +61,8 @@ async def test_google_places_text_search_builds_expected_request():
         field_mask="places.id,places.displayName",
         included_type="wedding_venue",
         price_levels=["PRICE_LEVEL_MODERATE"],
+        page_size=10,
+        page_token="page-token-1",
         open_now=True,
         include_pure_service_area_businesses=False,
     )
@@ -66,8 +74,12 @@ async def test_google_places_text_search_builds_expected_request():
     assert captured["payload"]["textQuery"] == "wedding venue in Lagos"
     assert captured["payload"]["includedType"] == "wedding_venue"
     assert captured["payload"]["priceLevels"] == ["PRICE_LEVEL_MODERATE"]
+    assert captured["payload"]["pageSize"] == 10
+    assert captured["payload"]["pageToken"] == "page-token-1"
     assert captured["payload"]["openNow"] is True
-    assert results[0]["id"] == "place-1"
+    assert results["places"][0]["id"] == "place-1"
+    assert results["next_page_token"] == "page-token-2"
+    assert results["search_uri"] == "https://maps.google.com/search/test"
 
 
 @pytest.mark.asyncio
@@ -144,16 +156,20 @@ async def test_search_venues_scores_google_places_results():
         event_type="birthday",
         indoor_outdoor="indoor",
         guest_count=40,
+        venue_setting="event_space",
         budget={"max": 4000, "currency": "USD"},
     )
 
     assert result.tool_name == "search_venues"
     assert result.included_type == "event_venue"
+    assert result.query == "event venue in Lagos"
     assert result.candidates[0].place_id == "venue-1"
     assert result.candidates[0].price_level_rank == 2
     assert result.candidates[0].fit_score > result.candidates[1].fit_score
     assert "Guest count and indoor/outdoor preferences are used as search hints" in result.assumptions[1]
     assert stub_client.search_calls[0]["included_type"] == "event_venue"
+    assert stub_client.search_calls[0]["text_query"] == "event venue in Lagos"
+    assert result.next_page_token is None
 
 
 @pytest.mark.asyncio

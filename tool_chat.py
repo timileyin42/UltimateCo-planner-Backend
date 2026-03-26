@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import inspect
 import json
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
@@ -28,7 +27,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 try:
-    from openai import OpenAI
+    from openai import AsyncOpenAI
 except ImportError:
     print(
         "The 'openai' package is not installed in this Python environment.\n"
@@ -37,16 +36,15 @@ except ImportError:
     )
     raise SystemExit(1)
 
-from app.llm_tools import TOOL_DEFINITIONS, TOOL_REGISTRY
+from app.llm_tools import TOOL_DEFINITIONS
+from app.services.tool_chat_service import (
+    DEFAULT_TOOL_CHAT_SYSTEM_PROMPT,
+    ToolChatRunner,
+)
 
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
 DEFAULT_BASE_URL = os.getenv("OPENAI_BASE_URL")
-DEFAULT_SYSTEM_PROMPT = """You are testing a local event-planning agent.
-
-Use the provided tools whenever real venue/vendor discovery, place detail lookup,
-budget planning, or task planning is needed. Be explicit about what you are
-doing, prefer tool calls over guessing, and summarize the tool outputs clearly.
-"""
+DEFAULT_SYSTEM_PROMPT = DEFAULT_TOOL_CHAT_SYSTEM_PROMPT
 
 
 def parse_args() -> argparse.Namespace:
@@ -94,7 +92,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_client(args: argparse.Namespace) -> OpenAI:
+def build_client(args: argparse.Namespace) -> AsyncOpenAI:
     api_key = args.api_key or ("not-needed" if args.base_url else None)
     if not api_key:
         raise SystemExit(
@@ -106,71 +104,7 @@ def build_client(args: argparse.Namespace) -> OpenAI:
     client_kwargs: Dict[str, Any] = {"api_key": api_key}
     if args.base_url:
         client_kwargs["base_url"] = args.base_url
-    return OpenAI(**client_kwargs)
-
-
-def build_tools_payload() -> List[Dict[str, Any]]:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": definition["name"],
-                "description": definition["description"],
-                "parameters": definition["parameters"],
-            },
-        }
-        for definition in TOOL_DEFINITIONS
-    ]
-
-
-def serialize_for_json(value: Any) -> Any:
-    if hasattr(value, "model_dump"):
-        return serialize_for_json(value.model_dump(mode="json"))
-    if isinstance(value, dict):
-        return {key: serialize_for_json(inner) for key, inner in value.items()}
-    if isinstance(value, list):
-        return [serialize_for_json(inner) for inner in value]
-    if isinstance(value, tuple):
-        return [serialize_for_json(inner) for inner in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return str(value)
-
-
-def format_json(value: Any) -> str:
-    return json.dumps(serialize_for_json(value), indent=2, ensure_ascii=True)
-
-
-async def invoke_tool(name: str, arguments: Dict[str, Any]) -> Any:
-    tool = TOOL_REGISTRY.get(name)
-    if tool is None:
-        raise ValueError(f"Unknown tool: {name}")
-
-    if inspect.iscoroutinefunction(tool):
-        return await tool(**arguments)
-
-    result = tool(**arguments)
-    if inspect.isawaitable(result):
-        return await result
-    return result
-
-
-def append_assistant_message(messages: List[Dict[str, Any]], message: Any) -> None:
-    payload: Dict[str, Any] = {"role": "assistant"}
-    payload["content"] = message.content
-    if message.tool_calls:
-        payload["tool_calls"] = [
-            {
-                "id": tool_call.id,
-                "type": tool_call.type,
-                "function": {
-                    "name": tool_call.function.name,
-                    "arguments": tool_call.function.arguments,
-                },
-            }
-            for tool_call in message.tool_calls
-        ]
-    messages.append(payload)
+    return AsyncOpenAI(**client_kwargs)
 
 
 def print_banner(args: argparse.Namespace) -> None:
@@ -178,7 +112,7 @@ def print_banner(args: argparse.Namespace) -> None:
     print("Tool Chat")
     print(f"model: {args.model}")
     print(f"provider: {provider}")
-    print("commands: /quit, /exit, /reset, /tools")
+    print("commands: /quit, /exit, /reset, /tools, /more")
     print("")
 
 
@@ -189,97 +123,169 @@ def print_tools() -> None:
     print("")
 
 
-def initial_messages(system_prompt: str) -> List[Dict[str, Any]]:
-    return [{"role": "system", "content": system_prompt}]
-
-
-def request_completion(
-    client: OpenAI,
+async def handle_user_turn(
+    runner: ToolChatRunner,
     args: argparse.Namespace,
-    messages: List[Dict[str, Any]],
-    tools: List[Dict[str, Any]],
-):
-    return client.chat.completions.create(
-        model=args.model,
-        messages=messages,
-        tools=tools,
-        tool_choice=args.tool_choice,
-        temperature=args.temperature,
-    )
-
-
-def handle_user_turn(
-    client: OpenAI,
-    args: argparse.Namespace,
-    messages: List[Dict[str, Any]],
+    session_state: Dict[str, Any],
     user_prompt: str,
 ) -> None:
-    tools = build_tools_payload()
-    messages.append({"role": "user", "content": user_prompt})
-
-    for _ in range(args.max_tool_rounds):
-        completion = request_completion(client, args, messages, tools)
-        message = completion.choices[0].message
-        append_assistant_message(messages, message)
-
-        if message.content:
-            print(f"\nassistant>\n{message.content}\n")
-
-        if not message.tool_calls:
-            return
-
-        for tool_call in message.tool_calls:
-            tool_name = tool_call.function.name
-            raw_arguments = tool_call.function.arguments or "{}"
-            print(f"[tool] {tool_name}")
-            print("[arguments]")
-            print(raw_arguments)
-
-            try:
-                arguments = json.loads(raw_arguments)
-            except json.JSONDecodeError as exc:
-                tool_payload = {
-                    "ok": False,
-                    "error": f"Tool arguments were not valid JSON: {exc}",
-                }
-            else:
-                try:
-                    result = asyncio.run(invoke_tool(tool_name, arguments))
-                    tool_payload = {
-                        "ok": True,
-                        "result": serialize_for_json(result),
-                    }
-                except Exception as exc:
-                    tool_payload = {
-                        "ok": False,
-                        "error": str(exc),
-                    }
-
-            print("[result]")
-            print(format_json(tool_payload))
-            print("")
-
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": json.dumps(tool_payload, ensure_ascii=True),
-                }
-            )
-
-    print(
-        "assistant>\nReached the maximum tool-execution rounds for this turn. "
-        "Inspect the tool logs above and refine the prompt or tool behavior.\n"
+    result = await runner.run_turn(
+        user_prompt=user_prompt,
+        messages=session_state["messages"],
+        model=args.model,
+        system_prompt=args.system_prompt,
+        tool_choice=args.tool_choice,
+        temperature=args.temperature,
+        max_tool_rounds=min(args.max_tool_rounds, 20),
+        preflight_answers=session_state.get("preflight_answers"),
     )
+    preflight = result.get("preflight") or {}
+    if preflight and not preflight.get("complete"):
+        print("\nquick questions>\n")
+        answers = prompt_for_missing_preflight(preflight)
+        session_state["preflight_answers"] = merge_preflight_answers(
+            session_state.get("preflight_answers"),
+            answers,
+        )
+        result = await runner.run_turn(
+            user_prompt=user_prompt,
+            messages=session_state["messages"],
+            model=args.model,
+            system_prompt=args.system_prompt,
+            tool_choice=args.tool_choice,
+            temperature=args.temperature,
+            max_tool_rounds=min(args.max_tool_rounds, 20),
+            preflight_answers=session_state.get("preflight_answers"),
+        )
+
+    session_state["messages"] = result["messages"]
+    if result.get("preflight"):
+        session_state["preflight_answers"] = merge_preflight_answers(
+            session_state.get("preflight_answers"),
+            result["preflight"].get("collected"),
+        )
+    if result.get("venue_shortlist"):
+        session_state["venue_shortlist"] = result["venue_shortlist"]
+
+    for entry in result["tool_trace"]:
+        print(f"[tool] {entry['tool_name']}")
+        print("[arguments]")
+        print(entry["raw_arguments"])
+        print("[result]")
+        print(json.dumps(entry["result"], indent=2, ensure_ascii=True))
+        print("")
+
+    for assistant_message in result.get("assistant_messages", []):
+        content = assistant_message.get("content")
+        if content:
+            print(f"\nassistant>\n{content}\n")
+
+    if result.get("venue_shortlist"):
+        print_venue_shortlist(result["venue_shortlist"])
+
+    if result.get("warning"):
+        print(f"assistant>\n{result['warning']}\n")
 
 
-def run_repl(client: OpenAI, args: argparse.Namespace) -> None:
-    messages = initial_messages(args.system_prompt)
+async def handle_more_venues(runner: ToolChatRunner, session_state: Dict[str, Any]) -> None:
+    shortlist = session_state.get("venue_shortlist")
+    if not shortlist:
+        print("assistant>\nNo venue shortlist is loaded yet.\n")
+        return
+    if not shortlist.get("has_more"):
+        print("assistant>\nNo more venue pages are available for the current shortlist.\n")
+        return
+
+    next_shortlist = await runner.load_more_venues(
+        search_context=shortlist["search_context"],
+    )
+    session_state["venue_shortlist"] = next_shortlist
+    print_venue_shortlist(next_shortlist)
+
+
+def print_venue_shortlist(shortlist: Dict[str, Any]) -> None:
+    items = shortlist.get("items") or []
+    if not items:
+        return
+
+    print("\nvenue shortlist>\n")
+    for index, item in enumerate(items, start=1):
+        address = item.get("formatted_address") or "No address provided"
+        rating = item.get("rating")
+        rating_count = item.get("user_rating_count")
+        price_level = item.get("price_level") or "n/a"
+        maps_uri = item.get("google_maps_uri") or "n/a"
+        reasons = ", ".join(item.get("fit_reasons") or []) or "No fit reasons provided"
+        rating_text = "n/a"
+        if rating is not None:
+            rating_text = f"{rating}"
+            if rating_count is not None:
+                rating_text = f"{rating_text} ({rating_count} ratings)"
+        print(f"{index}. {item.get('name')}")
+        print(f"   {address}")
+        print(f"   rating: {rating_text} | price: {price_level}")
+        print(f"   fit: {reasons}")
+        print(f"   maps: {maps_uri}")
+    print("")
+    if shortlist.get("has_more"):
+        print("assistant>\nUse /more to load 10 more venue options.\n")
+
+
+def prompt_for_missing_preflight(preflight: Dict[str, Any]) -> Dict[str, Any]:
+    answers = dict((preflight.get("collected") or {}))
+    for question in preflight.get("questions", []):
+        field_id = question["id"]
+        prompt = question["prompt"]
+        placeholder = question.get("placeholder")
+        options = question.get("options") or []
+        while True:
+            if options:
+                option_text = ", ".join(option["value"] for option in options)
+                raw_value = input(f"{prompt} [{option_text}]: ").strip()
+            elif placeholder:
+                raw_value = input(f"{prompt} [{placeholder}]: ").strip()
+            else:
+                raw_value = input(f"{prompt}: ").strip()
+
+            normalized = normalize_preflight_value(field_id, raw_value)
+            if normalized:
+                answers[field_id] = normalized
+                break
+            print("Please provide a valid answer.")
+    return answers
+
+
+def normalize_preflight_value(field_id: str, value: str) -> Optional[str]:
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if field_id != "venue_setting":
+        return cleaned
+
+    normalized = cleaned.lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"home", "restaurant", "event_space"}:
+        return normalized
+    return None
+
+
+def merge_preflight_answers(existing: Optional[Dict[str, Any]], incoming: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    merged = dict(existing or {})
+    for key, value in (incoming or {}).items():
+        if value:
+            merged[key] = value
+    return merged
+
+
+def run_repl(runner: ToolChatRunner, args: argparse.Namespace) -> None:
+    session_state: Dict[str, Any] = {
+        "messages": runner.initial_messages(args.system_prompt),
+        "preflight_answers": {},
+        "venue_shortlist": None,
+    }
     print_banner(args)
-    print(client)
 
     if args.once:
-        handle_user_turn(client, args, messages, args.once)
+        asyncio.run(handle_user_turn(runner, args, session_state, args.once))
         return
 
     while True:
@@ -295,20 +301,32 @@ def run_repl(client: OpenAI, args: argparse.Namespace) -> None:
             print("bye")
             return
         if user_prompt == "/reset":
-            messages = initial_messages(args.system_prompt)
+            session_state = {
+                "messages": runner.initial_messages(args.system_prompt),
+                "preflight_answers": {},
+                "venue_shortlist": None,
+            }
             print("conversation reset\n")
             continue
         if user_prompt == "/tools":
             print_tools()
             continue
+        if user_prompt == "/more":
+            asyncio.run(handle_more_venues(runner, session_state))
+            continue
 
-        handle_user_turn(client, args, messages, user_prompt)
+        asyncio.run(handle_user_turn(runner, args, session_state, user_prompt))
 
 
 def main() -> None:
     args = parse_args()
-    client = build_client(args)
-    run_repl(client, args)
+    runner = ToolChatRunner(
+        client=build_client(args),
+        default_model=args.model,
+        default_system_prompt=args.system_prompt,
+        is_configured=bool(args.api_key or args.base_url),
+    )
+    run_repl(runner, args)
 
 
 if __name__ == "__main__":

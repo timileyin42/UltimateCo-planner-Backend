@@ -54,11 +54,12 @@ class GooglePlacesClient:
         open_now: Optional[bool] = None,
         rank_preference: str = "RELEVANCE",
         page_size: Optional[int] = None,
+        page_token: Optional[str] = None,
         language_code: Optional[str] = None,
         region_code: Optional[str] = None,
         include_pure_service_area_businesses: Optional[bool] = None,
         strict_type_filtering: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Run a Places text search."""
 
         payload: Dict[str, Any] = {
@@ -67,6 +68,8 @@ class GooglePlacesClient:
             "languageCode": language_code or self.language_code,
             "rankPreference": rank_preference,
         }
+        if page_token:
+            payload["pageToken"] = page_token
         if included_type:
             payload["includedType"] = included_type
             payload["strictTypeFiltering"] = strict_type_filtering
@@ -93,7 +96,11 @@ class GooglePlacesClient:
             field_mask=field_mask,
             json=payload,
         )
-        return data.get("places", [])
+        return {
+            "places": data.get("places", []),
+            "next_page_token": data.get("nextPageToken"),
+            "search_uri": data.get("searchUri"),
+        }
 
     async def get_place_details(
         self,

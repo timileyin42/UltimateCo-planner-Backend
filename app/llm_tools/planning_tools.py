@@ -279,17 +279,28 @@ class EventPlanningLLMTools:
         event_type: str,
         indoor_outdoor: str = "either",
         guest_count: Optional[int] = None,
+        venue_setting: str = "either",
+        cuisine: Optional[str] = None,
         budget: Any = None,
+        page_size: int = 10,
+        page_token: Optional[str] = None,
     ) -> GooglePlacesSearchResponse:
         request = VenueSearchInput(
             city=city,
             event_type=event_type,
             indoor_outdoor=indoor_outdoor,
             guest_count=guest_count,
+            venue_setting=venue_setting,
+            cuisine=cuisine,
             budget=self._normalize_budget_range(budget),
+            page_size=page_size,
+            page_token=page_token,
         )
         query = self._build_venue_query(request)
-        included_type = self._resolve_venue_type(request.event_type)
+        included_type = self._resolve_venue_type(
+            request.event_type,
+            venue_setting=request.venue_setting,
+        )
         budget_levels = self._price_levels_for_budget(
             request.budget,
             guest_count=request.guest_count,
@@ -306,9 +317,13 @@ class EventPlanningLLMTools:
             budget=request.budget,
             included_type=included_type,
             budget_levels=budget_levels,
+            page_size=request.page_size,
+            page_token=request.page_token,
             preferred_types=PREFERRED_TYPES["venue"],
             preferred_keywords=[
                 request.event_type,
+                request.venue_setting,
+                request.cuisine or "",
                 request.indoor_outdoor,
                 "venue",
                 "banquet",
@@ -350,6 +365,8 @@ class EventPlanningLLMTools:
             budget=request.budget_range,
             included_type="catering_service",
             budget_levels=self._price_levels_for_budget(request.budget_range),
+            page_size=8,
+            page_token=None,
             preferred_types=PREFERRED_TYPES["caterer"],
             preferred_keywords=[request.cuisine or "", "caterer", "catering", "restaurant"],
             include_pure_service_area_businesses=True,
@@ -380,6 +397,8 @@ class EventPlanningLLMTools:
             budget=request.budget_range,
             included_type="florist",
             budget_levels=self._price_levels_for_budget(request.budget_range),
+            page_size=8,
+            page_token=None,
             preferred_types=PREFERRED_TYPES["decorator"],
             preferred_keywords=[request.vibe or "", "decorator", "stylist", "event design"],
             include_pure_service_area_businesses=True,
@@ -409,6 +428,8 @@ class EventPlanningLLMTools:
             budget=request.budget_range,
             included_type="live_music_venue",
             budget_levels=self._price_levels_for_budget(request.budget_range),
+            page_size=8,
+            page_token=None,
             preferred_types=PREFERRED_TYPES["entertainment"],
             preferred_keywords=[request.event_type, "dj", "mc", "band", "entertainment"],
             include_pure_service_area_businesses=True,
@@ -535,27 +556,35 @@ class EventPlanningLLMTools:
         budget: Optional[BudgetRange],
         included_type: Optional[str],
         budget_levels: Optional[List[str]],
+        page_size: int,
+        page_token: Optional[str],
         preferred_types: Iterable[str],
         preferred_keywords: Iterable[str],
         include_pure_service_area_businesses: bool,
         assumptions: List[str],
     ) -> GooglePlacesSearchResponse:
         logger.info("Running %s with query '%s'", tool_name, query)
-        places = await self.places_client.text_search(
+        search_result = await self.places_client.text_search(
             text_query=query,
             field_mask=SEARCH_FIELD_MASK,
             included_type=included_type,
             price_levels=budget_levels,
+            page_size=page_size,
+            page_token=page_token,
             include_pure_service_area_businesses=include_pure_service_area_businesses,
             strict_type_filtering=False,
         )
+        places, next_page_token, search_uri = self._unwrap_search_result(search_result)
         if not places and included_type:
-            places = await self.places_client.text_search(
+            search_result = await self.places_client.text_search(
                 text_query=query,
                 field_mask=SEARCH_FIELD_MASK,
                 price_levels=budget_levels,
+                page_size=page_size,
+                page_token=page_token,
                 include_pure_service_area_businesses=include_pure_service_area_businesses,
             )
+            places, next_page_token, search_uri = self._unwrap_search_result(search_result)
 
         candidates = self._rank_candidates(
             places,
@@ -569,6 +598,10 @@ class EventPlanningLLMTools:
             city=city,
             included_type=included_type,
             budget=budget,
+            page_size=page_size,
+            returned_count=len(candidates),
+            next_page_token=next_page_token,
+            search_uri=search_uri,
             candidates=candidates,
             assumptions=assumptions,
         )
@@ -848,17 +881,35 @@ class EventPlanningLLMTools:
         }
 
     def _build_venue_query(self, request: VenueSearchInput) -> str:
-        parts = [request.event_type]
-        if request.indoor_outdoor != "either":
-            parts.append(request.indoor_outdoor)
-        if request.guest_count:
-            parts.append(f"for {request.guest_count} guests")
-        parts.append(f"venue in {request.city}")
-        return " ".join(part for part in parts if part)
+        venue_setting = request.venue_setting.strip().lower()
+        if venue_setting == "restaurant":
+            cuisine_prefix = f"{request.cuisine.strip()} " if request.cuisine else ""
+            return f"{cuisine_prefix}restaurant in {request.city}".strip()
+        if venue_setting == "event_space":
+            return f"event venue in {request.city}".strip()
+        return f"venue in {request.city}".strip()
 
-    def _resolve_venue_type(self, event_type: str) -> str:
+    def _resolve_venue_type(self, event_type: str, *, venue_setting: str = "either") -> str:
+        normalized_setting = venue_setting.strip().lower()
+        if normalized_setting == "restaurant":
+            return "restaurant"
         normalized = event_type.strip().upper()
         return VENUE_INCLUDED_TYPES.get(normalized, VENUE_INCLUDED_TYPES["DEFAULT"])
+
+    def _unwrap_search_result(
+        self,
+        search_result: Any,
+    ) -> tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
+        if isinstance(search_result, list):
+            return list(search_result), None, None
+        if not isinstance(search_result, dict):
+            return [], None, None
+        places = search_result.get("places")
+        if not isinstance(places, list):
+            places = []
+        next_page_token = search_result.get("next_page_token")
+        search_uri = search_result.get("search_uri")
+        return list(places), next_page_token, search_uri
 
     def _extract_display_name(self, place: Dict[str, Any]) -> str:
         display_name = place.get("displayName") or {}
@@ -908,14 +959,22 @@ async def search_venues(
     event_type: str,
     indoor_outdoor: str = "either",
     guest_count: Optional[int] = None,
+    venue_setting: str = "either",
+    cuisine: Optional[str] = None,
     budget: Any = None,
+    page_size: int = 10,
+    page_token: Optional[str] = None,
 ) -> GooglePlacesSearchResponse:
     return await planning_llm_tools.search_venues(
         city=city,
         event_type=event_type,
         indoor_outdoor=indoor_outdoor,
         guest_count=guest_count,
+        venue_setting=venue_setting,
+        cuisine=cuisine,
         budget=budget,
+        page_size=page_size,
+        page_token=page_token,
     )
 
 
