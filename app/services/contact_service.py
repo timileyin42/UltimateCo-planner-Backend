@@ -367,18 +367,7 @@ class ContactService:
         message: Optional[str] = None,
         auto_add_to_contacts: bool = False
     ) -> Dict[str, Any]:
-        """Send invitations directly to email addresses.
-
-        Args:
-            sender_id: User sending the invitations
-            emails: List of email addresses to invite
-            event_id: Optional event ID for event invitations
-            message: Optional custom message
-            auto_add_to_contacts: If True, save email addresses to contacts
-
-        Returns:
-            Dict with success/failure counts and invitation details
-        """
+        """Send invitations directly to email addresses (mirrors bulk_send_phone_invitations)."""
         results: Dict[str, Any] = {
             "sent": [],
             "failed": [],
@@ -398,11 +387,13 @@ class ContactService:
         if event_id:
             event = self.db.query(Event).filter(Event.id == event_id).first()
 
+        base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL).rstrip("/")
+
         for email in emails:
             try:
                 email = email.strip().lower()
 
-                # Find or optionally create contact record
+                # Find or create contact record to satisfy FK constraint
                 contact = self.db.query(UserContact).filter(
                     and_(
                         UserContact.user_id == sender_id,
@@ -410,19 +401,7 @@ class ContactService:
                     )
                 ).first()
 
-                if not contact and auto_add_to_contacts:
-                    contact = UserContact(
-                        user_id=sender_id,
-                        name=email,
-                        email=email,
-                        source=ContactSource.MANUAL,
-                        is_favorite=False,
-                    )
-                    self.db.add(contact)
-                    self.db.flush()
-
                 if not contact:
-                    # Create a temporary contact to satisfy FK constraint
                     contact = UserContact(
                         user_id=sender_id,
                         name=email,
@@ -433,7 +412,9 @@ class ContactService:
                     self.db.add(contact)
                     self.db.flush()
 
+                # Generate invitation token and build deeplink
                 invitation_token = str(uuid.uuid4())
+                invite_url = f"{base_url}/invite/{invitation_token}"
 
                 # Check if email belongs to an existing user
                 recipient_user = self.db.query(User).filter(
@@ -455,20 +436,37 @@ class ContactService:
                 self.db.add(invitation)
                 self.db.flush()
 
-                # Send invite email (best-effort; do not crash on failure)
-                sent = self.email_service.send_contact_invite_email_sync(
-                    to_email=email,
-                    inviter_name=sender.full_name,
-                    invitation_token=invitation_token,
-                    event_title=event.title if event else None,
-                    message=message,
-                )
+                # Build and send invite email (best-effort; do not crash on failure)
+                try:
+                    email_result = self.email_service.send_contact_invite_email_sync(
+                        to_email=email,
+                        inviter_name=sender.full_name,
+                        invitation_token=invitation_token,
+                        invite_url=invite_url,
+                        message=message,
+                        # Event-specific fields — only populated when event exists
+                        event_title=event.title if event else None,
+                        event_description=event.description if event else None,
+                        event_date=event.start_datetime.strftime("%A, %B %d, %Y") if event and event.start_datetime else None,
+                        event_time=event.start_datetime.strftime("%I:%M %p") if event and event.start_datetime else None,
+                        event_venue=event.venue_name if event else None,
+                        event_address=event.venue_address if event else None,
+                    )
+                except Exception as email_err:
+                    email_result = False
+                    results["failed"].append({
+                        "email": email,
+                        "error": str(email_err),
+                    })
+                    results["failure_count"] += 1
+                    continue
 
-                if sent:
+                if email_result:
                     invitation.status = ContactInviteStatus.SENT
                     results["sent"].append({
                         "email": email,
                         "invitation_id": invitation.id,
+                        "invite_url": invite_url,
                     })
                     results["success_count"] += 1
                 else:
