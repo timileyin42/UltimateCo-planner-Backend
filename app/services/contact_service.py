@@ -37,6 +37,17 @@ class ContactService:
             ContactInviteStatus.DECLINED
         ]
 
+    @staticmethod
+    def _respondable_statuses() -> List[ContactInviteStatus]:
+        return [
+            ContactInviteStatus.PENDING,
+            ContactInviteStatus.SENT,
+            ContactInviteStatus.DELIVERED,
+            ContactInviteStatus.OPENED,
+            ContactInviteStatus.ACCEPTED,
+            ContactInviteStatus.DECLINED
+        ]
+
     def add_contact(self, user_id: int, contact_data: Dict[str, Any]) -> UserContact:
         """Add a new contact to user's contact list"""
         # Validate phone number format

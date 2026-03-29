@@ -1,0 +1,403 @@
+(planet) brymes@Timothys-M2-Air-2 UltimateCo-planner-Backend % clear
+(planet) brymes@Timothys-M2-Air-2 UltimateCo-planner-Backend % sh test.sh
+Tool Chat
+model: gpt-5.4-nano
+provider: https://api.openai.com/v1
+commands: /quit, /exit, /reset, /tools
+
+<openai.OpenAI object at 0x105427830>
+you> I want to throw a birthday dinner for 20 people with 200k Naira.
+[tool] generate_budget_breakdown
+[arguments]
+{"total_budget":200000,"event_type":"birthday dinner","guest_count":20,"currency":"NGN"}
+[result]
+{
+  "ok": true,
+  "result": {
+    "event_type": "birthday dinner",
+    "total_budget": 200000.0,
+    "currency": "NGN",
+    "guest_count": 20,
+    "allocations": [
+      {
+        "category": "venue",
+        "percentage": 28.0,
+        "amount": 56000.0,
+        "rationale": "Reserve enough for shortlisting, deposits, and venue upgrades if the first options do not convert."
+      },
+      {
+        "category": "catering",
+        "percentage": 25.0,
+        "amount": 50000.0,
+        "rationale": "Food and drink costs usually scale fastest with guest count and should be ring-fenced early."
+      },
+      {
+        "category": "decor",
+        "percentage": 10.0,
+        "amount": 20000.0,
+        "rationale": "Decor spend is best treated as a controlled mood-setting budget rather than an open-ended category."
+      },
+      {
+        "category": "entertainment",
+        "percentage": 10.0,
+        "amount": 20000.0,
+        "rationale": "Entertainment budgets need room for booking fees, equipment, and event-day coverage."
+      },
+      {
+        "category": "logistics",
+        "percentage": 17.0,
+        "amount": 34000.0,
+        "rationale": "Logistics covers transport, coordination, rentals, printing, and the smaller operational costs that add up."
+      },
+      {
+        "category": "contingency",
+        "percentage": 10.0,
+        "amount": 20000.0,
+        "rationale": "Holdback budget protects the plan against quote variance, rush fees, and last-minute changes."
+      }
+    ],
+    "assumptions": [
+      "Budget allocations are deterministic planning heuristics and should be refined with live vendor quotes.",
+      "Working per-guest budget is 10000.00 NGN."
+    ]
+  }
+}
+
+
+assistant>
+Great—here’s a practical budget plan for a **birthday dinner for 20 people** with **₦200,000**.
+
+### Budget breakdown (₦200,000 total)
+- **Venue:** **₦56,000** (28%)  
+- **Catering (food & drinks):** **₦50,000** (25%)
+- **Decor:** **₦20,000** (10%)
+- **Entertainment:** **₦20,000** (10%)
+- **Logistics (rentals, transport, coordination, printing):** **₦34,000** (17%)
+- **Contingency (buffer for price changes):** **₦20,000** (10%)
+
+**Assumption:** ~**₦10,000 per guest** for planning purposes (₦200,000 / 20).
+
+### Quick questions (so I can shortlist venues/vendors)
+1) What **city/area** are you in?  
+2) Is it **home, restaurant, or event space**?  
+3) Any preference for **cuisine** (e.g., Nigerian swallows, continental, barbecue)?  
+4) What **date/time** (or month) is it?  
+
+Reply with those and I’ll pull venue + caterer options that fit your budget.
+
+you> I'm in Lagos Nigeria, I intend on using my home, No cuisine preference, Date is 1st of May
+[tool] create_task_plan
+[arguments]
+{"date":"2026-05-01","event_type":"birthday dinner"}
+[result]
+{
+  "ok": true,
+  "result": {
+    "event_type": "birthday dinner",
+    "event_date": "2026-05-01",
+    "generated_on": "2026-03-24",
+    "task_categories": [
+      {
+        "name": "Food",
+        "items": [
+          {
+            "title": "Plan food and drinks",
+            "category": "Food",
+            "due_date": "2026-04-01",
+            "lead_time_days": 30
+          }
+        ]
+      },
+      {
+        "name": "Guests",
+        "items": [
+          {
+            "title": "Send invitations",
+            "category": "Guests",
+            "due_date": "2026-03-24",
+            "lead_time_days": 45
+          },
+          {
+            "title": "Track RSVPs",
+            "category": "Guests",
+            "due_date": "2026-04-08",
+            "lead_time_days": 23
+          }
+        ]
+      },
+      {
+        "name": "Logistics",
+        "items": [
+          {
+            "title": "Book venue",
+            "category": "Logistics",
+            "due_date": "2026-04-01",
+            "lead_time_days": 30
+          },
+          {
+            "title": "Arrange setup",
+            "category": "Logistics",
+            "due_date": "2026-04-16",
+            "lead_time_days": 15
+          }
+        ]
+      }
+    ],
+    "assumptions": [
+      "Task sequencing is generated from shared event templates and should be refined once real vendors and dates are locked.",
+      "Some deadlines were moved to today because the ideal planning lead time has already passed."
+    ]
+  }
+}
+
+
+assistant>
+Perfect—**Lagos**, **home venue**, **20 guests**, **₁st May**, **no cuisine preference**.
+
+## 1) Updated plan (since it’s your home)
+Because you’re using your home, we’ll treat “venue” as **setup/rentals only** (chairs, tableware, generator/fans if needed, etc.), not a paid venue hire.
+
+Your earlier budget still works well; we’ll just interpret the **venue allocation (₦56,000)** as **home setup/rentals**.
+
+## 2) Task plan for 1st May (Birthday dinner)
+I generated a task plan for **2026-05-01** (birthday dinner). Key items:
+- **Food:** Plan food & drinks — due **2026-04-01**
+- **Guests:** Send invitations — due **2026-03-24**
+- **Guests:** Track RSVPs — due **2026-04-08**
+- **Logistics:** Book venue (setup rentals) — due **2026-04-01**
+- **Logistics:** Arrange setup — due **2026-04-16**
+
+## 3) Next: I can shortlist caterers + entertainment for Lagos
+To pull real options, answer these 3 quick questions:
+1) What’s your **budget range for catering** (or should I keep it at **₦50,000**)?
+2) Do you want **soft drinks only** or **alcohol included**?
+3) What’s the **time** (e.g., 5pm–9pm)?
+
+Once you reply, I’ll search **Lagos caterers** that fit your budget and suggest a simple menu approach for 20 people.
+
+you> Budget is 100k, Ignore drinks for now, 5pm-9pm is great
+[tool] search_caterers
+[arguments]
+{"city": "Lagos", "cuisine": null, "budget_range": {"min_amount": 0, "max_amount": 100000, "currency": "NGN", "label": "₦100k catering"}}
+2026-03-24 22:05:33 - planetal.planning_tools - INFO - planning_tools.py:543 - Running search_caterers with query 'caterer in Lagos'
+2026-03-24 22:05:34 - planetal.google_places - ERROR - google_places.py:155 - Google Places request failed with status 403: {
+  "error": {
+    "code": 403,
+    "message": "Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.",
+    "status": "PERMISSION_DENIED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "API_KEY_SERVICE_BLOCKED",
+        "domain": "googleapis.com",
+        "metadata": {
+          "consumer": "projects/167077244325",
+          "apiName": "places.googleapis.com",
+          "service": "places.googleapis.com",
+          "methodName": "google.maps.places.v1.Places.SearchText"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.LocalizedMessage",
+        "locale": "en-US",
+        "message": "Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked."
+      }
+    ]
+  }
+}
+
+[result]
+{
+  "ok": false,
+  "error": "Google Places API error 403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.\",\n    \"status\": \"PERMISSION_DENIED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n        \"reason\": \"API_KEY_SERVICE_BLOCKED\",\n        \"domain\": \"googleapis.com\",\n        \"metadata\": {\n          \"consumer\": \"projects/167077244325\",\n          \"apiName\": \"places.googleapis.com\",\n          \"service\": \"places.googleapis.com\",\n          \"methodName\": \"google.maps.places.v1.Places.SearchText\"\n        }\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n        \"locale\": \"en-US\",\n        \"message\": \"Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.\"\n      }\n    ]\n  }\n}\n"
+}
+
+[tool] search_entertainment
+[arguments]
+{"city": "Lagos", "event_type": "birthday dinner", "budget_range": {"min_amount": 0, "max_amount": 20000, "currency": "NGN", "label": "₦20k entertainment"}}
+2026-03-24 22:05:34 - planetal.planning_tools - INFO - planning_tools.py:543 - Running search_entertainment with query 'birthday dinner DJ MC live band entertainment in Lagos'
+2026-03-24 22:05:34 - planetal.google_places - ERROR - google_places.py:155 - Google Places request failed with status 403: {
+  "error": {
+    "code": 403,
+    "message": "Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.",
+    "status": "PERMISSION_DENIED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "API_KEY_SERVICE_BLOCKED",
+        "domain": "googleapis.com",
+        "metadata": {
+          "apiName": "places.googleapis.com",
+          "service": "places.googleapis.com",
+          "consumer": "projects/167077244325",
+          "methodName": "google.maps.places.v1.Places.SearchText"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.LocalizedMessage",
+        "locale": "en-US",
+        "message": "Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked."
+      }
+    ]
+  }
+}
+
+[result]
+{
+  "ok": false,
+  "error": "Google Places API error 403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.\",\n    \"status\": \"PERMISSION_DENIED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n        \"reason\": \"API_KEY_SERVICE_BLOCKED\",\n        \"domain\": \"googleapis.com\",\n        \"metadata\": {\n          \"apiName\": \"places.googleapis.com\",\n          \"service\": \"places.googleapis.com\",\n          \"consumer\": \"projects/167077244325\",\n          \"methodName\": \"google.maps.places.v1.Places.SearchText\"\n        }\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n        \"locale\": \"en-US\",\n        \"message\": \"Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.\"\n      }\n    ]\n  }\n}\n"
+}
+
+[tool] search_decorators
+[arguments]
+{"city": "Lagos", "vibe": "birthday dinner elegant simple", "budget_range": {"min_amount": 0, "max_amount": 20000, "currency": "NGN", "label": "₦20k decor"}}
+2026-03-24 22:05:34 - planetal.planning_tools - INFO - planning_tools.py:543 - Running search_decorators with query 'birthday dinner elegant simple event decorator in Lagos'
+2026-03-24 22:05:35 - planetal.google_places - ERROR - google_places.py:155 - Google Places request failed with status 403: {
+  "error": {
+    "code": 403,
+    "message": "Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.",
+    "status": "PERMISSION_DENIED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "API_KEY_SERVICE_BLOCKED",
+        "domain": "googleapis.com",
+        "metadata": {
+          "apiName": "places.googleapis.com",
+          "service": "places.googleapis.com",
+          "consumer": "projects/167077244325",
+          "methodName": "google.maps.places.v1.Places.SearchText"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.LocalizedMessage",
+        "locale": "en-US",
+        "message": "Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked."
+      }
+    ]
+  }
+}
+
+[result]
+{
+  "ok": false,
+  "error": "Google Places API error 403: {\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.\",\n    \"status\": \"PERMISSION_DENIED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n        \"reason\": \"API_KEY_SERVICE_BLOCKED\",\n        \"domain\": \"googleapis.com\",\n        \"metadata\": {\n          \"apiName\": \"places.googleapis.com\",\n          \"service\": \"places.googleapis.com\",\n          \"consumer\": \"projects/167077244325\",\n          \"methodName\": \"google.maps.places.v1.Places.SearchText\"\n        }\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n        \"locale\": \"en-US\",\n        \"message\": \"Requests to this API places.googleapis.com method google.maps.places.v1.Places.SearchText are blocked.\"\n      }\n    ]\n  }\n}\n"
+}
+
+
+assistant>
+Got it: **₦100k catering budget**, **no drinks**, **5pm–9pm**, **Lagos**, **home venue**.
+
+### Important note (tool limitation)
+I attempted to pull real Lagos caterers/decor/entertainment options using the venue/vendor lookup tool, but the Google Places API is currently **blocked (403 PERMISSION_DENIED)** in this environment—so I can’t fetch live vendor listings right now.
+
+### What I *can* do immediately (actionable plan)
+Below is a **tight, realistic catering + dinner flow** for **20 people** within **₦100k** (food only).
+
+## Catering plan for ₦100k (20 guests, 5pm–9pm)
+**Target per person:** ~₦5,000
+
+### Option A (best value): 2 mains + 1 side
+- **Main 1:** Jollof rice (or fried rice)
+- **Main 2:** Chicken stew / beef stew
+- **Side:** Coleslaw or salad (optional, low-cost)
+- **Protein add-on (optional):** small extra chicken portions if your guests like meat
+
+**Portion guide (for 20):**
+- Rice: ~**2.5–3.5kg cooked** total (depends on how heavy you want it)
+- Stew: ~**6–8kg** total (or enough to coat rice generously)
+- Chicken/beef: enough for **~2–3 pieces per person** (or equivalent)
+
+### Option B (simpler): Swallow + soup (if you prefer Nigerian style)
+- **Swallow:** eba/fufu/semovita (choose one)
+- **Soup:** light soup + meat/fish (or okra soup)
+This can fit ₦100k if you keep it to **one soup**.
+
+## Food timing (5pm–9pm)
+- **4:30–4:45pm:** food setup / serving area ready
+- **5:00pm:** guests arrive + first serving
+- **6:30pm:** second serving / top-ups
+- **8:30pm:** cake time (if you have cake)
+
+## Next step (so I tailor the exact menu + quantities)
+Answer these 3 quick questions:
+1) Do you want **Nigerian food** (jollof/stew/swallow) or **continental** (pasta/chicken/lasagna)?
+2) Any **allergies** or “no beef/no pork” preference?
+3) Will you be **serving buffet-style** or **plate-by-plate**?
+
+Once you reply, I’ll give you:
+- a **specific menu recommendation** that fits ₦100k,
+- **exact quantity estimates** for 20,
+- and a **shopping list** (if you’ll do any part yourself).
+
+you> Any type of food is nice, No allergies, It would be plate by plate 
+
+assistant>
+Great—since it’s **plate-by-plate** for **20 people** and **₦100k food only**, here’s a menu that’s both affordable and easy to plate.
+
+## Recommended menu (fits ₦100k): Jollof + Chicken Stew
+**Plated per person:**
+- **Jollof rice:** ~1 cup (or ~250–300g cooked)
+- **Chicken stew:** ~1–2 ladles (enough to coat the rice)
+- **Garnish:** a small portion of coleslaw/salad (optional but nice)
+
+### Quantity estimate for 20 (to guide your order)
+- **Cooked jollof rice:** ~**5–6kg cooked**
+- **Chicken stew:** ~**6–8kg total stew** (or enough to generously cover rice)
+- **Chicken:** typically **~6–10kg raw chicken** depending on cut and how much stew you want (ask the caterer to confirm based on their recipe)
+- **Garnish (optional):** **~2–3kg coleslaw/salad**
+
+## Plate-by-plate serving plan (5pm–9pm)
+- **4:30–4:45pm:** set up serving station + plates
+- **5:00pm:** first serving (main plates)
+- **6:30pm:** second serving/top-up (if you want everyone to have more)
+- **8:30pm:** cake + dessert (if you have cake)
+
+## What to tell your caterer (so ₦100k doesn’t get exceeded)
+Ask for:
+1) **“Jollof rice + chicken stew, plated for 20 people”**
+2) **“No drinks included”**
+3) **“We need enough for 1 full plate each, with optional top-up”**
+4) Delivery time: **by 4:30pm** (so they can set up)
+
+## Quick question to finalize quantities
+Do you want the meal to be **light (one plate only)** or **hearty (one plate + top-up)**?
+
+you> One palte only 
+
+assistant>
+Perfect—**one plate only** makes ₦100k much easier to control.
+
+## Final plated menu (1 plate each): Jollof + Chicken Stew
+**Per person (target):**
+- **Jollof rice:** ~**200–250g cooked**
+- **Chicken stew:** ~**120–180g** (enough to coat the rice)
+
+## Total quantities for 20 (one plate each)
+- **Cooked jollof rice:** ~**4–5kg**
+- **Chicken stew:** ~**2.5–3.5kg** total stew
+- **Chicken (raw):** typically **~3–5kg raw** (depends on how the caterer prepares it—ask them to confirm)
+
+## What to request from the caterer (copy/paste)
+“Please prepare **jollof rice and chicken stew** for **20 people**, **plate-by-plate**, **one plate each**, **no drinks**, delivery/setup by **4:30pm**. Budget is **₦100,000**.”
+
+## One more detail (so I can lock the plan)
+Do you want **coleslaw/salad garnish** on the plate, or keep it strictly **jollof + stew only**?
+
+you> Strictly jollof and stew 
+
+assistant>
+Got it: **strictly jollof rice + chicken stew** (no garnish, no drinks), **one plate each**.
+
+## What to order (for 20 people, one plate only)
+- **Cooked jollof rice:** ~**4–5kg**
+- **Chicken stew:** ~**2.5–3.5kg** total
+
+(Your caterer will convert this into the right amount of raw chicken—just ask them to match the above portions.)
+
+## Copy/paste message to caterer
+“Hi, I need **jollof rice and chicken stew only** for **20 people**. It should be **plate-by-plate** with **one plate each** (no drinks, no garnish). Please deliver/setup by **4:30pm** for a **5pm–9pm** birthday dinner. **Budget: ₦100,000**.”
+
+If you tell me whether you prefer **spicy or mild stew**, I’ll suggest the best way to phrase that to the caterer too.
+
+you> 

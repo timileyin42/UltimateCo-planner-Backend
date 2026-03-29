@@ -156,7 +156,14 @@ class Settings(BaseSettings):
     
     # External API Keys
     OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-5.4-nano"
+    OPENAI_BASE_URL: Optional[str] = None
     GOOGLE_MAPS_API_KEY: Optional[str] = None
+    GOOGLE_PLACES_API_KEY: Optional[str] = None
+    GOOGLE_PLACES_LANGUAGE_CODE: str = "en"
+    GOOGLE_PLACES_REGION_CODE: Optional[str] = None
+    GOOGLE_PLACES_DEFAULT_PAGE_SIZE: int = 8
+    GOOGLE_PLACES_DEFAULT_MIN_RATING: float = 3.5
     GEOAPIFY_API_KEY: Optional[str] = None
     
     # SMS Configuration - Termii

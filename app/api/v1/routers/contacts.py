@@ -304,6 +304,17 @@ async def send_invitation(
         message=invitation_data.message
     )
 
+    return PublicEventInviteResponse(
+        token=token,
+        invitation_id=invitation.id,
+        is_valid=is_valid,
+        invitation_status=invitation.status,
+        invitation_type=invitation.invitation_type,
+        inviter_name=invitation.sender.full_name if invitation.sender else None,
+        message=invitation.message,
+        event=event_summary,
+        accept_requires_auth=True
+    )
 
 @router.get("/invitations/public/{token}", response_model=PublicEventInviteResponse)
 async def get_public_invitation_event(

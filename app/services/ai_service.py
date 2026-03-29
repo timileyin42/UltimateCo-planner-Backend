@@ -1,17 +1,26 @@
 from typing import List, Dict, Any, Optional
-import openai
+from openai import AsyncOpenAI
 from app.core.config import settings
 from app.models.event_models import Event
 from app.models.user_models import User
 from app.models.ai_chat_models import AIChatSession, AIChatMessage
-from app.schemas.chat import ChatSessionCreate, ChatMessageCreate, ChatSessionResponse, ChatMessageResponse, ChatMessageRole, ChatSessionStatus
-from app.services.event_service import EventService
-from app.schemas.event import EventCreate
+from app.schemas.chat import (
+    ChatMessageCreate,
+    ChatMessageResponse,
+    ChatMessageRole,
+    ChatMessageType,
+    ChatPersistedMessageCreate,
+    ChatSessionCreate,
+    ChatSessionPlanUpdate,
+    ChatSessionResponse,
+    ChatSessionStatus,
+)
 from app.core.circuit_breaker import openai_circuit_breaker, ai_fallback
-from datetime import datetime, timedelta
+from app.schemas.chat import ChatPlanData
+from app.services.ai_plan_service import AIPlanService
+from datetime import datetime
 import json
 import httpx
-import uuid
 import re
 import dateparser
 from sqlalchemy.orm import Session
@@ -20,8 +29,11 @@ class AIService:
     """Service for AI-powered features using OpenAI."""
     
     def __init__(self):
-        openai.api_key = settings.OPENAI_API_KEY
-        self.model = "gpt-4"
+        self.model = settings.OPENAI_MODEL
+        self.client = AsyncOpenAI(
+            api_key=settings.OPENAI_API_KEY or "missing-openai-api-key",
+            base_url=settings.OPENAI_BASE_URL,
+        )
     
     #CONVERSATIONAL AI CHAT METHODS
     
@@ -37,6 +49,10 @@ class AIService:
             session = AIChatSession(
                 user_id=user_id,
                 context=json.dumps(session_data.context) if session_data.context else None,
+                plan_data=self._dump_json(
+                    session_data.plan_data.model_dump(mode="json", exclude_none=True)
+                ) if session_data.plan_data else None,
+                llm_metadata=self._dump_json(self._default_llm_metadata()),
                 status=ChatSessionStatus.ACTIVE
             )
             db.add(session)
@@ -73,22 +89,15 @@ class AIService:
                 event_preview=json.dumps(ai_response.get("event_preview")) if ai_response.get("event_preview") else None
             )
             db.add(ai_message)
+
+            self._apply_ai_response_to_session(db, session, ai_response)
             
             db.commit()
-            
-            # Return response
-            return ChatSessionResponse(
-                id=session.session_id,
-                user_id=user_id,
-                status=session.status,
-                messages=[
-                    self._message_to_schema(system_message),
-                    self._message_to_schema(user_message),
-                    self._message_to_schema(ai_message)
-                ],
-                event_data=json.loads(session.event_data) if session.event_data else None,
-                created_at=session.created_at,
-                updated_at=session.updated_at
+            db.refresh(session)
+
+            return self._session_to_schema(
+                session,
+                messages=[system_message, user_message, ai_message],
             )
             
         except Exception as e:
@@ -139,19 +148,19 @@ class AIService:
                 event_preview=json.dumps(ai_response.get("event_preview")) if ai_response.get("event_preview") else None
             )
             db.add(ai_message)
-            
-            # Update session event data if provided
-            if ai_response.get("event_data"):
-                session.event_data = json.dumps(ai_response["event_data"])
-                session.updated_at = datetime.utcnow()
+
+            self._apply_ai_response_to_session(db, session, ai_response)
             
             db.commit()
+            db.refresh(session)
             
             return ChatMessageResponse(
                 session_id=session_id,
                 message=self._message_to_schema(ai_message),
                 suggestions=ai_response.get("suggestions", []),
-                event_preview=ai_response.get("event_preview")
+                event_preview=ai_response.get("event_preview"),
+                event_data=self._load_json(session.event_data),
+                plan_data=self._session_plan_data(session),
             )
             
         except Exception as e:
@@ -177,17 +186,53 @@ class AIService:
         messages = db.query(AIChatMessage).filter(
             AIChatMessage.session_id == session.id
         ).order_by(AIChatMessage.created_at).all()
-        
-        return ChatSessionResponse(
-            id=session.session_id,
-            user_id=user_id,
-            status=session.status,
-            messages=[self._message_to_schema(msg) for msg in messages],
-            event_data=json.loads(session.event_data) if session.event_data else None,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-            completed_at=session.completed_at
-        )
+
+        return self._session_to_schema(session, messages=messages)
+
+    async def save_chat_plan(
+        self,
+        db: Session,
+        session_id: str,
+        user_id: int,
+        plan_update: ChatSessionPlanUpdate,
+    ) -> ChatSessionResponse:
+        """Persist structured plan data and optional tool-call trace for a chat session."""
+        try:
+            session = self._get_session(db, session_id, user_id, active_only=True)
+
+            if plan_update.plan_data or plan_update.event_data:
+                self._sync_session_plan_data(
+                    db=db,
+                    session=session,
+                    plan_payload=plan_update.plan_data.model_dump(mode="json", exclude_none=True)
+                    if plan_update.plan_data else None,
+                    event_data=plan_update.event_data,
+                )
+
+            if plan_update.llm_metadata:
+                session.llm_metadata = self._dump_json(
+                    self._merge_dicts(
+                        self._load_json(session.llm_metadata),
+                        plan_update.llm_metadata,
+                    )
+                )
+
+            for message_payload in plan_update.messages:
+                db.add(self._build_session_message(session.id, message_payload))
+
+            session.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(session)
+
+            messages = db.query(AIChatMessage).filter(
+                AIChatMessage.session_id == session.id
+            ).order_by(AIChatMessage.created_at).all()
+
+            return self._session_to_schema(session, messages=messages)
+        except Exception as e:
+            db.rollback()
+            print(f"Error saving chat plan: {str(e)}")
+            raise
     
     async def complete_chat_session(
         self, 
@@ -197,37 +242,24 @@ class AIService:
     ) -> Dict[str, Any]:
         """Complete a chat session and create the event."""
         try:
-            session = db.query(AIChatSession).filter(
-                AIChatSession.session_id == session_id,
-                AIChatSession.user_id == user_id,
-                AIChatSession.status == ChatSessionStatus.ACTIVE
-            ).first()
-            
-            if not session:
-                raise ValueError("Chat session not found or not active")
-            
-            if not session.event_data:
-                raise ValueError("No event data available to create event")
-            
-            # Parse event data
-            event_data = json.loads(session.event_data)
-            
-            # Convert chat event data to EventCreate schema
-            event_create = EventCreate(
-                title=event_data.get("title", "Untitled Event"),
-                description=event_data.get("description", ""),
-                event_type=event_data.get("event_type", "OTHER"),
-                start_date=datetime.fromisoformat(event_data["start_date"]) if event_data.get("start_date") else datetime.utcnow() + timedelta(days=7),
-                end_date=datetime.fromisoformat(event_data["end_date"]) if event_data.get("end_date") else None,
-                location=event_data.get("location", ""),
-                max_attendees=event_data.get("max_attendees"),
-                is_public=event_data.get("is_public", False),
-                budget=event_data.get("budget")
+            session = self._get_session(db, session_id, user_id, active_only=True)
+
+            if not session.event_data and not session.plan_data:
+                raise ValueError("No event plan is available to create an event")
+
+            plan_service = AIPlanService(db)
+            normalized_plan_payload = plan_service.get_plan_payload(session)
+            session.plan_data = self._dump_json(normalized_plan_payload)
+            session.event_data = self._dump_json(
+                self._merge_dicts(
+                    self._load_json(session.event_data),
+                    plan_service.build_legacy_event_data(
+                        ChatPlanData.model_validate(normalized_plan_payload)
+                    ),
+                )
             )
-            
-            # Create the event
-            event_service = EventService(db)
-            created_event = event_service.create_event(event_create, user_id)
+
+            created_event = await plan_service.create_event_from_session(session, user_id)
             
             # Update session
             session.status = ChatSessionStatus.COMPLETED
@@ -254,8 +286,161 @@ class AIService:
             "role": message.role,
             "content": message.content,
             "timestamp": message.created_at,
-            "metadata": json.loads(message.extra_data) if message.extra_data else None
+            "metadata": self._load_json(message.extra_data),
+            "message_type": message.message_type or ChatMessageType.MESSAGE.value,
+            "tool_name": message.tool_name,
+            "tool_call_id": message.tool_call_id,
+            "tool_arguments": self._load_json(message.tool_arguments),
+            "tool_result": self._load_json(message.tool_result),
+            "suggestions": self._load_json(message.suggestions),
+            "event_preview": self._load_json(message.event_preview),
         }
+
+    def _session_to_schema(
+        self,
+        session: AIChatSession,
+        messages: Optional[List[AIChatMessage]] = None,
+    ) -> ChatSessionResponse:
+        if messages is None:
+            messages = []
+
+        return ChatSessionResponse(
+            id=session.session_id,
+            user_id=session.user_id,
+            status=session.status,
+            messages=[self._message_to_schema(msg) for msg in messages],
+            event_data=self._load_json(session.event_data),
+            plan_data=self._session_plan_data(session),
+            llm_metadata=self._load_json(session.llm_metadata),
+            created_event_id=session.created_event_id,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+            completed_at=session.completed_at,
+        )
+
+    def _build_session_message(
+        self,
+        session_db_id: int,
+        payload: ChatPersistedMessageCreate,
+    ) -> AIChatMessage:
+        return AIChatMessage(
+            session_id=session_db_id,
+            role=payload.role,
+            content=payload.content,
+            extra_data=self._dump_json(payload.metadata),
+            suggestions=self._dump_json(payload.suggestions),
+            event_preview=self._dump_json(payload.event_preview),
+            message_type=payload.message_type.value,
+            tool_name=payload.tool_name,
+            tool_call_id=payload.tool_call_id,
+            tool_arguments=self._dump_json(payload.tool_arguments),
+            tool_result=self._dump_json(payload.tool_result),
+        )
+
+    def _apply_ai_response_to_session(
+        self,
+        db: Session,
+        session: AIChatSession,
+        ai_response: Dict[str, Any],
+    ) -> None:
+        if ai_response.get("event_data") or ai_response.get("plan_data"):
+            self._sync_session_plan_data(
+                db=db,
+                session=session,
+                plan_payload=ai_response.get("plan_data"),
+                event_data=ai_response.get("event_data"),
+            )
+        session.updated_at = datetime.utcnow()
+
+    def _sync_session_plan_data(
+        self,
+        db: Session,
+        session: AIChatSession,
+        plan_payload: Optional[Dict[str, Any]] = None,
+        event_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        plan_service = AIPlanService(db)
+        current_event = self._load_json(session.event_data)
+        current_plan = self._load_json(session.plan_data)
+
+        merged_event = self._merge_dicts(current_event, event_data or {})
+        normalized_source = self._merge_dicts(merged_event, current_plan)
+        normalized_source = self._merge_dicts(normalized_source, plan_payload or {})
+
+        normalized_plan = ChatPlanData.model_validate(normalized_source)
+        normalized_plan_payload = normalized_plan.model_dump(mode="json", exclude_none=True)
+
+        session.plan_data = self._dump_json(normalized_plan_payload)
+
+        legacy_event_data = plan_service.build_legacy_event_data(normalized_plan)
+        session.event_data = self._dump_json(
+            self._merge_dicts(merged_event, legacy_event_data)
+        )
+
+    def _session_plan_data(self, session: AIChatSession) -> Optional[ChatPlanData]:
+        plan_data = self._load_json(session.plan_data)
+        if not plan_data:
+            return None
+        return ChatPlanData.model_validate(plan_data)
+
+    def _get_session(
+        self,
+        db: Session,
+        session_id: str,
+        user_id: int,
+        active_only: bool = False,
+    ) -> AIChatSession:
+        query = db.query(AIChatSession).filter(
+            AIChatSession.session_id == session_id,
+            AIChatSession.user_id == user_id,
+        )
+        if active_only:
+            query = query.filter(AIChatSession.status == ChatSessionStatus.ACTIVE)
+
+        session = query.first()
+        if not session:
+            if active_only:
+                raise ValueError("Chat session not found or not active")
+            raise ValueError("Chat session not found")
+        return session
+
+    def _load_json(self, payload: Optional[str]) -> Any:
+        if payload is None:
+            return None
+        if isinstance(payload, (dict, list)):
+            return payload
+        try:
+            return json.loads(payload)
+        except (TypeError, json.JSONDecodeError):
+            return None
+
+    def _dump_json(self, payload: Any) -> Optional[str]:
+        if payload in (None, {}, []):
+            return None
+        return json.dumps(payload)
+
+    def _merge_dicts(self, base: Optional[Dict[str, Any]], override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        merged = dict(base or {})
+        for key, value in (override or {}).items():
+            if value is None:
+                continue
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._merge_dicts(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    def _default_llm_metadata(self) -> Dict[str, Any]:
+        return {
+            "provider": "openai",
+            "model": self.model,
+            "base_url": settings.OPENAI_BASE_URL,
+        }
+
+    async def _create_chat_completion(self, **kwargs):
+        if not settings.OPENAI_API_KEY and not settings.OPENAI_BASE_URL:
+            raise ValueError("OPENAI_API_KEY is not configured")
+        return await self.client.chat.completions.create(**kwargs)
     
     @openai_circuit_breaker(fallback=ai_fallback)
     async def _generate_chat_response(
@@ -274,23 +459,19 @@ class AIService:
             # Build conversation context
             conversation = []
             for msg in messages:
+                if msg.message_type != ChatMessageType.MESSAGE.value:
+                    continue
                 if msg.role != ChatMessageRole.SYSTEM:
                     conversation.append({
                         "role": msg.role.value,
                         "content": msg.content
                     })
             
-            # Add current user message
-            conversation.append({
-                "role": "user",
-                "content": user_message
-            })
-            
             # Build system prompt
             system_prompt = self._build_event_creation_prompt(session)
             
             # Call OpenAI
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -316,8 +497,11 @@ class AIService:
     
     def _build_event_creation_prompt(self, session: AIChatSession) -> str:
         """Build system prompt for general event planning assistant."""
-        current_data = json.loads(session.event_data) if session.event_data else {}
-        context = json.loads(session.context) if session.context else {}
+        current_data = self._merge_dicts(
+            self._load_json(session.event_data),
+            self._load_json(session.plan_data),
+        )
+        context = self._load_json(session.context) or {}
         
         user_events = context.get('user_events', [])
         events_context = ""
@@ -369,7 +553,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         This method uses NLP techniques to extract structured information from unstructured text.
         """
         # Get current event data from session
-        current_data = json.loads(session.event_data) if session.event_data else {}
+        current_data = self._load_json(session.event_data) or {}
         event_data = current_data.copy()
         
         # Extract entities from AI response
@@ -654,7 +838,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         try:
             prompt = self._build_checklist_prompt(event, budget)
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are an expert event planner. Generate detailed, actionable checklists for events. Return only valid JSON."},
@@ -684,7 +868,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         try:
             prompt = self._build_vendor_prompt(event, category, location)
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a local event planning expert. Suggest realistic vendor types and services. Return only valid JSON."},
@@ -714,7 +898,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         try:
             prompt = self._build_menu_prompt(event, dietary_restrictions, budget_per_person)
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a professional caterer and menu planner. Create diverse, appealing menus. Return only valid JSON."},
@@ -744,7 +928,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         try:
             prompt = self._build_budget_prompt(event, current_expenses, target_budget)
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a financial advisor specializing in event budgets. Provide practical cost-saving suggestions. Return only valid JSON."},
@@ -773,7 +957,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         try:
             prompt = self._build_timeline_prompt(event, tasks)
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are an event coordinator. Create detailed, realistic timelines for events. Return only valid JSON."},
@@ -803,7 +987,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         try:
             prompt = self._build_gift_prompt(event, recipient_info, budget_range)
             
-            response = await openai.ChatCompletion.acreate(
+            response = await self._create_chat_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a gift consultant. Suggest thoughtful, appropriate gifts based on the occasion and recipient. Return only valid JSON."},
@@ -836,7 +1020,7 @@ Response format: Provide natural conversational responses. Be helpful, specific,
             if weather_data.get("risk_level", "low") in ["high", "medium"]:
                 prompt = self._build_weather_backup_prompt(event, weather_data)
                 
-                response = await openai.ChatCompletion.acreate(
+                response = await self._create_chat_completion(
                     model=self.model,
                     messages=[
                         {"role": "system", "content": "You are an event planner specializing in weather contingencies. Suggest practical backup plans. Return only valid JSON."},
@@ -864,17 +1048,6 @@ Response format: Provide natural conversational responses. Be helpful, specific,
         except Exception as e:
             print(f"Weather check failed: {str(e)}")
             return {"weather_forecast": None, "backup_suggestions": [], "risk_level": "unknown"}
-    
-    def _message_to_schema(self, message: AIChatMessage) -> ChatMessageResponse:
-        """Convert database message to schema."""
-        return ChatMessageResponse(
-            id=message.id,
-            session_id=message.session_id,
-            role=message.role,
-            content=message.content,
-            metadata=message.extra_data,
-            created_at=message.created_at
-        )
     
     # Prompt building methods
     def _build_checklist_prompt(self, event: Event, budget: Optional[float]) -> str:

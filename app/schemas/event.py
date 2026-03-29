@@ -7,6 +7,10 @@ from app.schemas.location import EnhancedLocation, LocationOptimizationRequest, 
 from app.schemas.timeline import TimelineTemplateResponse
 from app.schemas.pagination import PaginationMeta
 
+SUPPORTED_EVENT_CURRENCIES = {"USD", "GBP", "NGN"}
+SUPPORTED_EVENT_CURRENCY_PATTERN = r"^(USD|GBP|NGN)$"
+
+
 def _normalize_event_type_value(value):
     if isinstance(value, EventType):
         return value.value
@@ -41,7 +45,7 @@ class EventBase(BaseModel):
     requires_approval: bool = False
     allow_guest_invites: bool = True
     total_budget: Optional[float] = Field(None, ge=0)
-    currency: str = Field(default="USD", pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
+    currency: str = Field(default="USD", pattern=SUPPORTED_EVENT_CURRENCY_PATTERN, description="Currency code (USD, GBP, or NGN)")
     theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
     
     @field_validator('currency', mode='before')
@@ -49,8 +53,8 @@ class EventBase(BaseModel):
     def validate_currency(cls, v):
         if v:
             v = v.upper()
-            if v not in ['USD', 'GBP']:
-                raise ValueError('Currency must be USD or GBP')
+            if v not in SUPPORTED_EVENT_CURRENCIES:
+                raise ValueError('Currency must be USD, GBP, or NGN')
             return v
         return 'USD'
 
@@ -154,7 +158,7 @@ class EventDuplicateRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     allow_guest_invites: Optional[bool] = None
     total_budget: Optional[float] = Field(None, ge=0)
-    currency: Optional[str] = Field(None, pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
+    currency: Optional[str] = Field(None, pattern=SUPPORTED_EVENT_CURRENCY_PATTERN, description="Currency code (USD, GBP, or NGN)")
     theme_color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
     
     @field_validator('currency', mode='before')
@@ -162,8 +166,8 @@ class EventDuplicateRequest(BaseModel):
     def validate_currency_update(cls, v):
         if v:
             v = v.upper()
-            if v not in ['USD', 'GBP']:
-                raise ValueError('Currency must be USD or GBP')
+            if v not in SUPPORTED_EVENT_CURRENCIES:
+                raise ValueError('Currency must be USD, GBP, or NGN')
             return v
         return v
 
@@ -469,7 +473,7 @@ class ExpenseBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     amount: float = Field(..., gt=0)
-    currency: str = Field(default="USD", pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
+    currency: str = Field(default="USD", pattern=SUPPORTED_EVENT_CURRENCY_PATTERN, description="Currency code (USD, GBP, or NGN)")
     category: Optional[str] = None
     vendor_name: Optional[str] = None
     expense_date: datetime
@@ -481,8 +485,8 @@ class ExpenseBase(BaseModel):
     def validate_currency(cls, v):
         if v:
             v = v.upper()
-            if v not in ['USD', 'GBP']:
-                raise ValueError('Currency must be USD or GBP')
+            if v not in SUPPORTED_EVENT_CURRENCIES:
+                raise ValueError('Currency must be USD, GBP, or NGN')
             return v
         return 'USD'
 
@@ -495,7 +499,7 @@ class ExpenseUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     amount: Optional[float] = Field(None, gt=0)
-    currency: Optional[str] = Field(None, pattern=r'^(USD|GBP)$', description="Currency code (USD or GBP)")
+    currency: Optional[str] = Field(None, pattern=SUPPORTED_EVENT_CURRENCY_PATTERN, description="Currency code (USD, GBP, or NGN)")
     category: Optional[str] = None
     vendor_name: Optional[str] = None
     expense_date: Optional[datetime] = None
@@ -507,8 +511,8 @@ class ExpenseUpdate(BaseModel):
     def validate_currency(cls, v):
         if v:
             v = v.upper()
-            if v not in ['USD', 'GBP']:
-                raise ValueError('Currency must be USD or GBP')
+            if v not in SUPPORTED_EVENT_CURRENCIES:
+                raise ValueError('Currency must be USD, GBP, or NGN')
             return v
         return v
 

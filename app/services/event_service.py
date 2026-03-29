@@ -14,6 +14,10 @@ from app.schemas.event import (
 )
 from app.schemas.location import Coordinates
 from app.core.errors import NotFoundError, ValidationError, ConflictError, AuthorizationError
+from app.llm_tools.task_templates import (
+    get_task_template_map,
+    get_task_templates_for_type,
+)
 from app.services.user_service import UserService
 from app.services.email_service import email_service
 from app.services.google_maps_service import google_maps_service
@@ -1310,120 +1314,10 @@ class EventService:
             self.db.refresh(event)
 
     def _task_template_map(self) -> Dict[str, Dict[str, List[str]]]:
-        return {
-            'BIRTHDAY': {
-                'Food': [
-                    'Confirm brunch menu with cafe',
-                    'Order cake (chocolate or strawberry)',
-                    'Arrange drinks (mimosas + juice options)',
-                ],
-                'Guests': [
-                    'Send invites to 12 guests',
-                    'Track RSVPs',
-                    'Confirm seating arrangements with venue',
-                ],
-                'Logistics': [
-                    'Book cafe private room by Wednesday',
-                    'Arrange decorations (balloons, banners)',
-                    'Confirm photographer or set up photo corner',
-                ],
-                'Extras': [
-                    'Create playlist for background music',
-                    'Buy party favors (mini candles or gift bags)',
-                    'Prepare a short toast/speech',
-                ],
-            },
-            'WEDDING': {
-                'Venue': [
-                    'Book ceremony location',
-                    'Book reception venue',
-                    'Arrange seating plan',
-                ],
-                'Food': [
-                    'Choose catering menu',
-                    'Arrange wedding cake',
-                    'Plan cocktail hour menu',
-                ],
-                'Entertainment': [
-                    'Book DJ or live band',
-                    'Arrange first dance song',
-                    'Plan reception timeline',
-                ],
-                'Decor': [
-                    'Choose floral arrangements',
-                    'Select table decorations',
-                    'Plan ceremony backdrop',
-                ],
-                'Guests': [
-                    'Send save-the-dates',
-                    'Send formal invitations',
-                    'Track RSVPs',
-                ],
-                'Logistics': [
-                    'Book photographer',
-                    'Book videographer',
-                    'Arrange transportation',
-                ],
-            },
-            'PARTY': {
-                'Food': [
-                    'Plan menu',
-                    'Order catering or groceries',
-                    'Prepare drinks',
-                ],
-                'Guests': [
-                    'Send invitations',
-                    'Track RSVPs',
-                ],
-                'Entertainment': [
-                    'Create playlist',
-                    'Plan activities or games',
-                ],
-                'Decor': [
-                    'Buy decorations',
-                    'Set up venue',
-                ],
-            },
-            'CONFERENCE': {
-                'Venue': [
-                    'Book conference hall',
-                    'Arrange breakout rooms',
-                    'Set up registration desk',
-                ],
-                'Logistics': [
-                    'Arrange AV equipment',
-                    'Print name badges',
-                    'Prepare welcome packs',
-                ],
-                'Food': [
-                    'Arrange coffee breaks',
-                    'Book lunch catering',
-                ],
-                'Guests': [
-                    'Send invitations to speakers',
-                    'Track attendee registrations',
-                ],
-            },
-            'MEETING': {
-                'Logistics': [
-                    'Book meeting room',
-                    'Prepare agenda',
-                    'Set up presentation',
-                ],
-                'Food': [
-                    'Order refreshments',
-                ],
-            },
-        }
+        return get_task_template_map()
 
     def _get_task_templates_for_type(self, event_type: Optional[str]) -> Dict[str, List[str]]:
-        templates = self._task_template_map()
-        event_type_key = event_type.upper() if event_type else ''
-        return templates.get(event_type_key, {
-            'Food': ['Plan food and drinks'],
-            'Guests': ['Send invitations', 'Track RSVPs'],
-            'Logistics': ['Book venue', 'Arrange setup'],
-        })
+        return get_task_templates_for_type(event_type)
 
     def get_task_template_categories(self, event_type: Optional[str]) -> List[TaskCategory]:
         templates = self._get_task_templates_for_type(event_type)
