@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ inviter_name }} invited you to {{ app_name }}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #1f2937;
+        }
+        .wrapper {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
+        }
+        .header {
+            padding: 24px 32px;
+            background: linear-gradient(90deg, #f7b500 0%, #ff5a3c 100%);
+            color: #ffffff;
+        }
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+        }
+        .brand-sub {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 6px;
+        }
+        .content {
+            padding: 28px 32px 8px;
+        }
+        .kicker {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            background: #f7b500;
+            color: #1f2937;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        .title {
+            font-size: 24px;
+            margin: 16px 0 6px;
+            font-weight: 700;
+        }
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 12px;
+        }
+        .text {
+            color: #4b5563;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+        .invite-message {
+            background: #fff1d6;
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin: 14px 0;
+        }
+        .event-box {
+            background: #fff7db;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin: 18px 0;
+        }
+        .event-box-title {
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .event-box-sub {
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .cta {
+            text-align: center;
+            margin: 24px 0;
+        }
+        .btn-primary {
+            display: inline-block;
+            padding: 14px 32px;
+            background: linear-gradient(90deg, #f7b500 0%, #ff5a3c 100%);
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 15px;
+        }
+        .footer-card {
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 18px;
+            padding: 18px 20px;
+            margin: 20px 32px 12px;
+        }
+        .footer-card-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .footer {
+            text-align: center;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 12px 32px 28px;
+        }
+        .footer a {
+            color: #9ca3af;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="card">
+            <div class="header">
+                <div class="brand">{{ app_name }}</div>
+                <div class="brand-sub">You've been invited</div>
+            </div>
+            <div class="content">
+                <div class="kicker">👋</div>
+                <h1 class="title">Join {{ inviter_name }} on {{ app_name }}</h1>
+                <div class="subtitle">Invited by {{ inviter_name }}</div>
+                <p class="text">
+                    {{ inviter_name }} has invited you to join <strong>{{ app_name }}</strong> — the ultimate event planning app. Plan events, coordinate with friends, and build moments that matter.
+                </p>
+                {% if invitation_message %}
+                <div class="invite-message">
+                    <strong>Message from {{ inviter_name }}:</strong><br>{{ invitation_message }}
+                </div>
+                {% endif %}
+                {% if event_title %}
+                <div class="event-box">
+                    <div class="event-box-title">🎉 You're also invited to an event</div>
+                    <div class="event-box-sub">{{ event_title }}</div>
+                </div>
+                {% endif %}
+                <div class="cta">
+                    <a href="{{ invite_url }}" class="btn-primary">Accept Invitation</a>
+                </div>
+                <p class="text" style="font-size:13px; color:#9ca3af; text-align:center;">
+                    Or copy this link: <a href="{{ invite_url }}" style="color:#f7b500;">{{ invite_url }}</a>
+                </p>
+            </div>
+            <div class="footer-card">
+                <div class="footer-card-title">{{ app_name }}</div>
+                <div>Build the moments that matter.</div>
+            </div>
+            <div class="footer">
+                <p>This invitation was sent by {{ inviter_name }} via {{ app_name }}.</p>
+                <p>© {{ current_year() }} {{ app_name }}. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

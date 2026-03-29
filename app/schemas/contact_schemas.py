@@ -126,6 +126,37 @@ class BulkPhoneInvitationResponse(BaseModel):
     failure_count: int
 
 
+class BulkEmailInvitationCreate(BaseModel):
+    """Schema for sending bulk invitations directly to email addresses
+
+    Use Case: Invite people by email who may not be in the phone book
+    1. User enters or pastes a list of email addresses
+    2. App sends to this endpoint
+    3. Backend sends personalised invite emails via Resend to all addresses
+    """
+    emails: List[EmailStr] = Field(
+        ...,
+        min_items=1,
+        max_items=50,
+        description="Email addresses to invite (1-50)"
+    )
+    event_id: Optional[int] = Field(None, description="Optional event ID to invite contacts to")
+    message: Optional[str] = Field(None, max_length=500, description="Optional personal message")
+    auto_add_to_contacts: bool = Field(
+        False,
+        description="If true, adds email addresses to your Plan et al contacts list"
+    )
+
+
+class BulkEmailInvitationResponse(BaseModel):
+    """Response from bulk email invitation request"""
+    sent: List[Dict[str, Any]]
+    failed: List[Dict[str, Any]]
+    total: int
+    success_count: int
+    failure_count: int
+
+
 class ContactInvitationResponse(ContactInvitationBase):
     id: int
     sender_id: int

@@ -59,9 +59,9 @@ api_router.include_router(
 )
 
 api_router.include_router(
-    creative_router,
-    prefix="/creative",
-    tags=["creative"]
+    events_router,
+    prefix="/events",
+    tags=["events"]
 )
 
 api_router.include_router(

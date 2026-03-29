@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
+from app.models.event_models import Event
+
 from app.core.deps import get_db, get_current_active_user
 from app.core.errors import ValidationError as AppValidationError
 from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig

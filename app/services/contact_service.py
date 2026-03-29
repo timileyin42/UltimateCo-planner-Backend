@@ -17,12 +17,25 @@ from app.models.shared_models import RSVPStatus
 from app.core.database import get_db
 from app.core.config import settings
 from app.services.sms_service import SMSService
+from app.services.email_service import EmailService
 
 
 class ContactService:
     def __init__(self, db: Session):
         self.db = db
         self.sms_service = SMSService()
+        self.email_service = EmailService()
+
+    @staticmethod
+    def _respondable_statuses() -> List[ContactInviteStatus]:
+        return [
+            ContactInviteStatus.PENDING,
+            ContactInviteStatus.SENT,
+            ContactInviteStatus.DELIVERED,
+            ContactInviteStatus.OPENED,
+            ContactInviteStatus.ACCEPTED,
+            ContactInviteStatus.DECLINED
+        ]
 
     @staticmethod
     def _respondable_statuses() -> List[ContactInviteStatus]:
@@ -354,6 +367,134 @@ class ContactService:
                 })
                 results["failure_count"] += 1
         
+        self.db.commit()
+        return results
+
+    def bulk_send_email_invitations(
+        self,
+        sender_id: int,
+        emails: List[str],
+        event_id: Optional[int] = None,
+        message: Optional[str] = None,
+        auto_add_to_contacts: bool = False
+    ) -> Dict[str, Any]:
+        """Send invitations directly to email addresses (mirrors bulk_send_phone_invitations)."""
+        results: Dict[str, Any] = {
+            "sent": [],
+            "failed": [],
+            "total": len(emails),
+            "success_count": 0,
+            "failure_count": 0,
+        }
+
+        sender = self.db.query(User).filter(User.id == sender_id).first()
+        if not sender:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sender not found"
+            )
+
+        event = None
+        if event_id:
+            event = self.db.query(Event).filter(Event.id == event_id).first()
+
+        base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL).rstrip("/")
+
+        for email in emails:
+            try:
+                email = email.strip().lower()
+
+                # Find or create contact record to satisfy FK constraint
+                contact = self.db.query(UserContact).filter(
+                    and_(
+                        UserContact.user_id == sender_id,
+                        UserContact.email == email
+                    )
+                ).first()
+
+                if not contact:
+                    contact = UserContact(
+                        user_id=sender_id,
+                        name=email,
+                        email=email,
+                        source=ContactSource.MANUAL,
+                        is_favorite=False,
+                    )
+                    self.db.add(contact)
+                    self.db.flush()
+
+                # Generate invitation token and build deeplink
+                invitation_token = str(uuid.uuid4())
+                invite_url = f"{base_url}/invite/{invitation_token}"
+
+                # Check if email belongs to an existing user
+                recipient_user = self.db.query(User).filter(
+                    User.email == email
+                ).first()
+
+                invitation = ContactInvitation(
+                    sender_id=sender_id,
+                    recipient_id=recipient_user.id if recipient_user else None,
+                    contact_id=contact.id,
+                    event_id=event_id,
+                    invitation_token=invitation_token,
+                    message=message,
+                    invitation_type="app_invite" if event_id is None else "event_invite",
+                    delivery_method="email",
+                    recipient_email=email,
+                    status=ContactInviteStatus.PENDING,
+                )
+                self.db.add(invitation)
+                self.db.flush()
+
+                # Build and send invite email (best-effort; do not crash on failure)
+                try:
+                    email_result = self.email_service.send_contact_invite_email_sync(
+                        to_email=email,
+                        inviter_name=sender.full_name,
+                        invitation_token=invitation_token,
+                        invite_url=invite_url,
+                        message=message,
+                        # Event-specific fields — only populated when event exists
+                        event_title=event.title if event else None,
+                        event_description=event.description if event else None,
+                        event_date=event.start_datetime.strftime("%A, %B %d, %Y") if event and event.start_datetime else None,
+                        event_time=event.start_datetime.strftime("%I:%M %p") if event and event.start_datetime else None,
+                        event_venue=event.venue_name if event else None,
+                        event_address=event.venue_address if event else None,
+                    )
+                except Exception as email_err:
+                    email_result = False
+                    results["failed"].append({
+                        "email": email,
+                        "error": str(email_err),
+                    })
+                    results["failure_count"] += 1
+                    continue
+
+                if email_result:
+                    invitation.status = ContactInviteStatus.SENT
+                    results["sent"].append({
+                        "email": email,
+                        "invitation_id": invitation.id,
+                        "invite_url": invite_url,
+                    })
+                    results["success_count"] += 1
+                else:
+                    invitation.status = ContactInviteStatus.FAILED
+                    results["failed"].append({
+                        "email": email,
+                        "error": "Email delivery failed",
+                    })
+                    results["failure_count"] += 1
+
+            except Exception as e:
+                results["failed"].append({
+                    "email": email,
+                    "error": str(e),
+                })
+                results["failure_count"] += 1
+
         self.db.commit()
         return results
 

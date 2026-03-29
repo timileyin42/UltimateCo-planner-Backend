@@ -99,6 +99,83 @@ class EmailService:
         
         return results
     
+    def send_contact_invite_email_sync(
+        self,
+        to_email: str,
+        inviter_name: str,
+        invitation_token: str,
+        event_title: Optional[str] = None,
+        message: Optional[str] = None,
+        invite_url: Optional[str] = None,
+        # Extra fields used when sending a full event invite (event_invitation.html)
+        invitee_name: Optional[str] = None,
+        event_description: Optional[str] = None,
+        event_date: Optional[str] = None,
+        event_time: Optional[str] = None,
+        event_venue: Optional[str] = None,
+        event_address: Optional[str] = None,
+    ) -> bool:
+        """Send a contact/app invitation email synchronously.
+
+        - With event details  → uses event_invitation.html (full date/venue/RSVP)
+        - Without event       → uses contact_invite.html (app invite with deeplink)
+        """
+        if not self.is_configured():
+            logger.warning("Email not configured — skipping invite email to %s", to_email)
+            return False
+
+        if not invite_url:
+            base_url = (settings.DEEP_LINK_BASE_URL or settings.FRONTEND_URL or "").rstrip("/")
+            invite_url = f"{base_url}/invite/{invitation_token}"
+
+        if event_title:
+            # Full event invite — mirrors send_event_invitation()
+            context = {
+                "app_name": "Plan et al",
+                "invitee_name": invitee_name or to_email,
+                "inviter_name": inviter_name,
+                "event_title": event_title,
+                "event_description": event_description or "",
+                "event_date": event_date or "TBD",
+                "event_time": event_time or "TBD",
+                "event_venue": event_venue or "TBD",
+                "event_address": event_address or "",
+                "invitation_message": message or "",
+                "event_url": invite_url,
+                "rsvp_url": invite_url,
+                "plus_one_allowed": False,
+            }
+            template = "event_invitation.html"
+            subject = f"You're invited to {event_title}!"
+        else:
+            # General app invite
+            context = {
+                "app_name": "Plan et al",
+                "inviter_name": inviter_name,
+                "invite_url": invite_url,
+                "invitation_message": message,
+                "event_title": None,
+            }
+            template = "contact_invite.html"
+            subject = f"{inviter_name} invited you to join Plan et al"
+
+        html_content = self.render_template(template, context)
+        if not html_content:
+            return False
+
+        try:
+            params: Dict[str, Any] = {
+                "from": f"{self.from_name} <{self.from_email}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+            response = resend.Emails.send(params)
+            return response.get("id") is not None
+        except Exception as e:
+            logger.error("Failed to send invite email to %s: %s", to_email, e)
+            return False
+
     def render_template(self, template_name: str, context: Dict[str, Any]) -> str:
         """Render email template with context."""
         try:
