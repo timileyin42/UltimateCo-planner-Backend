@@ -65,6 +65,8 @@ class RateLimitConfig:
     PASSWORD_RESET = "3/minute"
     EMAIL_VERIFICATION = "5/minute"
     OTP_REQUEST = "3/minute"
+    TERMII_OTP_SEND = "3/hour"
+    CONTACT_INVITE_SEND = "10/hour"
     
     # AI specific limits
     AI_CHAT = "10/minute"
@@ -167,6 +169,8 @@ register_rate_limit = create_rate_limit_decorator(RateLimitConfig.REGISTER)
 password_reset_rate_limit = create_rate_limit_decorator(RateLimitConfig.PASSWORD_RESET)
 email_verification_rate_limit = create_rate_limit_decorator(RateLimitConfig.EMAIL_VERIFICATION)
 otp_rate_limit = create_rate_limit_decorator(RateLimitConfig.OTP_REQUEST)
+termii_otp_send_rate_limit = create_rate_limit_decorator(RateLimitConfig.TERMII_OTP_SEND)
+contact_invite_send_rate_limit = create_rate_limit_decorator(RateLimitConfig.CONTACT_INVITE_SEND)
 
 # AI specific decorators
 ai_chat_rate_limit = create_rate_limit_decorator(RateLimitConfig.AI_CHAT)

@@ -94,6 +94,7 @@ rate_limit_login = create_rate_limit_decorator(RateLimitConfig.LOGIN)
 rate_limit_password_reset = create_rate_limit_decorator(RateLimitConfig.PASSWORD_RESET)
 rate_limit_email_verification = create_rate_limit_decorator(RateLimitConfig.EMAIL_VERIFICATION)
 rate_limit_otp = create_rate_limit_decorator(RateLimitConfig.OTP_REQUEST)
+rate_limit_termii_otp_send = create_rate_limit_decorator(RateLimitConfig.TERMII_OTP_SEND)
 
 @auth_router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @rate_limit_register
@@ -529,7 +530,7 @@ async def resend_verification_otp(
             raise http_400_bad_request("Failed to send verification code")
 
 @auth_router.post("/resend-phone-otp")
-@rate_limit_otp
+@rate_limit_termii_otp_send
 async def resend_phone_otp(
     request: Request,
     phone_request: PhoneOTPRequest,

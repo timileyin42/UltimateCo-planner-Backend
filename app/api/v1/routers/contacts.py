@@ -6,6 +6,7 @@ from sqlalchemy import or_
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.rate_limiter import create_rate_limit_decorator, RateLimitConfig
 from app.models.user_models import User
 from app.models.contact_models import ContactInviteStatus, UserContact, ContactInvitation
 from app.services.contact_service import ContactService
@@ -23,6 +24,7 @@ from app.schemas.contact_schemas import (
 from app.schemas.event import EventSummary
 
 router = APIRouter()
+rate_limit_contact_invite_send = create_rate_limit_decorator(RateLimitConfig.CONTACT_INVITE_SEND)
 
 
 @router.post("/", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
@@ -217,6 +219,7 @@ async def delete_contact(
 
 
 @router.post("/invitations/bulk", response_model=List[ContactInvitationResponse], status_code=status.HTTP_201_CREATED)
+@rate_limit_contact_invite_send
 async def send_bulk_invitations(
     invitation_data: BulkContactInvitationCreate,
     current_user: User = Depends(get_current_user),
@@ -232,6 +235,7 @@ async def send_bulk_invitations(
     )
 
 @router.post("/invitations/bulk-phone", response_model=BulkPhoneInvitationResponse, status_code=status.HTTP_201_CREATED)
+@rate_limit_contact_invite_send
 async def send_bulk_phone_invitations(
     invitation_data: BulkPhoneInvitationCreate,
     current_user: User = Depends(get_current_user),
@@ -264,6 +268,7 @@ async def send_bulk_phone_invitations(
     )
 
 @router.post("/invitations/bulk-email", response_model=BulkEmailInvitationResponse, status_code=status.HTTP_201_CREATED)
+@rate_limit_contact_invite_send
 async def send_bulk_email_invitations(
     invitation_data: BulkEmailInvitationCreate,
     current_user: User = Depends(get_current_user),
@@ -290,6 +295,7 @@ async def send_bulk_email_invitations(
 
 
 @router.post("/invitations", response_model=ContactInvitationResponse, status_code=status.HTTP_201_CREATED)
+@rate_limit_contact_invite_send
 async def send_invitation(
     invitation_data: ContactInvitationCreate,
     current_user: User = Depends(get_current_user),
