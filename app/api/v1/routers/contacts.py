@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -221,6 +221,7 @@ async def delete_contact(
 @router.post("/invitations/bulk", response_model=List[ContactInvitationResponse], status_code=status.HTTP_201_CREATED)
 @rate_limit_contact_invite_send
 async def send_bulk_invitations(
+    request: Request,
     invitation_data: BulkContactInvitationCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -237,6 +238,7 @@ async def send_bulk_invitations(
 @router.post("/invitations/bulk-phone", response_model=BulkPhoneInvitationResponse, status_code=status.HTTP_201_CREATED)
 @rate_limit_contact_invite_send
 async def send_bulk_phone_invitations(
+    request: Request,
     invitation_data: BulkPhoneInvitationCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -270,6 +272,7 @@ async def send_bulk_phone_invitations(
 @router.post("/invitations/bulk-email", response_model=BulkEmailInvitationResponse, status_code=status.HTTP_201_CREATED)
 @rate_limit_contact_invite_send
 async def send_bulk_email_invitations(
+    request: Request,
     invitation_data: BulkEmailInvitationCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -297,6 +300,7 @@ async def send_bulk_email_invitations(
 @router.post("/invitations", response_model=ContactInvitationResponse, status_code=status.HTTP_201_CREATED)
 @rate_limit_contact_invite_send
 async def send_invitation(
+    request: Request,
     invitation_data: ContactInvitationCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
