@@ -204,16 +204,19 @@ class EventResponse(EventBase):
     total_expenses: float
     created_at: datetime
     updated_at: datetime
-    
+
     # Task categories for mobile app
     task_categories: List[TaskCategory] = Field(default_factory=list)
-    
+
     # Enhanced location fields
     place_id: Optional[str] = None
     formatted_address: Optional[str] = None
     location_verified: bool = False
     location_verification_timestamp: Optional[datetime] = None
-    
+
+    # Permanent shareable invite token
+    invite_token: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 class EventSummary(BaseModel):

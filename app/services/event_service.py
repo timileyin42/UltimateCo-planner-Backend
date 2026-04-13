@@ -2,6 +2,8 @@ from typing import Optional, List, Dict, Any, Union
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 from datetime import datetime, timedelta
+import secrets
+import re
 from app.models.event_models import (
     Event, EventInvitation, Task, Expense, ExpenseSplit, Comment, Poll, PollOption, PollVote
 )
@@ -117,7 +119,14 @@ class EventService:
         event_dict['creator_id'] = creator_id
         if 'status' not in event_dict:
             event_dict['status'] = EventStatus.CONFIRMED
-        
+
+        # Generate permanent shareable invite token — readable slug + random suffix
+        # e.g. "birthday-party-at-jakes-xK7p2qRsTuv"
+        raw_title = event_dict.get('title', 'event')
+        slug = re.sub(r'[^a-z0-9]+', '-', raw_title.lower()).strip('-')[:40].rstrip('-')
+        random_suffix = secrets.token_urlsafe(8)  # ~11 URL-safe chars
+        event_dict['invite_token'] = f"{slug}-{random_suffix}"
+
         # Create event using repository
         event = self.event_repo.create(event_dict)
         

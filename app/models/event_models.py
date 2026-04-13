@@ -47,6 +47,9 @@ class Event(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     total_budget = Column(Float, nullable=True)
     currency = Column(String(3), default="USD", nullable=False)
     ai_plan_data = Column(Text, nullable=True)
+
+    # Permanent shareable invite token (generated at creation)
+    invite_token = Column(String(64), nullable=True, unique=True)
     
     # Event theme and styling
     theme_color = Column(String(7), nullable=True)  # Hex color
@@ -103,6 +106,7 @@ class Event(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
         Index('idx_event_created_at', 'created_at'),
         Index('idx_event_is_deleted', 'is_deleted'),
         Index('idx_event_is_active', 'is_active'),
+        Index('idx_event_invite_token', 'invite_token'),
         # Combined indexes for common queries
         Index('idx_event_creator_status', 'creator_id', 'status'),
         Index('idx_event_type_status', 'event_type', 'status'),

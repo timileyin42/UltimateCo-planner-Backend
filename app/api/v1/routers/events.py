@@ -1494,7 +1494,7 @@ async def vote_on_poll(
     try:
         event_service = EventService(db)
         votes = event_service.vote_on_poll(poll_id, vote_data, current_user.id)
-        
+
         return {
             "message": "Vote recorded successfully",
             "votes_count": len(votes)
@@ -1508,3 +1508,78 @@ async def vote_on_poll(
             raise http_400_bad_request("Poll is closed")
         else:
             raise http_400_bad_request("Failed to record vote")
+
+
+# Permanent shareable invite link endpoints
+
+def _get_valid_event_for_token(token: str, db: Session) -> Event:
+    """Shared lookup used by both join endpoints.
+
+    Raises appropriate HTTP errors for not-found, deleted, and expired events.
+    """
+    event = db.query(Event).filter(Event.invite_token == token).first()
+
+    if not event or event.is_deleted:
+        raise http_404_not_found("Invite link not found or the event has been deleted")
+
+    # Expire when the event is over (use end_datetime if set, otherwise start_datetime)
+    cutoff = event.end_datetime or event.start_datetime
+    if cutoff < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This invite link has expired — the event has already taken place"
+        )
+
+    return event
+
+
+@events_router.get("/join/{token}", response_model=EventSummary)
+async def get_event_by_invite_token(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Public endpoint — preview an event via its permanent shareable link.
+
+    No authentication required. The mobile app shows the event details when a
+    user taps a WhatsApp/social link, before prompting them to sign in and join.
+    Returns 410 if the event has already taken place or been deleted.
+    """
+    event = _get_valid_event_for_token(token, db)
+    return event
+
+
+@events_router.post("/join/{token}", response_model=EventResponse)
+async def join_event_via_invite_link(
+    token: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Authenticated endpoint — join an event via its permanent shareable link.
+
+    Creates an accepted EventInvitation for the current user if they are not
+    already an attendee. Returns the full event so the app can navigate directly
+    into it after joining.
+    Returns 410 if the event has already taken place or been deleted.
+    """
+    event = _get_valid_event_for_token(token, db)
+
+    # Creator is already an owner — nothing to do
+    if event.creator_id == current_user.id:
+        return event
+
+    existing = db.query(EventInvitation).filter(
+        EventInvitation.event_id == event.id,
+        EventInvitation.user_id == current_user.id
+    ).first()
+
+    if not existing:
+        invitation = EventInvitation(
+            event_id=event.id,
+            user_id=current_user.id,
+            rsvp_status=RSVPStatus.ACCEPTED,
+        )
+        db.add(invitation)
+        db.commit()
+        db.refresh(event)
+
+    return event
