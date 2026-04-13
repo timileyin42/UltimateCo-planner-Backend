@@ -46,6 +46,7 @@ class Event(Base, IDMixin, TimestampMixin, SoftDeleteMixin, ActiveMixin):
     # Budget information
     total_budget = Column(Float, nullable=True)
     currency = Column(String(3), default="USD", nullable=False)
+    ai_plan_data = Column(Text, nullable=True)
     
     # Event theme and styling
     theme_color = Column(String(7), nullable=True)  # Hex color

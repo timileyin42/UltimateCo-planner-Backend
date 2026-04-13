@@ -10,6 +10,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.api.v1.api_router import api_router
 from app.api.public_routes import router as public_router
 from app.api.health import health_router
+from app.api.tool_chat_dev import router as tool_chat_dev_page_router
 from app.core.config import settings
 from app.services.redis_subscriber import start_redis_listener, stop_redis_listener
 from app.core.db_optimizations import create_composite_indexes, read_replica_manager
@@ -75,6 +76,7 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Return simple string error messages for validation errors"""
     errors = exc.errors()
+    logger.warning("Validation error on %s %s: %s", request.method, request.url.path, errors)
     if errors:
         # Get the first error message
         first_error = errors[0]
@@ -100,6 +102,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["health"])
 app.include_router(public_router)
+app.include_router(tool_chat_dev_page_router)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Root endpoint
