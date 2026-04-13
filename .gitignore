@@ -40,6 +40,14 @@ logs/
 docs/
 GOOGLE_AUTH_AND_UPLOAD.md
 MOBILE_DEV_GUIDE.md
+planetal-llm-choice.md
+planetal_AI_anythingllm_plan.md
+planetal_AI_approach.md
+planetal_AI_implementation_plan.md
+
+# Test databases
+test_planetal.db
+*.db
 
 # GCP & Firebase Credentials
 planetdev-475809-914df0ab954b.json
